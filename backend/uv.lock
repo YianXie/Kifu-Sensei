@@ -705,6 +705,15 @@ wheels = [
 ]
 
 [[package]]
+name = "sgfmill"
+version = "1.1.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1b/2b/42bf7cf772fa54458b6e84e6938192f1466b9a95ae203b1d5efa2cedfc53/sgfmill-1.1.1.tar.gz", hash = "sha256:1f44fa6b613acfae23cf7f69985a4a911fc06f772f6c63c0bbfc89044d88f41d", size = 63179, upload-time = "2018-05-20T15:19:02.98Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a0/ef/cd39e8db4385260b6f2e021dd8908e8f5167bfddce238bdea0e82b2f59c6/sgfmill-1.1.1-py3-none-any.whl", hash = "sha256:759cd843eba647875931d3a10eb329362087b9832f6b49ee85cf8948b0608b3d", size = 27143, upload-time = "2018-05-20T15:19:01.418Z" },
+]
+
+[[package]]
 name = "sortedcontainers"
 version = "2.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -825,6 +834,7 @@ dependencies = [
     { name = "httpx" },
     { name = "psycopg2-binary" },
     { name = "python-dotenv" },
+    { name = "sgfmill" },
     { name = "whitenoise" },
 ]
 
@@ -848,6 +858,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "psycopg2-binary", specifier = ">=2.9" },
     { name = "python-dotenv", specifier = ">=1.0" },
+    { name = "sgfmill", specifier = ">=1.1.1" },
     { name = "whitenoise", specifier = ">=6.0" },
 ]
 
