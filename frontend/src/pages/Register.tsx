@@ -46,14 +46,26 @@ export default function Register() {
 
     return (
         <Container maxWidth="xs">
-            <Box className="flex min-h-[80vh] flex-col justify-center gap-6">
+            <Box
+                sx={{
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "center",
+                    gap: 3,
+                    minHeight: "80vh",
+                }}
+            >
                 <Typography variant="h4" fontWeight={700} textAlign="center">
                     Create Account
                 </Typography>
 
                 {error && <Alert severity="error">{error}</Alert>}
 
-                <Box component="form" onSubmit={handleSubmit} className="flex flex-col gap-4">
+                <Box
+                    component="form"
+                    onSubmit={handleSubmit}
+                    sx={{ display: "flex", flexDirection: "column", gap: 2 }}
+                >
                     <TextField
                         label="Email"
                         type="email"

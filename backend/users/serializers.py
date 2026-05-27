@@ -1,6 +1,9 @@
+from django.contrib.auth import authenticate as django_authenticate
 from django.contrib.auth.models import User
 from rest_framework import serializers
+from rest_framework_simplejwt.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.settings import api_settings
 
 from .models import DEFAULT_USER_PREFERENCES, UserSettings
 
@@ -34,15 +37,44 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     username_field = "email"
 
     def validate(self, attrs: dict) -> dict:
-        attrs["username"] = attrs.get("email", "")
-        data = super().validate(attrs)
+        email = attrs.get("email", "").lower()
+        password = attrs.get("password", "")
+
+        # Look up the user by email first, then authenticate with username.
+        # Django's ModelBackend only recognises the `username` kwarg; passing
+        # `email=` directly always returns None and causes "no active account".
+        try:
+            user_obj = User.objects.get(email=email)
+        except User.DoesNotExist:
+            raise AuthenticationFailed(
+                self.error_messages["no_active_account"],
+                "no_active_account",
+            )
+
+        self.user = django_authenticate(
+            request=self.context.get("request"),
+            username=user_obj.username,
+            password=password,
+        )
+
+        if not api_settings.USER_AUTHENTICATION_RULE(self.user):
+            raise AuthenticationFailed(
+                self.error_messages["no_active_account"],
+                "no_active_account",
+            )
+
+        refresh = self.get_token(self.user)
+        data: dict = {
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
+        }
 
         try:
-            settings = self.user.settings
-            preferences = settings.preferences
+            user_settings = self.user.settings
+            preferences = user_settings.preferences
         except UserSettings.DoesNotExist:
-            settings = UserSettings.objects.create(user=self.user)
-            preferences = settings.preferences
+            user_settings = UserSettings.objects.create(user=self.user)
+            preferences = user_settings.preferences
 
         data["user"] = {
             "id": self.user.pk,

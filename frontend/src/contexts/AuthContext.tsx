@@ -1,10 +1,21 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, {
+    createContext,
+    useCallback,
+    useContext,
+    useEffect,
+    useState,
+} from "react";
 
 import { jwtDecode } from "jwt-decode";
 
 import api from "@/api";
 import { ENDPOINTS } from "@/constants";
-import { AuthUser, JwtPayload, TokenResponse, UserSettings } from "@/types/auth";
+import {
+    AuthUser,
+    JwtPayload,
+    TokenResponse,
+    UserSettings,
+} from "@/types/auth";
 
 interface AuthContextValue {
     accessToken: string | null;
@@ -22,10 +33,10 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [accessToken, setAccessToken] = useState<string | null>(
-        localStorage.getItem("access_token"),
+        localStorage.getItem("access_token")
     );
     const [refreshToken, setRefreshToken] = useState<string | null>(
-        localStorage.getItem("refresh_token"),
+        localStorage.getItem("refresh_token")
     );
     const [user, setUser] = useState<AuthUser | null>(null);
     const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
@@ -54,8 +65,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     logout();
                     return;
                 }
-                setUser({ id: decoded.user_id, email: decoded.email, preferences: {} });
-                const { data } = await api.get<UserSettings>(ENDPOINTS.userSettings);
+                setUser({
+                    id: decoded.user_id,
+                    email: decoded.email,
+                    preferences: {},
+                });
+                const { data } = await api.get<UserSettings>(
+                    ENDPOINTS.userSettings
+                );
                 setUserSettings(data);
             } catch {
                 logout();
@@ -67,14 +84,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
     const login = useCallback(async (email: string, password: string) => {
-        const { data } = await api.post<TokenResponse>(ENDPOINTS.tokenObtain, { email, password });
+        const { data } = await api.post<TokenResponse>(ENDPOINTS.tokenObtain, {
+            email,
+            password,
+        });
         localStorage.setItem("access_token", data.access);
         localStorage.setItem("refresh_token", data.refresh);
         setAccessToken(data.access);
         setRefreshToken(data.refresh);
         setUser(data.user);
 
-        const { data: settings } = await api.get<UserSettings>(ENDPOINTS.userSettings);
+        const { data: settings } = await api.get<UserSettings>(
+            ENDPOINTS.userSettings
+        );
         setUserSettings(settings);
     }, []);
 
@@ -101,6 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth(): AuthContextValue {
     const ctx = useContext(AuthContext);
     if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>");

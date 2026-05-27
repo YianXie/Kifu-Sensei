@@ -1,16 +1,20 @@
 import { useMemo } from "react";
-
-import { CssBaseline, ThemeProvider, createTheme, useMediaQuery } from "@mui/material";
-
 import { BrowserRouter, Route, Routes } from "react-router-dom";
+
+import {
+    CssBaseline,
+    ThemeProvider,
+    createTheme,
+    useMediaQuery,
+} from "@mui/material";
 
 import Layout from "@/components/Layout";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { AuthProvider } from "@/contexts/AuthContext";
-import Dashboard from "@/pages/Dashboard";
+import Commentary from "@/pages/Commentary";
 import Home from "@/pages/Home";
 import Login from "@/pages/Login";
-import Profile from "@/pages/Profile";
+import NotFound from "@/pages/NotFoundPage";
 import Register from "@/pages/Register";
 import Settings from "@/pages/Settings";
 
@@ -32,7 +36,7 @@ function ThemedApp() {
                     ].join(","),
                 },
             }),
-        [prefersDark],
+        [prefersDark]
     );
 
     return (
@@ -42,15 +46,19 @@ function ThemedApp() {
                 <AuthProvider>
                     <Routes>
                         <Route element={<Layout />}>
-                            <Route path="/" element={<Home />} />
+                            <Route path="/home" element={<Home />} />
                             <Route path="/login" element={<Login />} />
                             <Route path="/register" element={<Register />} />
 
                             <Route element={<ProtectedRoute />}>
-                                <Route path="/dashboard" element={<Dashboard />} />
-                                <Route path="/settings" element={<Settings />} />
-                                <Route path="/profile" element={<Profile />} />
+                                <Route
+                                    path="/settings"
+                                    element={<Settings />}
+                                />
+                                <Route path="/" element={<Commentary />} />
                             </Route>
+
+                            <Route path="*" element={<NotFound />} />
                         </Route>
                     </Routes>
                 </AuthProvider>

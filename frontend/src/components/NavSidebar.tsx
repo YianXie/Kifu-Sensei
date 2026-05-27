@@ -1,35 +1,49 @@
-import DashboardIcon from "@mui/icons-material/Dashboard";
+import { useNavigate } from "react-router-dom";
+
+import CommentIcon from "@mui/icons-material/Comment";
 import HomeIcon from "@mui/icons-material/Home";
 import LogoutIcon from "@mui/icons-material/Logout";
-import PersonIcon from "@mui/icons-material/Person";
 import SettingsIcon from "@mui/icons-material/Settings";
 import {
     Box,
     Divider,
     Drawer,
-    IconButton,
     List,
     ListItem,
     ListItemButton,
     ListItemIcon,
     ListItemText,
-    Tooltip,
 } from "@mui/material";
-
-import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "@/contexts/AuthContext";
 
 const DRAWER_WIDTH = 220;
 
 const navItems = [
-    { label: "Home", icon: <HomeIcon />, to: "/" },
-    { label: "Dashboard", icon: <DashboardIcon />, to: "/dashboard", protected: true },
+    {
+        label: "Home",
+        icon: <HomeIcon />,
+        to: "/home",
+        protected: false,
+        visitorOnly: true,
+    },
+    {
+        label: "Commentary",
+        icon: <CommentIcon />,
+        to: "/",
+        protected: true,
+        visitorOnly: false,
+    },
 ];
 
 const bottomItems = [
-    { label: "Settings", icon: <SettingsIcon />, to: "/settings", protected: true },
-    { label: "Profile", icon: <PersonIcon />, to: "/profile", protected: true },
+    {
+        label: "Settings",
+        icon: <SettingsIcon />,
+        to: "/settings",
+        protected: true,
+        visitorOnly: false,
+    },
 ];
 
 export default function NavSidebar() {
@@ -54,17 +68,30 @@ export default function NavSidebar() {
                 },
             }}
         >
-            <Box sx={{ px: 2, py: 2.5, fontWeight: 700, fontSize: "1.1rem", letterSpacing: 0.5 }}>
-                Website Template
+            <Box
+                sx={{
+                    px: 2,
+                    py: 2.5,
+                    fontWeight: 700,
+                    fontSize: "1.1rem",
+                    letterSpacing: 0.5,
+                }}
+            >
+                Kifu-Sensei
             </Box>
 
             <List dense>
                 {navItems
                     .filter((item) => !item.protected || isAuthenticated)
+                    .filter((item) =>
+                        isAuthenticated ? !item.visitorOnly : true
+                    )
                     .map((item) => (
                         <ListItem key={item.label} disablePadding>
                             <ListItemButton onClick={() => handleNav(item.to)}>
-                                <ListItemIcon sx={{ minWidth: 36 }}>{item.icon}</ListItemIcon>
+                                <ListItemIcon sx={{ minWidth: 36 }}>
+                                    {item.icon}
+                                </ListItemIcon>
                                 <ListItemText primary={item.label} />
                             </ListItemButton>
                         </ListItem>
@@ -80,7 +107,9 @@ export default function NavSidebar() {
                     .map((item) => (
                         <ListItem key={item.label} disablePadding>
                             <ListItemButton onClick={() => handleNav(item.to)}>
-                                <ListItemIcon sx={{ minWidth: 36 }}>{item.icon}</ListItemIcon>
+                                <ListItemIcon sx={{ minWidth: 36 }}>
+                                    {item.icon}
+                                </ListItemIcon>
                                 <ListItemText primary={item.label} />
                             </ListItemButton>
                         </ListItem>
@@ -88,14 +117,12 @@ export default function NavSidebar() {
 
                 {isAuthenticated && (
                     <ListItem disablePadding>
-                        <Tooltip title="Log out" placement="right">
-                            <ListItemButton onClick={logout}>
-                                <ListItemIcon sx={{ minWidth: 36 }}>
-                                    <LogoutIcon />
-                                </ListItemIcon>
-                                <ListItemText primary="Logout" />
-                            </ListItemButton>
-                        </Tooltip>
+                        <ListItemButton onClick={logout}>
+                            <ListItemIcon sx={{ minWidth: 36 }}>
+                                <LogoutIcon />
+                            </ListItemIcon>
+                            <ListItemText primary="Logout" />
+                        </ListItemButton>
                     </ListItem>
                 )}
             </List>

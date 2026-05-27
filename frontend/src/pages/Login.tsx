@@ -1,9 +1,15 @@
 import { useState } from "react";
-
-import { Alert, Box, Button, Container, TextField, Typography } from "@mui/material";
-
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
+
+import {
+    Alert,
+    Box,
+    Button,
+    Container,
+    TextField,
+    Typography,
+} from "@mui/material";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
@@ -29,9 +35,11 @@ export default function Login() {
         try {
             await login(email, password);
             toast.success("Welcome back!");
-            navigate("/dashboard");
+            navigate("/");
         } catch (err) {
-            setError(getErrorMessage(err, "Login failed. Check your credentials."));
+            setError(
+                getErrorMessage(err, "Login failed. Check your credentials.")
+            );
         } finally {
             setLoading(false);
         }
@@ -39,14 +47,26 @@ export default function Login() {
 
     return (
         <Container maxWidth="xs">
-            <Box className="flex min-h-[80vh] flex-col justify-center gap-6">
+            <Box
+                sx={{
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "center",
+                    gap: 3,
+                    minHeight: "80vh",
+                }}
+            >
                 <Typography variant="h4" fontWeight={700} textAlign="center">
                     Log In
                 </Typography>
 
                 {error && <Alert severity="error">{error}</Alert>}
 
-                <Box component="form" onSubmit={handleSubmit} className="flex flex-col gap-4">
+                <Box
+                    component="form"
+                    onSubmit={handleSubmit}
+                    sx={{ display: "flex", flexDirection: "column", gap: 2 }}
+                >
                     <TextField
                         label="Email"
                         type="email"
@@ -77,9 +97,16 @@ export default function Login() {
                     </Button>
                 </Box>
 
-                <Typography textAlign="center" variant="body2" color="text.secondary">
+                <Typography
+                    textAlign="center"
+                    variant="body2"
+                    color="text.secondary"
+                >
                     Don&apos;t have an account?{" "}
-                    <Link to="/register" style={{ color: "inherit", fontWeight: 600 }}>
+                    <Link
+                        to="/register"
+                        style={{ color: "inherit", fontWeight: 600 }}
+                    >
                         Register
                     </Link>
                 </Typography>

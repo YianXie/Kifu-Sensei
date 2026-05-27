@@ -1,6 +1,6 @@
-import { Box, Button, Container, Typography } from "@mui/material";
-
 import { useNavigate } from "react-router-dom";
+
+import { Box, Button, Container, Typography } from "@mui/material";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
@@ -12,22 +12,31 @@ export default function Home() {
 
     return (
         <Container maxWidth="md">
-            <Box className="flex min-h-[70vh] flex-col items-center justify-center gap-6 text-center">
+            <Box
+                sx={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 3,
+                    minHeight: "70vh",
+                    textAlign: "center",
+                }}
+            >
                 <Typography variant="h2" component="h1" fontWeight={700}>
-                    Website Template
+                    Kifu-Sensei
                 </Typography>
                 <Typography variant="h6" color="text.secondary" maxWidth={480}>
-                    A production-ready Django REST Framework + React starter. Replace this copy with
-                    your own project description.
+                    An automated LLM-based Go game commentary generator
                 </Typography>
-                <Box className="flex gap-4">
+                <Box sx={{ display: "flex", gap: 2 }}>
                     {isAuthenticated ? (
                         <Button
                             variant="contained"
                             size="large"
-                            onClick={() => navigate("/dashboard")}
+                            onClick={() => navigate("/")}
                         >
-                            Go to Dashboard
+                            Go to commentary page
                         </Button>
                     ) : (
                         <>
