@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toast } from "react-toastify";
 
 import CloudUploadOutlinedIcon from "@mui/icons-material/CloudUploadOutlined";
 import { Box, Button, Container, Typography } from "@mui/material";
@@ -13,10 +14,12 @@ export default function Commentary() {
     usePageTitle("Commentary");
 
     const [file, setFile] = useState<File | null>(null);
+    const [error, setError] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
 
     function handleFile(uploadedFile: File | undefined) {
         if (!uploadedFile || !isSgfFile(uploadedFile)) {
+            toast.error("Only .sgf file is supported!");
             return;
         }
         setFile(uploadedFile);
@@ -38,6 +41,7 @@ export default function Commentary() {
 
     function handleDragLeave(event: React.DragEvent) {
         event.preventDefault();
+        setError(false);
         setIsDragOver(false);
     }
 
@@ -79,7 +83,11 @@ export default function Commentary() {
                         height: 240,
                         borderRadius: 3,
                         border: "2px dashed",
-                        borderColor: isDragOver ? "primary.main" : "divider",
+                        borderColor: isDragOver
+                            ? "primary.main"
+                            : error
+                              ? "primary.error"
+                              : "divider",
                         bgcolor: isDragOver ? "action.hover" : "transparent",
                         cursor: "pointer",
                         transition:
