@@ -5,8 +5,6 @@ from django.db import models
 
 DEFAULT_USER_PREFERENCES: dict = {
     "theme": "system",
-    "notifications_enabled": True,
-    "language": "en",
 }
 
 

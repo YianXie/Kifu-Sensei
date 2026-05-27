@@ -5,7 +5,7 @@ from rest_framework_simplejwt.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.settings import api_settings
 
-from .models import DEFAULT_USER_PREFERENCES, UserSettings
+from .models import UserSettings
 
 
 class RegisterSerializer(serializers.ModelSerializer):
