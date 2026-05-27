@@ -24,6 +24,9 @@ dev = [
     "pip-audit>=2.7",
 ]
 
+[tool.mypy]
+disable_error_code = ["import-untyped"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
