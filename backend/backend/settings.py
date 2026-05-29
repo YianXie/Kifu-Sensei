@@ -133,3 +133,8 @@ if ENVIRONMENT == "production":
     CSRF_COOKIE_SECURE = True
 
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
+
+API_TIMEOUT = int(os.environ.get("API_TIMEOUT", 120))
+API_ENDPOINT = os.environ.get("API_ENDPOINT")
+if not API_ENDPOINT:
+    raise RuntimeError("API_ENDPOINT must be set")

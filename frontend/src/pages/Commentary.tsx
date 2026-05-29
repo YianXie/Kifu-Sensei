@@ -2,8 +2,16 @@ import { useState } from "react";
 import { toast } from "react-toastify";
 
 import CloudUploadOutlinedIcon from "@mui/icons-material/CloudUploadOutlined";
-import { Box, Button, Container, Typography } from "@mui/material";
+import {
+    Box,
+    Button,
+    CircularProgress,
+    Container,
+    Typography,
+} from "@mui/material";
 
+import api from "@/api";
+import { ENDPOINTS } from "@/constants";
 import { usePageTitle } from "@/hooks/usePageTitle";
 
 function isSgfFile(file: File) {
@@ -16,6 +24,7 @@ export default function Commentary() {
     const [file, setFile] = useState<File | null>(null);
     const [error, setError] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
 
     function handleFile(uploadedFile: File | undefined) {
         if (!uploadedFile || !isSgfFile(uploadedFile)) {
@@ -51,8 +60,45 @@ export default function Commentary() {
         handleFile(event.dataTransfer.files[0]);
     }
 
-    function handleGenerate() {
-        console.log("handleGenerate received file:", file);
+    async function handleGenerate() {
+        try {
+            setIsLoading(true);
+            const sgfContent = await file?.text();
+            const { data } = await api.post(ENDPOINTS.commentary, {
+                sgf_content: sgfContent,
+            });
+            console.log(data);
+        } catch (error) {
+            console.error("Error generating commentary:", error);
+            toast.error("Error generating commentary");
+        } finally {
+            setIsLoading(false);
+        }
+    }
+
+    if (isLoading) {
+        return (
+            <Container maxWidth="md">
+                <Box
+                    sx={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 3,
+                        minHeight: "70vh",
+                    }}
+                >
+                    <CircularProgress size={48} />
+                    <Typography variant="body1" color="text.secondary">
+                        Generating commentary…
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                        This may take a minute depending on game length.
+                    </Typography>
+                </Box>
+            </Container>
+        );
     }
 
     return (

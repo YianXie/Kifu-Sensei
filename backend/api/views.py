@@ -1,8 +1,9 @@
-import json
+import copy
 import logging
-import uuid
 from typing import Any
 
+import httpx
+from django.conf import settings
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
@@ -13,6 +14,8 @@ from sgfmill import sgf
 from .serializers import GenerateCommentarySerializer
 
 logger = logging.getLogger(__name__)
+
+_http_client = None
 
 
 # KataGo column labels skip the letter "I": A-H, then J-T for a 19x19 board.
@@ -76,6 +79,14 @@ _RULES_ALIASES: dict[str, str] = {
 }
 
 
+def _get_http_client() -> httpx.Client:
+    """Get or create a reusable HTTP client instance."""
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.Client(timeout=settings.API_TIMEOUT, base_url=settings.API_ENDPOINT)
+    return _http_client
+
+
 def _normalize_rules(raw: str) -> tuple[str, bool]:
     """Return ``(katago_ruleset, was_normalized)``.
 
@@ -111,7 +122,7 @@ def _extract_komi(game: sgf.Sgf_game) -> float:
         komi = game.get_komi()
     except ValueError:
         return 7.5
-    if komi is None:
+    if komi is None or komi == 0.0:
         return 7.5
     return float(komi)
 
@@ -127,7 +138,7 @@ def _sgfmill_point_to_katago(point: tuple[int, int]) -> str:
     return f"{_KATAGO_COLUMNS[col]}{row + 1}"
 
 
-def sgf_to_katago_request(sgf_content: str) -> dict[str, Any]:
+def sgf_to_winrate_request(sgf_content: str) -> dict[str, Any]:
     """Parse an SGF string into a KataGo analysis-engine request payload."""
     payload = sgf_content.encode("utf-8") if isinstance(sgf_content, str) else sgf_content
     game = sgf.Sgf_game.from_bytes(payload)
@@ -155,18 +166,35 @@ def sgf_to_katago_request(sgf_content: str) -> dict[str, Any]:
 
     # analyzeTurns covers every position from before the first move through the
     # last move, i.e. turn 0 (initial position) up to turn len(moves) inclusive.
-    analyze_turns = list(range(len(moves) + 1))
+    winrate_analyze_turns = list(range(len(moves) + 1))
 
     return {
-        "id": str(uuid.uuid4()),
         "initialStones": initial_stones,
         "moves": moves,
         "rules": _extract_rules(root),
         "komi": _extract_komi(game),
         "boardXSize": board_size,
         "boardYSize": board_size,
-        "analyzeTurns": analyze_turns,
+        "analyzeTurns": winrate_analyze_turns,
+        "maxVisits": 50,
+        "analysisPVLen": 5,
+        "includeOwnership": False,
+        "includePolicy": False,
+        "overrideSettings": {"wideRootNoise": 0.00},
     }
+
+
+def winrate_request_to_detailed_request(
+    winrate_request: dict[str, Any], analyze_turns: list[int]
+) -> dict[str, Any]:
+    detailed_request = copy.deepcopy(winrate_request)
+    detailed_request["analyzeTurns"] = analyze_turns
+    detailed_request["maxVisits"] = 500
+    detailed_request["analysisPVLen"] = 15
+    detailed_request["includeOwnership"] = True
+    detailed_request["includePolicy"] = True
+    detailed_request["overrideSettings"]["wideRootNoise"] = 0.04
+    return detailed_request
 
 
 class HealthView(APIView):
@@ -182,14 +210,52 @@ class GenerateCommentaryView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+        sgf_content = serializer.validated_data["sgf_content"]
         try:
-            katago_request = sgf_to_katago_request(serializer.validated_data["sgf_content"])
+            client = _get_http_client()
+            winrate_request = sgf_to_winrate_request(sgf_content)
+            winrate_response = client.post(
+                "/analyze",
+                json=winrate_request,
+            )
+            winrate_response.raise_for_status()
+            winrate_results = winrate_response.json()
+            winrate_results = sorted(
+                winrate_results, key=lambda x: x["turnNumber"]
+            )  # sort all the responses based on the turnNumber
+
+            winrate_diff = []
+            for turn_number in range(1, len(winrate_results)):
+                result = winrate_results[turn_number]
+                if result["rootInfo"]["currentPlayer"] == "B":
+                    diff = -(
+                        winrate_results[turn_number]["rootInfo"]["winrate"]
+                        - winrate_results[turn_number - 1]["rootInfo"]["winrate"]
+                    )
+                else:
+                    diff = (
+                        winrate_results[turn_number]["rootInfo"]["winrate"]
+                        - winrate_results[turn_number - 1]["rootInfo"]["winrate"]
+                    )
+                winrate_diff.append((result["turnNumber"], round(diff, 4)))
+            winrate_diff = sorted(winrate_diff, key=lambda x: x[1])
+
+            detailed_analyze_turns = [turn_number for turn_number, _ in winrate_diff[:20]]
+            detailed_request = winrate_request_to_detailed_request(
+                winrate_request, detailed_analyze_turns
+            )
+            detailed_response = client.post(
+                "/analyze",
+                json=detailed_request,
+            )
+            detailed_response.raise_for_status()
+            detailed_results = detailed_response.json()
+
         except Exception as exc:
-            logger.exception("Failed to parse SGF content")
+            logger.exception("Failed to generate commentary")
             return Response(
-                {"detail": f"Failed to parse SGF: {exc}"},
+                {"detail": f"Failed to generate commentary: {exc}"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        print(json.dumps(katago_request, indent=2))
-        return Response(katago_request)
+        return Response(detailed_results, status=status.HTTP_200_OK)

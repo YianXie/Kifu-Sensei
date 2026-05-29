@@ -9,6 +9,5 @@ export const ENDPOINTS = {
     updatePassword: `${API_URL}/auth/user/update-password/`,
     deleteAccount: `${API_URL}/auth/user/delete/`,
     health: `${API_URL}/api/health/`,
-    items: `${API_URL}/api/items/`,
-    item: (id: string) => `${API_URL}/api/items/${id}/`,
+    commentary: `${API_URL}/api/commentary/`,
 } as const;
