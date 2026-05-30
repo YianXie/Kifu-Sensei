@@ -1,0 +1,50 @@
+from datetime import timedelta
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    environment: str = "development"
+
+    # Auth / JWT
+    secret_key: str = "dev-insecure-key-replace-in-production"
+    access_token_lifetime: timedelta = timedelta(minutes=30)
+    refresh_token_lifetime: timedelta = timedelta(days=7)
+    jwt_algorithm: str = "HS256"
+
+    # Database
+    database_url: str = "sqlite:///./db.sqlite3"
+
+    # CORS
+    frontend_url: str | None = None
+
+    # KataGo analysis engine
+    api_endpoint: str | None = None
+    api_timeout: int = 120
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment == "production"
+
+    @property
+    def cors_origins(self) -> list[str]:
+        origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+        if self.frontend_url:
+            origins.append(self.frontend_url)
+        return origins
+
+
+@lru_cache
+def get_settings() -> "Settings":
+    settings = Settings()
+    if settings.is_production and settings.secret_key.startswith("dev-insecure"):
+        raise RuntimeError("SECRET_KEY environment variable is required in production")
+    if not settings.api_endpoint:
+        raise RuntimeError("API_ENDPOINT must be set")
+    return settings
+
+
+settings = get_settings()

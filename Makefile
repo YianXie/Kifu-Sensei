@@ -1,6 +1,6 @@
 .PHONY: install install-backend install-frontend \
         run run-backend run-frontend \
-        migrate lint format test ci
+        lint format test ci
 
 # ── Install ────────────────────────────────────────────────────────────────────
 install: install-backend install-frontend
@@ -11,13 +11,9 @@ install-backend:
 install-frontend:
 	cd frontend && npm install
 
-# ── Migrate ────────────────────────────────────────────────────────────────────
-migrate:
-	cd backend && uv run python manage.py makemigrations && uv run python manage.py migrate
-
 # ── Dev servers ───────────────────────────────────────────────────────────────
 run-backend:
-	cd backend && uv run python manage.py runserver
+	cd backend && uv run uvicorn app.main:app --reload --port 8000
 
 run-frontend:
 	cd frontend && npm run dev

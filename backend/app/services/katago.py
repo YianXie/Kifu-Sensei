@@ -3,19 +3,13 @@ import logging
 from typing import Any
 
 import httpx
-from django.conf import settings
-from rest_framework import status
-from rest_framework.permissions import AllowAny
-from rest_framework.request import Request
-from rest_framework.response import Response
-from rest_framework.views import APIView
 from sgfmill import sgf
 
-from .serializers import GenerateCommentarySerializer
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-_http_client = None
+_http_client: httpx.Client | None = None
 
 
 # KataGo column labels skip the letter "I": A-H, then J-T for a 19x19 board.
@@ -79,12 +73,19 @@ _RULES_ALIASES: dict[str, str] = {
 }
 
 
-def _get_http_client() -> httpx.Client:
+def get_http_client() -> httpx.Client:
     """Get or create a reusable HTTP client instance."""
     global _http_client
     if _http_client is None or _http_client.is_closed:
-        _http_client = httpx.Client(timeout=settings.API_TIMEOUT, base_url=settings.API_ENDPOINT)
+        _http_client = httpx.Client(timeout=settings.api_timeout, base_url=settings.api_endpoint)
     return _http_client
+
+
+def close_http_client() -> None:
+    global _http_client
+    if _http_client is not None and not _http_client.is_closed:
+        _http_client.close()
+    _http_client = None
 
 
 def _normalize_rules(raw: str) -> tuple[str, bool]:
@@ -197,65 +198,34 @@ def winrate_request_to_detailed_request(
     return detailed_request
 
 
-class HealthView(APIView):
-    permission_classes = [AllowAny]
+def generate_commentary(sgf_content: str) -> Any:
+    """Run the two-pass KataGo analysis and return the detailed results."""
+    client = get_http_client()
 
-    def get(self, request: Request) -> Response:
-        return Response({"status": "ok"})
+    winrate_request = sgf_to_winrate_request(sgf_content)
+    winrate_response = client.post("/analyze", json=winrate_request)
+    winrate_response.raise_for_status()
+    winrate_results = winrate_response.json()
+    winrate_results = sorted(winrate_results, key=lambda x: x["turnNumber"])
 
-
-class GenerateCommentaryView(APIView):
-    def post(self, request: Request) -> Response:
-        serializer = GenerateCommentarySerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        sgf_content = serializer.validated_data["sgf_content"]
-        try:
-            client = _get_http_client()
-            winrate_request = sgf_to_winrate_request(sgf_content)
-            winrate_response = client.post(
-                "/analyze",
-                json=winrate_request,
+    winrate_diff = []
+    for turn_number in range(1, len(winrate_results)):
+        result = winrate_results[turn_number]
+        if result["rootInfo"]["currentPlayer"] == "B":
+            diff = -(
+                winrate_results[turn_number]["rootInfo"]["winrate"]
+                - winrate_results[turn_number - 1]["rootInfo"]["winrate"]
             )
-            winrate_response.raise_for_status()
-            winrate_results = winrate_response.json()
-            winrate_results = sorted(
-                winrate_results, key=lambda x: x["turnNumber"]
-            )  # sort all the responses based on the turnNumber
-
-            winrate_diff = []
-            for turn_number in range(1, len(winrate_results)):
-                result = winrate_results[turn_number]
-                if result["rootInfo"]["currentPlayer"] == "B":
-                    diff = -(
-                        winrate_results[turn_number]["rootInfo"]["winrate"]
-                        - winrate_results[turn_number - 1]["rootInfo"]["winrate"]
-                    )
-                else:
-                    diff = (
-                        winrate_results[turn_number]["rootInfo"]["winrate"]
-                        - winrate_results[turn_number - 1]["rootInfo"]["winrate"]
-                    )
-                winrate_diff.append((result["turnNumber"], round(diff, 4)))
-            winrate_diff = sorted(winrate_diff, key=lambda x: x[1])
-
-            detailed_analyze_turns = [turn_number for turn_number, _ in winrate_diff[:20]]
-            detailed_request = winrate_request_to_detailed_request(
-                winrate_request, detailed_analyze_turns
+        else:
+            diff = (
+                winrate_results[turn_number]["rootInfo"]["winrate"]
+                - winrate_results[turn_number - 1]["rootInfo"]["winrate"]
             )
-            detailed_response = client.post(
-                "/analyze",
-                json=detailed_request,
-            )
-            detailed_response.raise_for_status()
-            detailed_results = detailed_response.json()
+        winrate_diff.append((result["turnNumber"], round(diff, 4)))
+    winrate_diff = sorted(winrate_diff, key=lambda x: x[1])
 
-        except Exception as exc:
-            logger.exception("Failed to generate commentary")
-            return Response(
-                {"detail": f"Failed to generate commentary: {exc}"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        return Response(detailed_results, status=status.HTTP_200_OK)
+    detailed_analyze_turns = [turn_number for turn_number, _ in winrate_diff[:20]]
+    detailed_request = winrate_request_to_detailed_request(winrate_request, detailed_analyze_turns)
+    detailed_response = client.post("/analyze", json=detailed_request)
+    detailed_response.raise_for_status()
+    return detailed_response.json()

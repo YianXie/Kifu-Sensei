@@ -1,15 +1,15 @@
 [project]
-name = "website-template-backend"
+name = "kifu-sensei-backend"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "django>=5.2",
-    "djangorestframework>=3.16",
-    "djangorestframework-simplejwt>=5.5",
-    "django-cors-headers>=4.0",
-    "whitenoise>=6.0",
-    "dj-database-url>=2.0",
-    "psycopg2-binary>=2.9",
+    "fastapi>=0.136.3",
+    "uvicorn[standard]>=0.48.0",
+    "sqlmodel>=0.0.38",
+    "pydantic-settings>=2.14.1",
+    "pyjwt>=2.13.0",
+    "pwdlib[bcrypt]>=0.3.0",
+    "email-validator>=2.3.0",
     "python-dotenv>=1.0",
     "httpx>=0.27",
     "sgfmill>=1.1.1",
@@ -18,15 +18,11 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.0",
-    "pytest-django>=4.9",
     "ruff>=0.8",
     "isort>=5.13",
     "bandit>=1.8",
     "pip-audit>=2.7",
 ]
-
-[tool.mypy]
-disable_error_code = ["import-untyped"]
 
 [tool.ruff]
 line-length = 100
@@ -37,15 +33,13 @@ select = ["E", "F", "I", "N", "W", "UP"]
 ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
-"*/migrations/*.py" = ["E501", "N999"]
 "*/tests/*.py" = ["S101"]
 
 [tool.bandit]
-exclude_dirs = ["tests", "migrations", ".venv"]
+exclude_dirs = ["tests", ".venv"]
 skips = ["B101", "B601"]
 
 [tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "backend.settings"
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]

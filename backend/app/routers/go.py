@@ -1,0 +1,29 @@
+import logging
+from typing import Any
+
+from fastapi import APIRouter, HTTPException, status
+
+from app.deps import CurrentUser
+from app.schemas import GenerateCommentaryRequest
+from app.services.katago import generate_commentary
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api", tags=["go"])
+
+
+@router.get("/health/")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@router.post("/commentary/")
+def commentary(payload: GenerateCommentaryRequest, user: CurrentUser) -> Any:
+    try:
+        return generate_commentary(payload.sgf_content)
+    except Exception as exc:
+        logger.exception("Failed to generate commentary")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to generate commentary: {exc}",
+        ) from exc
