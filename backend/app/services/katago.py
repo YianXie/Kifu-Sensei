@@ -1,9 +1,13 @@
 import copy
 import logging
-from typing import Any
+import string
+from collections import Counter
+from typing import Any, Literal
 
 import httpx
 from sgfmill import sgf
+from sgfmill.ascii_boards import render_board
+from sgfmill.boards import Board
 
 from app.config import settings
 
@@ -139,6 +143,256 @@ def _sgfmill_point_to_katago(point: tuple[int, int]) -> str:
     return f"{_KATAGO_COLUMNS[col]}{row + 1}"
 
 
+def _katago_point_to_sgfmill(point: str) -> tuple[int, int]:
+    """Inverse of ``_sgfmill_point_to_katago``."""
+    if point.lower() == "pass":
+        raise ValueError("pass has no board coordinates")
+    col = _KATAGO_COLUMNS.index(point[0].upper())
+    row = int(point[1:]) - 1
+    return row, col
+
+
+def _intersection_count_to_point(count: int, board_size: int) -> tuple[int, int]:
+    """Map a 1-based index in ``render_board`` order to sgfmill ``(row, col)``."""
+    idx = count - 1
+    display_row = idx // board_size
+    row = board_size - 1 - display_row
+    col = idx % board_size
+    return row, col
+
+
+def _color_letter_to_word(letter: Literal["B", "W"]) -> Literal["Black", "White"]:
+    if letter == "B":
+        return "White"
+    return "Black"
+
+
+# 3x3 grid of human-readable board regions, keyed by (vertical band, horizontal band).
+_REGION_NAMES: dict[tuple[str, str], str] = {
+    ("upper", "left"): "upper-left",
+    ("upper", "center"): "upper side",
+    ("upper", "right"): "upper-right",
+    ("center", "left"): "left side",
+    ("center", "center"): "center",
+    ("center", "right"): "right side",
+    ("lower", "left"): "lower-left",
+    ("lower", "center"): "lower side",
+    ("lower", "right"): "lower-right",
+}
+
+
+def _ordinal(n: int) -> str:
+    """Return the ordinal string for ``n`` (e.g. ``1`` -> ``"1st"``)."""
+    if 10 <= n % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
+def _katago_point_to_display(point: str, board_size: int) -> tuple[int, int]:
+    """Convert a KataGo point to ``(display_row, col)`` in ownership-array order.
+
+    ``display_row`` is 0 at the top of the board (KataGo's row-major ownership
+    order), matching ``ownership[display_row * board_size + col]``.
+    """
+    row, col = _katago_point_to_sgfmill(point)
+    return board_size - 1 - row, col
+
+
+def _display_to_katago_point(display_row: int, col: int, board_size: int) -> str:
+    """Inverse of :func:`_katago_point_to_display`."""
+    sgfmill_row = board_size - 1 - display_row
+    return _sgfmill_point_to_katago((sgfmill_row, col))
+
+
+def _region_name(display_row: int, col: int, board_size: int) -> str:
+    """Return the named region containing the given display coordinate."""
+    first = board_size // 3
+    second = (2 * board_size) // 3
+    if display_row < first:
+        vertical = "upper"
+    elif display_row >= second:
+        vertical = "lower"
+    else:
+        vertical = "center"
+    if col < first:
+        horizontal = "left"
+    elif col >= second:
+        horizontal = "right"
+    else:
+        horizontal = "center"
+    return _REGION_NAMES[(vertical, horizontal)]
+
+
+def _ownership_symbol(value: float) -> str:
+    """Map an ownership value in ``[-1, 1]`` to a single display character."""
+    if value > 0.7:
+        return "B"
+    if value > 0.3:
+        return "b"
+    if value < -0.7:
+        return "W"
+    if value < -0.3:
+        return "w"
+    return "?"
+
+
+def _strength_word(mean: float) -> str:
+    """Qualitative descriptor for how strongly a region is owned."""
+    magnitude = abs(mean)
+    if magnitude > 0.55:
+        return "firmly held"
+    if magnitude > 0.25:
+        return "leaning"
+    return "loosely held"
+
+
+def _black_winrate_pct(detail: dict[str, Any]) -> float:
+    """Return the root winrate as Black's win probability, in percent."""
+    winrate = detail["rootInfo"]["winrate"]
+    if detail["rootInfo"]["currentPlayer"] == "W":
+        winrate = 1 - winrate
+    return round(winrate * 100, 1)
+
+
+def _black_score_lead(detail: dict[str, Any]) -> float:
+    """Return the root score lead from Black's perspective (positive = Black ahead)."""
+    lead = detail["rootInfo"]["scoreLead"]
+    if detail["rootInfo"]["currentPlayer"] == "W":
+        lead = -lead
+    return round(lead, 1)
+
+
+def _prior_descriptor(prior: float) -> str:
+    """Short qualitative note on a move's policy prior."""
+    if prior < 0.02:
+        return "very low — the neural net would rarely consider this move"
+    if prior < 0.05:
+        return "low — not an instinctive-looking move to the neural net"
+    if prior < 0.15:
+        return "moderate"
+    return "high — a natural-looking move to the neural net"
+
+
+def _describe_pv_path(pv: list[str], board_size: int) -> str:
+    """Return the one or two board regions a principal variation runs through."""
+    names = []
+    for point in pv:
+        if point == "pass":
+            continue
+        display_row, col = _katago_point_to_display(point, board_size)
+        names.append(_region_name(display_row, col, board_size))
+    if not names:
+        return ""
+    top = [name for name, _ in Counter(names).most_common(2)]
+    return " / ".join(top)
+
+
+def _render_ownership_map(ownership: list[float], board_size: int) -> str:
+    """Render KataGo's flat ownership array as an ASCII grid (top row first)."""
+    columns = _KATAGO_COLUMNS[:board_size]
+    lines = ["   " + " ".join(columns)]
+    for display_row in range(board_size):
+        row_number = board_size - display_row
+        symbols = [
+            _ownership_symbol(ownership[display_row * board_size + col])
+            for col in range(board_size)
+        ]
+        lines.append(f"{row_number:>2} " + " ".join(symbols))
+    return "\n".join(lines)
+
+
+def _generate_ownership_summary(
+    ownership: list[float],
+    board_size: int,
+    *,
+    played_move: str | None,
+    played_color: str,
+) -> str:
+    """Derive a human-readable bullet-point summary from KataGo's ownership array.
+
+    ``ownership`` is KataGo's flat array in row-major order from the top-left
+    (e.g. ``A19``) to the bottom-right (e.g. ``T1``); positive values lean Black
+    and negative values lean White. The board is split into a 3x3 grid of named
+    regions, and we report the areas Black and White hold most strongly, which
+    regions remain undecided, and the local ownership around the move played.
+    """
+    first = board_size // 3
+    second = (2 * board_size) // 3
+    bands = [(0, first), (first, second), (second, board_size)]
+    row_labels = ["upper", "center", "lower"]
+    col_labels = ["left", "center", "right"]
+
+    region_stats: dict[str, dict[str, Any]] = {}
+    for i, (r0, r1) in enumerate(bands):
+        for j, (c0, c1) in enumerate(bands):
+            name = _REGION_NAMES[(row_labels[i], col_labels[j])]
+            cells = [
+                (dr, c, ownership[dr * board_size + c])
+                for dr in range(r0, r1)
+                for c in range(c0, c1)
+            ]
+            net = sum(value for _, _, value in cells)
+            mean = net / len(cells) if cells else 0.0
+            region_stats[name] = {"mean": mean, "net": net, "cells": cells}
+
+    bullets: list[str] = []
+
+    # Black's strongest region (highest mean ownership).
+    black_name, black = max(region_stats.items(), key=lambda kv: kv[1]["mean"])
+    if black["mean"] > 0.1:
+        anchor_row, anchor_col, _ = max(black["cells"], key=lambda c: c[2])
+        anchor = _display_to_katago_point(anchor_row, anchor_col, board_size)
+        bullets.append(
+            f"- Black's strongest area is the {black_name} "
+            f"({_strength_word(black['mean'])}, ~{round(abs(black['net']))} pts net, around {anchor})."
+        )
+    else:
+        bullets.append("- Black has no clearly consolidated area yet.")
+
+    # White's strongest region (lowest mean ownership).
+    white_name, white = min(region_stats.items(), key=lambda kv: kv[1]["mean"])
+    if white["mean"] < -0.1:
+        anchor_row, anchor_col, _ = min(white["cells"], key=lambda c: c[2])
+        anchor = _display_to_katago_point(anchor_row, anchor_col, board_size)
+        bullets.append(
+            f"- White's strongest area is the {white_name} "
+            f"({_strength_word(white['mean'])}, ~{round(abs(white['net']))} pts net, around {anchor})."
+        )
+    else:
+        bullets.append("- White has no clearly consolidated area yet.")
+
+    # Regions that are still essentially undecided.
+    contested = [name for name, stats in region_stats.items() if abs(stats["mean"]) <= 0.1]
+    if contested:
+        bullets.append(f"- Still largely undecided: {', '.join(contested[:4])}.")
+
+    # Local ownership in the neighbourhood of the move that was played.
+    if played_move and played_move != "pass":
+        display_row, col = _katago_point_to_display(played_move, board_size)
+        r0, r1 = max(0, display_row - 2), min(board_size, display_row + 3)
+        c0, c1 = max(0, col - 2), min(board_size, col + 3)
+        local_cells = [ownership[r * board_size + c] for r in range(r0, r1) for c in range(c0, c1)]
+        local_mean = sum(local_cells) / len(local_cells)
+        region = _region_name(display_row, col, board_size)
+        if local_mean > 0.2:
+            description = "leans Black"
+        elif local_mean < -0.2:
+            description = "leans White"
+        else:
+            description = "remains contested"
+        bullet = (
+            f"- {played_color} {played_move} sits in the {region}, where local "
+            f"ownership {description} (local avg {local_mean:+.2f})."
+        )
+        if abs(local_mean) < 0.2:
+            bullet += " The move did not clearly resolve ownership in this area."
+        bullets.append(bullet)
+
+    return "\n".join(bullets)
+
+
 def sgf_to_winrate_request(sgf_content: str) -> dict[str, Any]:
     """Parse an SGF string into a KataGo analysis-engine request payload."""
     payload = sgf_content.encode("utf-8") if isinstance(sgf_content, str) else sgf_content
@@ -198,6 +452,169 @@ def winrate_request_to_detailed_request(
     return detailed_request
 
 
+def _generate_system_prompt() -> str:
+    return """You are a Go game commentator writing move-by-move commentary for amateur players (SDK to DDK level).
+
+    Your rules:
+    - Ground every claim in the data provided. Do NOT invent tactical or strategic justifications that you cannot directly see in the board position or derive from the numbers.
+    - If the data does not explain *why* a move is bad, say so honestly (e.g. "KataGo strongly preferred C5, though the exact reason is difficult to pin down from this position alone").
+    - Use Go terminology (joseki, influence, sente, etc.) only when it clearly applies.
+    - Aim for 3–4 sentences. Tone: clear, educational, not condescending.
+    - Structure: (1) brief game state, (2) assessment of the move played, (3) what the suggested move offered.
+  """
+
+
+def _generate_user_prompt(
+    detail: dict[str, Any],
+    prev_detail: dict[str, Any],
+    *,
+    board_size: int,
+    komi: float,
+    rules: str,
+    initial_stones: list[list[str]],
+    moves: list[list[str]],
+) -> str:
+    turn_number = detail["turnNumber"]
+    color = _color_letter_to_word(detail["rootInfo"]["currentPlayer"])
+
+    prompt = "[GAME INFO]\n"
+    prompt += f"Move {turn_number}. {color} just played. {board_size}*{board_size}, komi {komi}, {rules} rules.\n\n"
+    prompt += "---\n\n"
+
+    moves_through_turn = moves[:turn_number]
+    last_move = moves_through_turn[-1][1] if moves_through_turn else None
+    last_move_label = last_move.upper() if last_move else "(none)"
+    last_move_sgfmill = (
+        _katago_point_to_sgfmill(last_move) if last_move and last_move != "pass" else None
+    )
+    top_suggestion = prev_detail["moveInfos"][0]["move"]
+    top_suggestion_sgfmill = (
+        _katago_point_to_sgfmill(top_suggestion) if top_suggestion != "pass" else None
+    )
+    board = Board(board_size)
+    for stone_color, katago_point in initial_stones:
+        row, col = _katago_point_to_sgfmill(katago_point)
+        board.play(row, col, stone_color.lower())
+    for move_color, katago_point in moves_through_turn:
+        if katago_point == "pass":
+            continue
+        row, col = _katago_point_to_sgfmill(katago_point)
+        board.play(row, col, move_color.lower())
+    ascii_board = list(render_board(board))
+    count = 0
+    for i, char in enumerate(ascii_board):
+        if char not in ("#", "o", "."):
+            continue
+        count += 1
+        point = _intersection_count_to_point(count, board_size)
+        if last_move_sgfmill is not None and point == last_move_sgfmill:
+            ascii_board[i] = "★"
+        elif top_suggestion_sgfmill is not None and point == top_suggestion_sgfmill:
+            ascii_board[i] = "*"
+    ascii_board = "".join(ascii_board)
+    prompt += f"[BOARD POSITION — after {color}'s move]\n"
+    prompt += f"Coordinates: columns A-{'T' if board_size == 19 else string.ascii_lowercase[board_size - 1]} (left to right{' , I skipped' if board_size == 19 else ''}), rows 1-{board_size} (bottom to top).\n"
+    prompt += "Symbols: # = Black stone, o = White stone, . = empty\n"
+    prompt += f"★ = the move {color} just played ({last_move_label})\n"
+    prompt += f"* = KataGo's top suggestion ({top_suggestion})\n\n"
+    prompt += f"{ascii_board}\n\n"
+    prompt += "---\n\n"
+
+    prev_winrate = _black_winrate_pct(prev_detail)
+    prev_score_lead = _black_score_lead(prev_detail)
+    winrate = _black_winrate_pct(detail)
+    score_lead = _black_score_lead(detail)
+    winrate_change = round(winrate - prev_winrate, 1)
+    score_change = round(score_lead - prev_score_lead, 1)
+
+    prompt += "[KATAGO ANALYSIS DATA]\n\n"
+    prompt += f"Before {color}'s move (position after move {turn_number - 1}):\n"
+    prompt += f"  Black winrate:    {prev_winrate}%\n"
+    prompt += (
+        f"  Score lead:       {prev_score_lead:+.1f} pts "
+        f"({'Black' if prev_score_lead >= 0 else 'White'} ahead)\n\n"
+    )
+    prompt += f"After {color} played {last_move_label} (position after move {turn_number}):\n"
+    prompt += f"  Black winrate:    {winrate}%   [CHANGE: {winrate_change:+.1f}%]\n"
+    prompt += f"  Score lead:       {score_lead:+.1f} pts [CHANGE: {score_change:+.1f} pts]\n\n"
+
+    prev_player = prev_detail["rootInfo"]["currentPlayer"]
+    played_info = next(
+        (info for info in prev_detail["moveInfos"] if info["move"] == last_move), None
+    )
+    prompt += f"Move quality of {last_move_label}:\n"
+    if played_info is not None:
+        rank = played_info["order"] + 1
+        prompt += f"  KataGo rank:  {_ordinal(rank)} best move (order: {played_info['order']})\n"
+        prompt += (
+            f"  Policy prior: {played_info['prior']:.3f}  "
+            f"({_prior_descriptor(played_info['prior'])})\n\n"
+        )
+    else:
+        prompt += "  This move was not among KataGo's analyzed candidate moves.\n\n"
+
+    suggestion_info = prev_detail["moveInfos"][0]
+    suggestion_winrate = suggestion_info["winrate"]
+    suggestion_lead = suggestion_info["scoreLead"]
+    if prev_player == "W":
+        suggestion_winrate = 1 - suggestion_winrate
+        suggestion_lead = -suggestion_lead
+    suggestion_winrate = round(suggestion_winrate * 100, 1)
+    suggestion_lead = round(suggestion_lead, 1)
+    suggestion_pv = suggestion_info.get("pv", [])
+    prompt += f"KataGo's top suggestion — {top_suggestion}:\n"
+    prompt += f"  Black winrate after {top_suggestion}:    {suggestion_winrate}%\n"
+    prompt += f"  Score lead after {top_suggestion}: {suggestion_lead:+.1f} pts\n"
+    if suggestion_pv:
+        prompt += f"  Principal variation: {' → '.join(suggestion_pv)} ...\n"
+        pv_regions = _describe_pv_path(suggestion_pv, board_size)
+        depth_note = f"(Sequence runs {len(suggestion_pv)} moves deep"
+        depth_note += f" along the {pv_regions}.)" if pv_regions else ".)"
+        prompt += f"  {depth_note}\n"
+    prompt += "\n---\n\n"
+
+    ownership = detail.get("ownership")
+    if ownership:
+        prompt += f"[OWNERSHIP MAP — after {color} {last_move_label}]\n"
+        prompt += "Pre-processed from KataGo's raw ownership array.\n"
+        prompt += "B = strongly Black (>0.7), b = leaning Black (0.3 to 0.7)\n"
+        prompt += "? = contested (-0.3 to 0.3)\n"
+        prompt += "w = leaning White (-0.3 to -0.7), W = strongly White (<-0.7)\n\n"
+        prompt += f"{_render_ownership_map(ownership, board_size)}\n\n"
+        prompt += "Ownership summary (derived):\n"
+        prompt += (
+            _generate_ownership_summary(
+                ownership,
+                board_size,
+                played_move=last_move,
+                played_color=color,
+            )
+            + "\n\n"
+        )
+        prompt += "---\n\n"
+
+    prompt += "[YOUR TASK]\n"
+    prompt += (
+        f"Write a commentary comment (3-4 sentences) for {color}'s move {last_move_label}.\n\n"
+    )
+    prompt += "Follow this structure:\n"
+    prompt += "1. One sentence on the game situation at this point (use the numbers).\n"
+    prompt += (
+        f"2. One sentence on {last_move_label} — honest about its quality, tied to the data.\n"
+    )
+    prompt += (
+        f"3. One or two sentences on {top_suggestion} — what it offered, based on what you "
+        "can see in the board, ownership map, and the PV. Do NOT invent tactical details "
+        "you cannot verify.\n\n"
+    )
+    prompt += (
+        f"If the board does not clearly explain why {top_suggestion} is better, say so and "
+        "stick to what the data shows (winrate gain, score gain, where the PV runs).\n"
+    )
+
+    return prompt
+
+
 def generate_commentary(sgf_content: str) -> Any:
     """Run the two-pass KataGo analysis and return the detailed results."""
     client = get_http_client()
@@ -211,21 +628,56 @@ def generate_commentary(sgf_content: str) -> Any:
     winrate_diff = []
     for turn_number in range(1, len(winrate_results)):
         result = winrate_results[turn_number]
+        diff = (
+            winrate_results[turn_number]["rootInfo"]["winrate"]
+            - winrate_results[turn_number - 1]["rootInfo"]["winrate"]
+        )
         if result["rootInfo"]["currentPlayer"] == "B":
-            diff = -(
-                winrate_results[turn_number]["rootInfo"]["winrate"]
-                - winrate_results[turn_number - 1]["rootInfo"]["winrate"]
-            )
-        else:
-            diff = (
-                winrate_results[turn_number]["rootInfo"]["winrate"]
-                - winrate_results[turn_number - 1]["rootInfo"]["winrate"]
-            )
-        winrate_diff.append((result["turnNumber"], round(diff, 4)))
-    winrate_diff = sorted(winrate_diff, key=lambda x: x[1])
+            # White has just played the move
+            # Therefore, if black's winrate decreases, white has played a good move, and vice-versa
+            diff *= -1
+        winrate_diff.append((result["turnNumber"], round(diff * 100, 2)))
 
-    detailed_analyze_turns = [turn_number for turn_number, _ in winrate_diff[:20]]
+    winrate_diff = sorted(winrate_diff, key=lambda x: x[1])
+    detailed_analyze_turns = [
+        turn_number for turn_number, _ in winrate_diff[:20]
+    ]  # take maximum 20 moves
+    detailed_analyze_prev_turns = [
+        turn_number - 1 for turn_number in detailed_analyze_turns
+    ]  # each turn's previous turn
+    detailed_analyze_turns = list(set(detailed_analyze_turns))  # remove duplicates
     detailed_request = winrate_request_to_detailed_request(winrate_request, detailed_analyze_turns)
+    detailed_prev_request = winrate_request_to_detailed_request(
+        winrate_request, detailed_analyze_prev_turns
+    )
     detailed_response = client.post("/analyze", json=detailed_request)
     detailed_response.raise_for_status()
-    return detailed_response.json()
+    detailed_results = detailed_response.json()
+    detailed_prev_response = client.post("/analyze", json=detailed_prev_request)
+    detailed_prev_response.raise_for_status()
+    detailed_prev_results = detailed_prev_response.json()
+
+    detailed_results = sorted(detailed_results, key=lambda x: x["turnNumber"])
+    detailed_prev_results = sorted(detailed_prev_results, key=lambda x: x["turnNumber"])
+
+    board_size = detailed_request["boardXSize"]
+    komi = detailed_request["komi"]
+    rules = detailed_request["rules"]
+    moves = detailed_request["moves"]
+    initial_stones = detailed_request["initialStones"]
+
+    prompts: list[str] = []
+    for i in range(len(detailed_results)):
+        prompts.append(
+            _generate_user_prompt(
+                detailed_results[i],
+                detailed_prev_results[i],
+                board_size=board_size,
+                komi=komi,
+                rules=rules,
+                initial_stones=initial_stones,
+                moves=moves,
+            )
+        )
+
+    return prompts
