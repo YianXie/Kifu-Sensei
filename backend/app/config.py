@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     refresh_token_lifetime: timedelta = timedelta(days=7)
     jwt_algorithm: str = "HS256"
 
+    # Symmetric key (urlsafe base64, 32 bytes) used to encrypt secrets such as
+    # users' Claude API keys at rest. Generate with:
+    #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    encryption_key: str = "dev-insecure-encryption-key-replace-in-production"
+
     # Database
     database_url: str = "sqlite:///./db.sqlite3"
 
@@ -42,6 +47,8 @@ def get_settings() -> "Settings":
     settings = Settings()
     if settings.is_production and settings.secret_key.startswith("dev-insecure"):
         raise RuntimeError("SECRET_KEY environment variable is required in production")
+    if settings.is_production and settings.encryption_key.startswith("dev-insecure"):
+        raise RuntimeError("ENCRYPTION_KEY environment variable is required in production")
     if not settings.api_endpoint:
         raise RuntimeError("API_ENDPOINT must be set")
     return settings

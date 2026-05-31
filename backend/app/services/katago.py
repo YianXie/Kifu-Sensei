@@ -5,11 +5,15 @@ from collections import Counter
 from typing import Any, Literal
 
 import httpx
+from anthropic import Anthropic
 from sgfmill import sgf
 from sgfmill.ascii_boards import render_board
 from sgfmill.boards import Board
 
 from app.config import settings
+from app.crypto import decrypt_secret
+from app.deps import CurrentUser
+from app.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -251,16 +255,12 @@ def _strength_word(mean: float) -> str:
 def _black_winrate_pct(detail: dict[str, Any]) -> float:
     """Return the root winrate as Black's win probability, in percent."""
     winrate = detail["rootInfo"]["winrate"]
-    if detail["rootInfo"]["currentPlayer"] == "W":
-        winrate = 1 - winrate
     return round(winrate * 100, 1)
 
 
 def _black_score_lead(detail: dict[str, Any]) -> float:
     """Return the root score lead from Black's perspective (positive = Black ahead)."""
     lead = detail["rootInfo"]["scoreLead"]
-    if detail["rootInfo"]["currentPlayer"] == "W":
-        lead = -lead
     return round(lead, 1)
 
 
@@ -615,7 +615,46 @@ def _generate_user_prompt(
     return prompt
 
 
-def generate_commentary(sgf_content: str) -> Any:
+_CLAUDE_MODEL = "claude-sonnet-4-6"
+
+
+def generate_commentary_with_claude(user: User, prompts: list[str]) -> list[str]:
+    """Example: decrypt the user's Claude API key and call the Anthropic API.
+
+    The key is only decrypted in memory, here, at the moment it is used — it is never
+    logged and never leaves the server. ``user.claude_api`` holds the Fernet ciphertext
+    that was stored via the ``PUT /auth/user/claude-api-key/`` endpoint.
+    """
+    if not user.has_claude_api_key:
+        raise ValueError("This user has not configured a Claude API key.")
+
+    # Decrypt the stored ciphertext back into the usable API key.
+    claude_api_key = decrypt_secret(user.claude_api)
+
+    client = Anthropic(api_key=claude_api_key)
+
+    system_prompt = _generate_system_prompt()
+    comments: list[str] = []
+    for user_prompt in prompts:
+        message = client.messages.create(
+            model=_CLAUDE_MODEL,
+            max_tokens=1024,
+            cache_control={"type": "ephemeral"},
+            system=system_prompt,
+            messages=[
+                {
+                    "role": "user",
+                    "content": user_prompt,
+                }
+            ],
+        )
+        text = "".join(block.text for block in message.content if block.type == "text")
+        comments.append(text)
+
+    return comments
+
+
+def generate_commentary(sgf_content: str, user: CurrentUser) -> list[str]:
     """Run the two-pass KataGo analysis and return the detailed results."""
     client = get_http_client()
 
@@ -636,11 +675,11 @@ def generate_commentary(sgf_content: str) -> Any:
             # White has just played the move
             # Therefore, if black's winrate decreases, white has played a good move, and vice-versa
             diff *= -1
-        winrate_diff.append((result["turnNumber"], round(diff * 100, 2)))
+        winrate_diff.append((result["turnNumber"], round(diff * 100, 1)))
 
     winrate_diff = sorted(winrate_diff, key=lambda x: x[1])
     detailed_analyze_turns = [
-        turn_number for turn_number, _ in winrate_diff[:20]
+        turn_number for turn_number, _ in winrate_diff[:5]
     ]  # take maximum 20 moves
     detailed_analyze_prev_turns = [
         turn_number - 1 for turn_number in detailed_analyze_turns
@@ -680,4 +719,5 @@ def generate_commentary(sgf_content: str) -> Any:
             )
         )
 
-    return prompts
+    comments = generate_commentary_with_claude(user, prompts)
+    return comments

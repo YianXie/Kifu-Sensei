@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Alert, Box, Button, Container, TextField, Typography } from "@mui/material";
 
@@ -7,15 +7,24 @@ import { toast } from "react-toastify";
 
 import api from "@/api";
 import { ENDPOINTS } from "@/constants";
+import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { useRedirectIfAuthenticated } from "@/hooks/useRedirectIfAuthenticated";
 import { getErrorMessage } from "@/utils/errorFormatting";
 
 export default function Register() {
     usePageTitle("Register");
-    useRedirectIfAuthenticated();
 
+    const { login, isAuthenticated } = useAuth();
     const navigate = useNavigate();
+
+    // Only bounce visitors who were *already* logged in when they arrived; the
+    // registration flow itself logs the user in and routes them to API-key setup.
+    const wasAuthenticatedOnMount = useRef(isAuthenticated);
+    useEffect(() => {
+        if (wasAuthenticatedOnMount.current) {
+            navigate("/", { replace: true });
+        }
+    }, [navigate]);
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -35,8 +44,10 @@ export default function Register() {
         setLoading(true);
         try {
             await api.post(ENDPOINTS.register, { email, password });
-            toast.success("Account created! Please log in.");
-            navigate("/login");
+            // Log the new user in so they can immediately set up their API key.
+            await login(email, password);
+            toast.success("Account created!");
+            navigate("/setup-api-key", { replace: true });
         } catch (err) {
             setError(getErrorMessage(err, "Registration failed."));
         } finally {

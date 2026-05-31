@@ -7,6 +7,7 @@ export const ENDPOINTS = {
     userSettings: `${API_URL}/auth/user/settings/`,
     updateEmail: `${API_URL}/auth/user/update-email/`,
     updatePassword: `${API_URL}/auth/user/update-password/`,
+    claudeApiKey: `${API_URL}/auth/user/claude-api-key/`,
     deleteAccount: `${API_URL}/auth/user/delete/`,
     health: `${API_URL}/api/health/`,
     commentary: `${API_URL}/api/commentary/`,

@@ -2,6 +2,7 @@ import jwt
 from fastapi import APIRouter, HTTPException, Response, status
 from sqlmodel import select
 
+from app.crypto import encrypt_secret
 from app.deps import CurrentUser, SessionDep
 from app.errors import FieldValidationError
 from app.models import User
@@ -12,6 +13,7 @@ from app.schemas import (
     TokenObtainRequest,
     TokenPairResponse,
     TokenRefreshRequest,
+    UpdateClaudeApiKeyRequest,
     UpdateEmailRequest,
     UpdatePasswordRequest,
     UserPublic,
@@ -33,7 +35,12 @@ def _token_pair(user: User) -> TokenPairResponse:
     return TokenPairResponse(
         access=create_access_token(user.id, user.email),
         refresh=create_refresh_token(user.id, user.email),
-        user=UserPublic(id=user.id, email=user.email, preferences=user.preferences),
+        user=UserPublic(
+            id=user.id,
+            email=user.email,
+            preferences=user.preferences,
+            has_claude_api_key=user.has_claude_api_key,
+        ),
     )
 
 
@@ -89,7 +96,9 @@ def token_refresh(payload: TokenRefreshRequest, session: SessionDep) -> AccessTo
 
 @router.get("/user/settings/", response_model=UserSettingsSchema)
 def get_settings(user: CurrentUser) -> UserSettingsSchema:
-    return UserSettingsSchema(preferences=user.preferences)
+    return UserSettingsSchema(
+        preferences=user.preferences, has_claude_api_key=user.has_claude_api_key
+    )
 
 
 @router.put("/user/settings/", response_model=UserSettingsSchema)
@@ -100,7 +109,34 @@ def update_settings(
     session.add(user)
     session.commit()
     session.refresh(user)
-    return UserSettingsSchema(preferences=user.preferences)
+    return UserSettingsSchema(
+        preferences=user.preferences, has_claude_api_key=user.has_claude_api_key
+    )
+
+
+@router.put("/user/claude-api-key/", response_model=UserSettingsSchema)
+def set_claude_api_key(
+    payload: UpdateClaudeApiKeyRequest, user: CurrentUser, session: SessionDep
+) -> UserSettingsSchema:
+    # Encrypt before persisting — the plaintext key never reaches the database.
+    user.claude_api = encrypt_secret(payload.claude_api_key.strip())
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return UserSettingsSchema(
+        preferences=user.preferences, has_claude_api_key=user.has_claude_api_key
+    )
+
+
+@router.delete("/user/claude-api-key/", response_model=UserSettingsSchema)
+def delete_claude_api_key(user: CurrentUser, session: SessionDep) -> UserSettingsSchema:
+    user.claude_api = None
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return UserSettingsSchema(
+        preferences=user.preferences, has_claude_api_key=user.has_claude_api_key
+    )
 
 
 @router.post("/user/update-email/", response_model=DetailResponse)

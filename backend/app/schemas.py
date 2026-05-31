@@ -19,6 +19,7 @@ class UserPublic(BaseModel):
     id: int
     email: str
     preferences: dict
+    has_claude_api_key: bool = False
 
 
 class TokenPairResponse(BaseModel):
@@ -34,6 +35,11 @@ class AccessTokenResponse(BaseModel):
 
 class UserSettingsSchema(BaseModel):
     preferences: dict
+    has_claude_api_key: bool = False
+
+
+class UpdateClaudeApiKeyRequest(BaseModel):
+    claude_api_key: str = Field(min_length=1)
 
 
 class UpdateEmailRequest(BaseModel):

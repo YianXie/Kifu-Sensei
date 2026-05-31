@@ -1,5 +1,4 @@
 import logging
-from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
 
@@ -18,9 +17,9 @@ def health() -> dict[str, str]:
 
 
 @router.post("/commentary/")
-def commentary(payload: GenerateCommentaryRequest, user: CurrentUser) -> Any:
+def commentary(payload: GenerateCommentaryRequest, user: CurrentUser) -> list[str]:
     try:
-        return generate_commentary(payload.sgf_content)
+        return generate_commentary(payload.sgf_content, user)
     except Exception as exc:
         logger.exception("Failed to generate commentary")
         raise HTTPException(
