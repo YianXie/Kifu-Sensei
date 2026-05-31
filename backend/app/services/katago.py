@@ -609,8 +609,11 @@ def _generate_user_prompt(
     )
     prompt += (
         f"If the board does not clearly explain why {top_suggestion} is better, say so and "
-        "stick to what the data shows (winrate gain, score gain, where the PV runs).\n"
+        "stick to what the data shows (winrate gain, score gain, where the PV runs).\n\n"
     )
+
+    prompt += "Example commentary:\n"
+    prompt += "With move 52, the game was still anyone's to win — Black held a slim +2.8 point lead and a 54% win probability. Black's choice of D6, however, was a significant misstep: KataGo ranked it only 9th among legal moves, and it handed back the lead entirely, swinging the score by over 3 points in a single move. The suggested C5 would have kept Black comfortably ahead (+4.1 points, 57.8% win probability); the principal variation running through D5, C6, and B5 suggests it was aimed at consolidating the left side, where White's stones at B9, C8, and D7 were building influence — though pinning down the exact tactical reason requires deeper reading than the data alone can confirm.\n"
 
     return prompt
 
