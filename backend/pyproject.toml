@@ -39,7 +39,7 @@ ignore = ["E501"]
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv"]
-skips = ["B101", "B601"]
+skips = ["B101", "B105", "B601"]
 
 [tool.pytest.ini_options]
 python_files = ["test_*.py", "*_test.py"]

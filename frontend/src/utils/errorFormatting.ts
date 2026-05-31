@@ -1,6 +1,9 @@
 import { AxiosError } from "axios";
 
-export function getErrorMessage(error: unknown, fallback = "An unexpected error occurred."): string {
+export function getErrorMessage(
+    error: unknown,
+    fallback = "An unexpected error occurred."
+): string {
     if (error instanceof AxiosError) {
         const data = error.response?.data;
         if (!data) return fallback;

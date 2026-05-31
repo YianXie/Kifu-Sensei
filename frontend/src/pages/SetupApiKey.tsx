@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
 
 import KeyOutlinedIcon from "@mui/icons-material/KeyOutlined";
 import {
@@ -11,9 +13,6 @@ import {
     TextField,
     Typography,
 } from "@mui/material";
-
-import { useNavigate } from "react-router-dom";
-import { toast } from "react-toastify";
 
 import api from "@/api";
 import { ENDPOINTS } from "@/constants";
@@ -37,9 +36,12 @@ export default function SetupApiKey() {
         setError(null);
         setLoading(true);
         try {
-            const { data } = await api.put<UserSettings>(ENDPOINTS.claudeApiKey, {
-                claude_api_key: apiKey.trim(),
-            });
+            const { data } = await api.put<UserSettings>(
+                ENDPOINTS.claudeApiKey,
+                {
+                    claude_api_key: apiKey.trim(),
+                }
+            );
             updateUserSettings(data);
             toast.success("Claude API key saved.");
             navigate("/");

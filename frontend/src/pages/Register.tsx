@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-
-import { Alert, Box, Button, Container, TextField, Typography } from "@mui/material";
-
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
+
+import {
+    Alert,
+    Box,
+    Button,
+    Container,
+    TextField,
+    Typography,
+} from "@mui/material";
 
 import api from "@/api";
 import { ENDPOINTS } from "@/constants";
@@ -117,9 +123,16 @@ export default function Register() {
                     </Button>
                 </Box>
 
-                <Typography textAlign="center" variant="body2" color="text.secondary">
+                <Typography
+                    textAlign="center"
+                    variant="body2"
+                    color="text.secondary"
+                >
                     Already have an account?{" "}
-                    <Link to="/login" style={{ color: "inherit", fontWeight: 600 }}>
+                    <Link
+                        to="/login"
+                        style={{ color: "inherit", fontWeight: 600 }}
+                    >
                         Log In
                     </Link>
                 </Typography>

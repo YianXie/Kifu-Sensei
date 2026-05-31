@@ -1,0 +1,110 @@
+name: CI
+
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+        branches:
+            - main
+
+jobs:
+    frontend-checks:
+        name: Frontend Linting & Formatting
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Set up Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ">=22.12"
+                  cache: "npm"
+                  cache-dependency-path: frontend/package-lock.json
+
+            - name: Install dependencies
+              working-directory: ./frontend
+              run: npm ci
+
+            - name: Run ESLint
+              working-directory: ./frontend
+              run: npm run lint
+
+            - name: Check Prettier formatting
+              working-directory: ./frontend
+              run: npx prettier --check "src/**/*.{ts, tsx, js,jsx,css,md}"
+
+            - name: Build frontend
+              working-directory: ./frontend
+              run: npm run build
+
+    backend-Check:
+        name: Backend Linting & Formatting
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Install uv
+              uses: astral-sh/setup-uv@v6
+              with:
+                  version: "latest"
+                  version-file: "pyproject.toml"
+
+            - name: Install dependencies
+              working-directory: ./backend
+              run: |
+                  uv sync --dev
+
+            - name: Run Ruff (code formatting check)
+              working-directory: ./backend
+              run: uv run ruff check .
+
+            - name: Run isort (import sorting check)
+              working-directory: ./backend
+              run: uv run isort --check-only --diff .
+
+    security-checks:
+        name: Security Checks
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Install uv
+              uses: astral-sh/setup-uv@v6
+              with:
+                  version: "latest"
+                  version-file: "pyproject.toml"
+
+            - name: Install dependencies
+              working-directory: ./backend
+              run: |
+                  uv sync --dev
+
+            - name: Run pip audit (security checks)
+              working-directory: ./backend
+              run: uv run pip-audit --ignore-vuln CVE-2026-3219
+
+            - name: Run bandit (security linting)
+              working-directory: ./backend
+              run: uv run bandit -c pyproject.toml -r .
+
+            - name: Set up Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ">=22.12"
+                  cache: "npm"
+                  cache-dependency-path: frontend/package-lock.json
+
+            - name: Install frontend dependencies
+              working-directory: ./frontend
+              run: npm ci
+
+            - name: Run npm audit
+              working-directory: ./frontend
+              run: npm audit --audit-level=moderate

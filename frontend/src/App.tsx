@@ -16,8 +16,8 @@ import Home from "@/pages/Home";
 import Login from "@/pages/Login";
 import NotFound from "@/pages/NotFoundPage";
 import Register from "@/pages/Register";
-import SetupApiKey from "@/pages/SetupApiKey";
 import Settings from "@/pages/Settings";
+import SetupApiKey from "@/pages/SetupApiKey";
 
 function ThemedApp() {
     const prefersDark = useMediaQuery("(prefers-color-scheme: dark)");

@@ -17,7 +17,10 @@ api.interceptors.request.use((config) => {
 
 // --- Token refresh queue ---
 let isRefreshing = false;
-let failedQueue: Array<{ resolve: (token: string) => void; reject: (err: unknown) => void }> = [];
+let failedQueue: Array<{
+    resolve: (token: string) => void;
+    reject: (err: unknown) => void;
+}> = [];
 
 function processQueue(error: unknown, token: string | null = null) {
     failedQueue.forEach((p) => (error ? p.reject(error) : p.resolve(token!)));
@@ -70,7 +73,7 @@ api.interceptors.response.use(
         } finally {
             isRefreshing = false;
         }
-    },
+    }
 );
 
 export default api;

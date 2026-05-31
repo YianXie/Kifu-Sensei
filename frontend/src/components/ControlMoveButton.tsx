@@ -1,6 +1,8 @@
-import placeStoneSoundInstance from "@/assets/sounds/placeStoneSoundInstance";
-import IconButton from "@mui/material/IconButton";
 import type { ReactNode } from "react";
+
+import IconButton from "@mui/material/IconButton";
+
+import placeStoneSoundInstance from "@/assets/sounds/placeStoneSoundInstance";
 
 const ControlMoveButton = ({
     icon,
