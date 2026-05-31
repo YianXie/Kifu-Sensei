@@ -1,3 +1,8 @@
+export const BOARD_SIZE = 19;
+
+/** GTP column letters (skips I). */
+export const GTP_LETTERS = "ABCDEFGHJKLMNOPQRSTUVWXYZ".split("");
+
 export const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 export const ENDPOINTS = {

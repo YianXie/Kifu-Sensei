@@ -15,6 +15,7 @@
         "@emotion/styled": "^11.13.0",
         "@mui/icons-material": "^6.4.0",
         "@mui/material": "^6.4.0",
+        "@sabaki/go-board": "^1.4.3",
         "axios": "^1.7.0",
         "jwt-decode": "^4.0.0",
         "react": "^18.3.0",
@@ -24,8 +25,8 @@
     },
     "devDependencies": {
         "@eslint/js": "^9.19.0",
-        "@types/node": "^22.0.0",
         "@trivago/prettier-plugin-sort-imports": "^4.3.0",
+        "@types/node": "^22.0.0",
         "@types/react": "^18.3.0",
         "@types/react-dom": "^18.3.0",
         "@vitejs/plugin-react": "^4.3.0",

@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, HTTPException, status
 
 from app.deps import CurrentUser
-from app.schemas import GenerateCommentaryRequest
+from app.schemas import GenerateCommentaryRequest, GenerateCommentaryResponse
 from app.services.katago import generate_commentary
 
 logger = logging.getLogger(__name__)
@@ -16,8 +16,8 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@router.post("/commentary/")
-def commentary(payload: GenerateCommentaryRequest, user: CurrentUser) -> list[str]:
+@router.post("/commentary/", response_model=GenerateCommentaryResponse)
+def commentary(payload: GenerateCommentaryRequest, user: CurrentUser) -> GenerateCommentaryResponse:
     try:
         return generate_commentary(payload.sgf_content, user)
     except Exception as exc:

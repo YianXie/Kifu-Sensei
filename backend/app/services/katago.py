@@ -654,8 +654,28 @@ def generate_commentary_with_claude(user: User, prompts: list[str]) -> list[str]
     return comments
 
 
-def generate_commentary(sgf_content: str, user: CurrentUser) -> list[str]:
-    """Run the two-pass KataGo analysis and return the detailed results."""
+def _katago_moves_to_frontend(
+    katago_moves: list[list[str]],
+    initial_stones: list[list[str]],
+) -> tuple[list[list], list[list]]:
+    """Convert KataGo move lists to frontend ``[color, [row, col] | null]`` tuples."""
+    frontend_initial: list[list] = []
+    for color, point in initial_stones:
+        row, col = _katago_point_to_sgfmill(point)
+        frontend_initial.append([color, [row, col]])
+
+    frontend_moves: list[list] = []
+    for color, point in katago_moves:
+        if point == "pass":
+            frontend_moves.append([color, None])
+        else:
+            row, col = _katago_point_to_sgfmill(point)
+            frontend_moves.append([color, [row, col]])
+    return frontend_moves, frontend_initial
+
+
+def generate_commentary(sgf_content: str, user: CurrentUser) -> dict[str, Any]:
+    """Run the two-pass KataGo analysis and return board data with commentary."""
     client = get_http_client()
 
     winrate_request = sgf_to_winrate_request(sgf_content)
@@ -679,7 +699,7 @@ def generate_commentary(sgf_content: str, user: CurrentUser) -> list[str]:
 
     winrate_diff = sorted(winrate_diff, key=lambda x: x[1])
     detailed_analyze_turns = [
-        turn_number for turn_number, _ in winrate_diff[:5]
+        turn_number for turn_number, _ in winrate_diff[:20]
     ]  # take maximum 20 moves
     detailed_analyze_prev_turns = [
         turn_number - 1 for turn_number in detailed_analyze_turns
@@ -719,5 +739,17 @@ def generate_commentary(sgf_content: str, user: CurrentUser) -> list[str]:
             )
         )
 
-    comments = generate_commentary_with_claude(user, prompts)
-    return comments
+    comment_texts = generate_commentary_with_claude(user, prompts)
+    frontend_moves, frontend_initial = _katago_moves_to_frontend(moves, initial_stones)
+    return {
+        "board_size": board_size,
+        "moves": frontend_moves,
+        "initial_stones": frontend_initial,
+        "comments": [
+            {
+                "turn": detailed_results[i]["turnNumber"],
+                "comment": comment_texts[i],
+            }
+            for i in range(len(detailed_results))
+        ],
+    }

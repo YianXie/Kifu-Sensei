@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 
@@ -13,9 +13,13 @@ import {
 } from "@mui/material";
 
 import api from "@/api";
+import Controls from "@/components/Controls";
+import GoBoard from "@/components/GoBoard";
 import { ENDPOINTS } from "@/constants";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import type { CommentaryResponse } from "@/types/commentary";
+import type { GameMove } from "@/types/game";
 
 function isSgfFile(file: File) {
     return file.name.toLowerCase().endsWith(".sgf");
@@ -32,7 +36,21 @@ export default function Commentary() {
     const [error, setError] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
-    const [comments, setComments] = useState<string[] | null>(null);
+    const [result, setResult] = useState<CommentaryResponse | null>(null);
+    const [currentMoveIndex, setCurrentMoveIndex] = useState(0);
+
+    const commentsByTurn = useMemo(() => {
+        const map: Record<number, string> = {};
+        if (!result) return map;
+        for (const item of result.comments) {
+            map[item.turn] = item.comment;
+        }
+        return map;
+    }, [result]);
+
+    const moves = (result?.moves ?? []) as GameMove[];
+    const initialStones = (result?.initial_stones ?? []) as GameMove[];
+    const boardSize = result?.board_size ?? 19;
 
     function handleFile(uploadedFile: File | undefined) {
         if (!uploadedFile || !isSgfFile(uploadedFile)) {
@@ -72,17 +90,31 @@ export default function Commentary() {
         try {
             setIsLoading(true);
             const sgfContent = await file?.text();
-            const { data } = await api.post(ENDPOINTS.commentary, {
-                sgf_content: sgfContent,
-            });
-            setComments(data);
-            console.log(data);
-        } catch (error) {
-            console.error("Error generating commentary:", error);
+            const { data } = await api.post<CommentaryResponse>(
+                ENDPOINTS.commentary,
+                { sgf_content: sgfContent }
+            );
+            setResult(data);
+            const firstCommentTurn = data.comments[0]?.turn ?? 0;
+            setCurrentMoveIndex(firstCommentTurn);
+        } catch (err) {
+            console.error("Error generating commentary:", err);
             toast.error("Error generating commentary");
         } finally {
             setIsLoading(false);
         }
+    }
+
+    function handleMoveChange(amount: number) {
+        setCurrentMoveIndex((prev) =>
+            Math.max(0, Math.min(prev + amount, moves.length))
+        );
+    }
+
+    function handleNewGame() {
+        setResult(null);
+        setFile(null);
+        setCurrentMoveIndex(0);
     }
 
     if (isLoading) {
@@ -146,11 +178,38 @@ export default function Commentary() {
     }
 
     return (
-        <Container maxWidth="md">
-            {comments ? (
-                comments.map((comment, index) => (
-                    <Typography key={index}>{comment}</Typography>
-                ))
+        <Container maxWidth="lg" sx={{ py: 3 }}>
+            {result ? (
+                <Box
+                    sx={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 0,
+                        alignItems: "stretch",
+                    }}
+                >
+                    <GoBoard
+                        boardSize={boardSize}
+                        moves={moves}
+                        initialStones={initialStones}
+                        commentsByTurn={commentsByTurn}
+                        currentMoveIndex={currentMoveIndex}
+                        onMoveIndexChange={setCurrentMoveIndex}
+                    />
+                    <Controls
+                        maxMove={moves.length}
+                        currentMoveIndex={currentMoveIndex}
+                        onMoveChange={handleMoveChange}
+                        sx={{ borderRadius: 2, mt: 1 }}
+                    />
+                    <Button
+                        variant="outlined"
+                        onClick={handleNewGame}
+                        sx={{ alignSelf: "flex-start", mt: 2 }}
+                    >
+                        Upload another game
+                    </Button>
+                </Box>
             ) : (
                 <Box
                     sx={{

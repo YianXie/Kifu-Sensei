@@ -58,3 +58,15 @@ class DetailResponse(BaseModel):
 
 class GenerateCommentaryRequest(BaseModel):
     sgf_content: str = Field(min_length=1)
+
+
+class CommentaryItemSchema(BaseModel):
+    turn: int
+    comment: str
+
+
+class GenerateCommentaryResponse(BaseModel):
+    board_size: int
+    moves: list[list]
+    initial_stones: list[list]
+    comments: list[CommentaryItemSchema]
