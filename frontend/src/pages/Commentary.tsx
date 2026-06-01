@@ -86,6 +86,20 @@ export default function Commentary() {
         handleFile(event.dataTransfer.files[0]);
     }
 
+    function handleDownloadSGF() {
+        if (!result?.annotated_sgf_content) return;
+        const blob = new Blob([result.annotated_sgf_content], { type: "text/plain" });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        const baseName = file?.name ?? "annotated.sgf";
+        anchor.download = baseName.toLowerCase().endsWith(".sgf")
+            ? baseName
+            : `${baseName}.sgf`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+    }
+
     async function handleGenerate() {
         try {
             setIsLoading(true);
@@ -202,13 +216,29 @@ export default function Commentary() {
                         onMoveChange={handleMoveChange}
                         sx={{ borderRadius: 2, mt: 1 }}
                     />
-                    <Button
-                        variant="outlined"
-                        onClick={handleNewGame}
-                        sx={{ alignSelf: "flex-start", mt: 2 }}
+                    <Box
+                        sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 2,
+                            mt: 2,
+                        }}
                     >
-                        Upload another game
-                    </Button>
+                        <Button
+                            variant="contained"
+                            onClick={handleDownloadSGF}
+                            sx={{ textTransform: "none" }}
+                        >
+                            Download annotated SGF file
+                        </Button>
+                        <Button
+                            variant="outlined"
+                            onClick={handleNewGame}
+                            sx={{ textTransform: "none" }}
+                        >
+                            Upload another game
+                        </Button>
+                    </Box>
                 </Box>
             ) : (
                 <Box

@@ -677,6 +677,24 @@ def _katago_moves_to_frontend(
     return frontend_moves, frontend_initial
 
 
+def _inject_comments_into_sgf(sgf_content: str, comments: list[dict[str, Any]]) -> str:
+    """Return the SGF string with C[] comment properties inserted for each annotated move.
+
+    ``comments`` is a list of ``{"turn": int, "comment": str}`` dicts where
+    ``turn`` is 1-based (turn 1 = first move node, index 1 in the main sequence).
+    sgfmill handles escaping of ``]`` and ``\\`` inside property values automatically.
+    """
+    comment_map: dict[int, str] = {item["turn"]: item["comment"] for item in comments}
+    payload = sgf_content.encode("utf-8") if isinstance(sgf_content, str) else sgf_content
+    game = sgf.Sgf_game.from_bytes(payload)
+    for idx, node in enumerate(game.get_main_sequence()):
+        if idx == 0:
+            continue  # root node is not a move
+        if idx in comment_map:
+            node.set("C", comment_map[idx])
+    return game.serialise().decode("utf-8")
+
+
 def generate_commentary(sgf_content: str, user: CurrentUser) -> dict[str, Any]:
     """Run the two-pass KataGo analysis and return board data with commentary."""
     client = get_http_client()
@@ -744,15 +762,17 @@ def generate_commentary(sgf_content: str, user: CurrentUser) -> dict[str, Any]:
 
     comment_texts = generate_commentary_with_claude(user, prompts)
     frontend_moves, frontend_initial = _katago_moves_to_frontend(moves, initial_stones)
+    comments = [
+        {
+            "turn": detailed_results[i]["turnNumber"],
+            "comment": comment_texts[i],
+        }
+        for i in range(len(detailed_results))
+    ]
     return {
         "board_size": board_size,
         "moves": frontend_moves,
         "initial_stones": frontend_initial,
-        "comments": [
-            {
-                "turn": detailed_results[i]["turnNumber"],
-                "comment": comment_texts[i],
-            }
-            for i in range(len(detailed_results))
-        ],
+        "comments": comments,
+        "annotated_sgf_content": _inject_comments_into_sgf(sgf_content, comments),
     }

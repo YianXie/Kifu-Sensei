@@ -10,4 +10,5 @@ export type CommentaryResponse = {
     moves: GameMove[];
     initial_stones: GameMove[];
     comments: CommentaryItem[];
+    annotated_sgf_content: string | null;
 };
