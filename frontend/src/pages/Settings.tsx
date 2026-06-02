@@ -42,6 +42,7 @@ export default function Settings() {
     const [passwordLoading, setPasswordLoading] = useState(false);
 
     const [deletePassword, setDeletePassword] = useState("");
+    const [deleteError, setDeleteError] = useState<string | null>(null);
     const [deleteLoading, setDeleteLoading] = useState(false);
 
     useEffect(() => {
@@ -121,12 +122,17 @@ export default function Settings() {
             )
         )
             return;
+        setDeleteError(null);
         setDeleteLoading(true);
         try {
-            await api.delete(ENDPOINTS.deleteAccount);
+            await api.delete(ENDPOINTS.deleteAccount, {
+                data: { password: deletePassword },
+            });
             logout();
         } catch (err) {
-            toast.error(getErrorMessage(err, "Failed to delete account."));
+            setDeleteError(
+                getErrorMessage(err, "Failed to delete account.")
+            );
         } finally {
             setDeleteLoading(false);
         }
@@ -283,6 +289,11 @@ export default function Settings() {
             <Typography variant="h6" fontWeight={600} mb={2} color="error">
                 Danger Zone
             </Typography>
+            {deleteError && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                    {deleteError}
+                </Alert>
+            )}
             <TextField
                 label="Confirm Password to Delete"
                 type="password"
