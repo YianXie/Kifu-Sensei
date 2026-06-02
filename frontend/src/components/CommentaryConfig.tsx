@@ -12,6 +12,8 @@ import {
     Typography,
 } from "@mui/material";
 
+import type { ClaudeModel } from "@/types/commentary";
+
 const NUM_COMMENTS_MIN = 1;
 const NUM_COMMENTS_MAX = 100;
 const MAX_TOKEN_MIN = 256;
@@ -42,10 +44,8 @@ export default function CommentaryConfig({
     customInstruction,
     setCustomInstruction,
 }: {
-    model: "claude-opus-4-8" | "claude-sonnet-4-6" | "claude-haiku-4-5";
-    setModel: (
-        value: "claude-opus-4-8" | "claude-sonnet-4-6" | "claude-haiku-4-5"
-    ) => void;
+    model: ClaudeModel;
+    setModel: (value: ClaudeModel) => void;
     numComments: number;
     setNumComments: (value: number) => void;
     maxToken: number;
@@ -87,12 +87,7 @@ export default function CommentaryConfig({
                         value={model}
                         label="Claude Model"
                         onChange={(event) => {
-                            setModel(
-                                event.target.value as
-                                    | "claude-opus-4-8"
-                                    | "claude-sonnet-4-6"
-                                    | "claude-haiku-4-5"
-                            );
+                            setModel(event.target.value as ClaudeModel);
                         }}
                     >
                         <MenuItem value="claude-opus-4-8">

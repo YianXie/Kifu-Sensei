@@ -452,8 +452,8 @@ def winrate_request_to_detailed_request(
     return detailed_request
 
 
-def _generate_system_prompt() -> str:
-    return """You are a Go game commentator writing move-by-move commentary for amateur players (SDK to DDK level).
+def _generate_system_prompt(custom_instruction: str = "") -> str:
+    prompt = """You are a Go game commentator writing move-by-move commentary for amateur players (SDK to DDK level).
 
     Your rules:
     - Ground every claim in the data provided. Do NOT invent tactical or strategic justifications that you cannot directly see in the board position or derive from the numbers.
@@ -462,6 +462,13 @@ def _generate_system_prompt() -> str:
     - Aim for 3–4 sentences. Tone: clear, educational, not condescending.
     - Structure: (1) brief game state, (2) assessment of the move played, (3) what the suggested move offered.
   """
+    if custom_instruction.strip():
+        prompt += (
+            "\n    Additional instructions from the user (follow these where they do "
+            "not conflict with the rules above):\n"
+            f"    {custom_instruction.strip()}\n"
+        )
+    return prompt
 
 
 def _generate_user_prompt(
@@ -619,9 +626,17 @@ def _generate_user_prompt(
 
 
 _CLAUDE_MODEL = "claude-haiku-4-5"
+_MAX_TOKENS = 1024
 
 
-def generate_commentary_with_claude(user: User, prompts: list[str]) -> list[str]:
+def generate_commentary_with_claude(
+    user: User,
+    prompts: list[str],
+    *,
+    model: str = _CLAUDE_MODEL,
+    max_token: int = _MAX_TOKENS,
+    custom_instruction: str = "",
+) -> list[str]:
     """Example: decrypt the user's Claude API key and call the Anthropic API.
 
     The key is only decrypted in memory, here, at the moment it is used — it is never
@@ -636,12 +651,12 @@ def generate_commentary_with_claude(user: User, prompts: list[str]) -> list[str]
 
     client = Anthropic(api_key=claude_api_key)
 
-    system_prompt = _generate_system_prompt()
+    system_prompt = _generate_system_prompt(custom_instruction)
     comments: list[str] = []
     for user_prompt in prompts:
         message = client.messages.create(
-            model=_CLAUDE_MODEL,
-            max_tokens=1024,
+            model=model,
+            max_tokens=max_token,
             cache_control={"type": "ephemeral"},
             system=system_prompt,
             messages=[
@@ -697,7 +712,15 @@ def _inject_comments_into_sgf(sgf_content: str, comments: list[dict[str, Any]]) 
     return game.serialise().decode("utf-8")
 
 
-def generate_commentary(sgf_content: str, user: CurrentUser) -> dict[str, Any]:
+def generate_commentary(
+    sgf_content: str,
+    user: CurrentUser,
+    *,
+    model: str = _CLAUDE_MODEL,
+    num_comments: int = 20,
+    max_token: int = _MAX_TOKENS,
+    custom_instruction: str = "",
+) -> dict[str, Any]:
     """Run the two-pass KataGo analysis and return board data with commentary."""
     client = get_http_client()
 
@@ -722,8 +745,8 @@ def generate_commentary(sgf_content: str, user: CurrentUser) -> dict[str, Any]:
 
     winrate_diff = sorted(winrate_diff, key=lambda x: x[1])
     detailed_analyze_turns = [
-        turn_number for turn_number, _ in winrate_diff[:20]
-    ]  # take maximum 20 moves
+        turn_number for turn_number, _ in winrate_diff[:num_comments]
+    ]  # take the ``num_comments`` most impactful moves
     detailed_analyze_prev_turns = [
         turn_number - 1 for turn_number in detailed_analyze_turns
     ]  # each turn's previous turn
@@ -761,7 +784,13 @@ def generate_commentary(sgf_content: str, user: CurrentUser) -> dict[str, Any]:
             )
         )
 
-    comment_texts = generate_commentary_with_claude(user, prompts)
+    comment_texts = generate_commentary_with_claude(
+        user,
+        prompts,
+        model=model,
+        max_token=max_token,
+        custom_instruction=custom_instruction,
+    )
     frontend_moves, frontend_initial = _katago_moves_to_frontend(moves, initial_stones)
     comments = [
         {

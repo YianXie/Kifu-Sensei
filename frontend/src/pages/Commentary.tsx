@@ -19,7 +19,11 @@ import GoBoard from "@/components/GoBoard";
 import { ENDPOINTS } from "@/constants";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import type { CommentaryResponse } from "@/types/commentary";
+import {
+    type ClaudeModel,
+    type CommentaryResponse,
+    readCommentaryConfig,
+} from "@/types/commentary";
 import type { GameMove } from "@/types/game";
 
 function isSgfFile(file: File) {
@@ -32,6 +36,7 @@ export default function Commentary() {
     const navigate = useNavigate();
     const { userSettings } = useAuth();
     const hasClaudeApiKey = userSettings?.has_claude_api_key ?? false;
+    const defaultConfig = readCommentaryConfig(userSettings?.preferences);
 
     const [file, setFile] = useState<File | null>(null);
     const [error, setError] = useState(false);
@@ -39,12 +44,14 @@ export default function Commentary() {
     const [isLoading, setIsLoading] = useState(false);
     const [result, setResult] = useState<CommentaryResponse | null>(null);
     const [currentMoveIndex, setCurrentMoveIndex] = useState(0);
-    const [model, setModel] = useState<
-        "claude-haiku-4-5" | "claude-opus-4-8" | "claude-sonnet-4-6"
-    >("claude-haiku-4-5");
-    const [numComments, setNumComments] = useState<number>(20);
-    const [maxToken, setMaxToken] = useState<number>(1024);
-    const [customInstruction, setCustomInstruction] = useState<string>("");
+    const [model, setModel] = useState<ClaudeModel>(defaultConfig.model);
+    const [numComments, setNumComments] = useState<number>(
+        defaultConfig.num_comments
+    );
+    const [maxToken, setMaxToken] = useState<number>(defaultConfig.max_token);
+    const [customInstruction, setCustomInstruction] = useState<string>(
+        defaultConfig.custom_instruction
+    );
 
     const commentsByTurn = useMemo(() => {
         const map: Record<number, string> = {};
@@ -138,7 +145,13 @@ export default function Commentary() {
             const sgfContent = await file?.text();
             const { data } = await api.post<CommentaryResponse>(
                 ENDPOINTS.commentary,
-                { sgf_content: sgfContent }
+                {
+                    sgf_content: sgfContent,
+                    model,
+                    num_comments: numComments,
+                    max_token: maxToken,
+                    custom_instruction: customInstruction,
+                }
             );
             setResult(data);
             const firstCommentTurn = data.comments[0]?.turn ?? 0;

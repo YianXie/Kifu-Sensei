@@ -8,12 +8,12 @@ from app.errors import FieldValidationError
 from app.models import User
 from app.schemas import (
     AccessTokenResponse,
+    DeleteAccountRequest,
     DetailResponse,
     RegisterRequest,
     TokenObtainRequest,
     TokenPairResponse,
     TokenRefreshRequest,
-    DeleteAccountRequest,
     UpdateClaudeApiKeyRequest,
     UpdateEmailRequest,
     UpdatePasswordRequest,
@@ -106,7 +106,11 @@ def get_settings(user: CurrentUser) -> UserSettingsSchema:
 def update_settings(
     payload: UserSettingsSchema, user: CurrentUser, session: SessionDep
 ) -> UserSettingsSchema:
-    user.preferences = payload.preferences
+    # Shallow-merge incoming preferences so that updating one section (e.g. the
+    # theme in Miscellaneous) doesn't wipe out other sections (e.g. the default
+    # commentary config saved from its own tab). Reassigning is required for the
+    # JSON column to register as dirty.
+    user.preferences = {**user.preferences, **payload.preferences}
     session.add(user)
     session.commit()
     session.refresh(user)
