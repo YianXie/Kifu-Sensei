@@ -11,8 +11,8 @@ import {
 import Layout from "@/components/Layout";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import About from "@/pages/About";
 import Commentary from "@/pages/Commentary";
-import Home from "@/pages/Home";
 import Login from "@/pages/Login";
 import NotFound from "@/pages/NotFoundPage";
 import Register from "@/pages/Register";
@@ -60,7 +60,7 @@ function ThemedApp() {
             <CssBaseline />
             <Routes>
                 <Route element={<Layout />}>
-                    <Route path="/home" element={<Home />} />
+                    <Route path="/about" element={<About />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/register" element={<Register />} />
 

@@ -1,7 +1,7 @@
 import { useLocation, useNavigate } from "react-router-dom";
 
 import CommentIcon from "@mui/icons-material/Comment";
-import HomeIcon from "@mui/icons-material/Home";
+import InfoIcon from "@mui/icons-material/Info";
 import LogoutIcon from "@mui/icons-material/Logout";
 import SettingsIcon from "@mui/icons-material/Settings";
 import {
@@ -21,11 +21,11 @@ export const DRAWER_WIDTH = 220;
 
 const navItems = [
     {
-        label: "Home",
-        icon: <HomeIcon />,
-        to: "/home",
+        label: "About",
+        icon: <InfoIcon />,
+        to: "/about",
         protected: false,
-        visitorOnly: true,
+        visitorOnly: false,
     },
     {
         label: "Commentary",
