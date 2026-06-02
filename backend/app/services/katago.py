@@ -85,7 +85,7 @@ def get_http_client() -> httpx.Client:
     """Get or create a reusable HTTP client instance."""
     global _http_client
     if _http_client is None or _http_client.is_closed:
-        _http_client = httpx.Client(timeout=settings.api_timeout, base_url=settings.api_endpoint)
+        _http_client = httpx.Client(timeout=settings.api_timeout, base_url=settings.api_endpoint)  # type: ignore
     return _http_client
 
 
@@ -618,7 +618,7 @@ def _generate_user_prompt(
     return prompt
 
 
-_CLAUDE_MODEL = "claude-sonnet-4-6"
+_CLAUDE_MODEL = "claude-haiku-4-5"
 
 
 def generate_commentary_with_claude(user: User, prompts: list[str]) -> list[str]:
@@ -628,7 +628,7 @@ def generate_commentary_with_claude(user: User, prompts: list[str]) -> list[str]
     logged and never leaves the server. ``user.claude_api`` holds the Fernet ciphertext
     that was stored via the ``PUT /auth/user/claude-api-key/`` endpoint.
     """
-    if not user.has_claude_api_key:
+    if not user.has_claude_api_key or not user.claude_api:
         raise ValueError("This user has not configured a Claude API key.")
 
     # Decrypt the stored ciphertext back into the usable API key.
@@ -686,7 +686,9 @@ def _inject_comments_into_sgf(sgf_content: str, comments: list[dict[str, Any]]) 
     """
     comment_map: dict[int, str] = {item["turn"]: item["comment"] for item in comments}
     payload = sgf_content.encode("utf-8") if isinstance(sgf_content, str) else sgf_content
-    game = sgf.Sgf_game.from_bytes(payload)
+    # Force a UTF-8 presenter so SGF comments from the LLM can include
+    # punctuation like em dashes without latin-1 serialization failures.
+    game = sgf.Sgf_game.from_bytes(payload, override_encoding="utf-8")
     for idx, node in enumerate(game.get_main_sequence()):
         if idx == 0:
             continue  # root node is not a move

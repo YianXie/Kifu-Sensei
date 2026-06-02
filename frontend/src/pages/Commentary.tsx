@@ -87,8 +87,13 @@ export default function Commentary() {
     }
 
     function handleDownloadSGF() {
-        if (!result?.annotated_sgf_content) return;
-        const blob = new Blob([result.annotated_sgf_content], { type: "text/plain" });
+        if (!result?.annotated_sgf_content) {
+            toast.error("No annotated sgf file content found in the frontend!");
+            return;
+        }
+        const blob = new Blob([result.annotated_sgf_content], {
+            type: "text/plain",
+        });
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement("a");
         anchor.href = url;

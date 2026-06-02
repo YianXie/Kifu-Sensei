@@ -19,7 +19,7 @@ def health() -> dict[str, str]:
 @router.post("/commentary/", response_model=GenerateCommentaryResponse)
 def commentary(payload: GenerateCommentaryRequest, user: CurrentUser) -> GenerateCommentaryResponse:
     try:
-        return generate_commentary(payload.sgf_content, user)
+        return generate_commentary(payload.sgf_content, user)  # type: ignore
     except Exception as exc:
         logger.exception("Failed to generate commentary")
         raise HTTPException(
