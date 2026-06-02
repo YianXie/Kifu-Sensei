@@ -66,7 +66,10 @@ function ThemedApp() {
 
                     <Route element={<ProtectedRoute />}>
                         <Route path="/settings" element={<Settings />} />
-                        <Route path="/setup-api-key" element={<SetupApiKey />} />
+                        <Route
+                            path="/setup-api-key"
+                            element={<SetupApiKey />}
+                        />
                         <Route path="/" element={<Commentary />} />
                     </Route>
 

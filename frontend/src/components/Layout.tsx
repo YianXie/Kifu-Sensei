@@ -4,13 +4,7 @@ import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 import MenuIcon from "@mui/icons-material/Menu";
-import {
-    AppBar,
-    Box,
-    IconButton,
-    Toolbar,
-    Typography,
-} from "@mui/material";
+import { AppBar, Box, IconButton, Toolbar, Typography } from "@mui/material";
 
 import NavSidebar, { DRAWER_WIDTH } from "@/components/NavSidebar";
 

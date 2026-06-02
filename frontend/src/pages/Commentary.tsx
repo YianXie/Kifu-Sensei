@@ -13,6 +13,7 @@ import {
 } from "@mui/material";
 
 import api from "@/api";
+import CommentaryConfig from "@/components/CommentaryConfig";
 import Controls from "@/components/Controls";
 import GoBoard from "@/components/GoBoard";
 import { ENDPOINTS } from "@/constants";
@@ -38,6 +39,12 @@ export default function Commentary() {
     const [isLoading, setIsLoading] = useState(false);
     const [result, setResult] = useState<CommentaryResponse | null>(null);
     const [currentMoveIndex, setCurrentMoveIndex] = useState(0);
+    const [model, setModel] = useState<
+        "claude-haiku-4-5" | "claude-opus-4-8" | "claude-sonnet-4-6"
+    >("claude-haiku-4-5");
+    const [numComments, setNumComments] = useState<number>(20);
+    const [maxToken, setMaxToken] = useState<number>(1024);
+    const [customInstruction, setCustomInstruction] = useState<string>("");
 
     const commentsByTurn = useMemo(() => {
         const map: Record<number, string> = {};
@@ -369,6 +376,17 @@ export default function Commentary() {
                             REMOVE FILE
                         </Button>
                     )}
+
+                    <CommentaryConfig
+                        model={model}
+                        setModel={setModel}
+                        numComments={numComments}
+                        setNumComments={setNumComments}
+                        maxToken={maxToken}
+                        setMaxToken={setMaxToken}
+                        customInstruction={customInstruction}
+                        setCustomInstruction={setCustomInstruction}
+                    />
                 </Box>
             )}
         </Container>
