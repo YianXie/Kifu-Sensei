@@ -361,7 +361,10 @@ export default function GoBoard({
                 </Typography>
                 <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", pr: 0.5 }}>
                     {currentComment ? (
-                        <Typography variant="body1" sx={{ whiteSpace: "pre-wrap" }}>
+                        <Typography
+                            variant="body1"
+                            sx={{ whiteSpace: "pre-wrap" }}
+                        >
                             {currentComment}
                         </Typography>
                     ) : (

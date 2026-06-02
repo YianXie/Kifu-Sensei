@@ -727,7 +727,6 @@ def generate_commentary(sgf_content: str, user: CurrentUser) -> dict[str, Any]:
     detailed_analyze_prev_turns = [
         turn_number - 1 for turn_number in detailed_analyze_turns
     ]  # each turn's previous turn
-    detailed_analyze_turns = list(set(detailed_analyze_turns))  # remove duplicates
     detailed_request = winrate_request_to_detailed_request(winrate_request, detailed_analyze_turns)
     detailed_prev_request = winrate_request_to_detailed_request(
         winrate_request, detailed_analyze_prev_turns
