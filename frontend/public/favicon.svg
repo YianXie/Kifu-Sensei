@@ -1,0 +1,24 @@
+<svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+  <title>Kifu Sensei — kanji inside stone</title>
+
+  <!-- Stone shadow -->
+  <ellipse cx="204" cy="388" rx="152" ry="14" fill="rgba(0,0,0,0.14)"/>
+
+  <!-- Black Go stone -->
+  <circle cx="200" cy="200" r="178" fill="#141414"/>
+
+  <!-- Subtle outer rim -->
+  <circle cx="200" cy="200" r="178" fill="none" stroke="#252525" stroke-width="2"/>
+
+  <!-- Specular highlights (upper-left) -->
+  <ellipse cx="140" cy="132" rx="66" ry="44" fill="rgba(255,255,255,0.09)" transform="rotate(-22 140 132)"/>
+  <ellipse cx="128" cy="121" rx="28" ry="19" fill="rgba(255,255,255,0.15)" transform="rotate(-22 128 121)"/>
+
+  <!-- 棋 kanji (white ivory) -->
+  <text x="200" y="200"
+        text-anchor="middle"
+        dominant-baseline="central"
+        fill="#E8E4DA"
+        font-size="165"
+        font-family="'Noto Serif CJK SC', 'Hiragino Mincho ProN', 'Yu Mincho', 'MS Mincho', 'SimSun', serif">棋</text>
+</svg>

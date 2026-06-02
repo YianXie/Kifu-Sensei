@@ -13,6 +13,7 @@ from app.schemas import (
     TokenObtainRequest,
     TokenPairResponse,
     TokenRefreshRequest,
+    DeleteAccountRequest,
     UpdateClaudeApiKeyRequest,
     UpdateEmailRequest,
     UpdatePasswordRequest,
@@ -171,7 +172,12 @@ def update_password(
 
 
 @router.delete("/user/delete/", status_code=status.HTTP_204_NO_CONTENT)
-def delete_account(user: CurrentUser, session: SessionDep) -> Response:
+def delete_account(
+    payload: DeleteAccountRequest, user: CurrentUser, session: SessionDep
+) -> Response:
+    if not verify_password(payload.password, user.hashed_password):
+        raise FieldValidationError({"password": ["Incorrect password."]})
+
     session.delete(user)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
