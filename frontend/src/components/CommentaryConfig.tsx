@@ -12,6 +12,26 @@ import {
     Typography,
 } from "@mui/material";
 
+const NUM_COMMENTS_MIN = 1;
+const NUM_COMMENTS_MAX = 100;
+const MAX_TOKEN_MIN = 256;
+const MAX_TOKEN_MAX = 8192;
+
+function parseBoundedInt(
+    raw: string,
+    min: number,
+    max: number
+): number | undefined {
+    if (raw === "") {
+        return undefined;
+    }
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed)) {
+        return undefined;
+    }
+    return Math.min(max, Math.max(min, parsed));
+}
+
 export default function CommentaryConfig({
     model,
     setModel,
@@ -106,12 +126,19 @@ export default function CommentaryConfig({
                         value={numComments}
                         slotProps={{
                             htmlInput: {
-                                min: 1,
-                                max: 100,
+                                min: NUM_COMMENTS_MIN,
+                                max: NUM_COMMENTS_MAX,
                             },
                         }}
                         onChange={(event) => {
-                            setNumComments(parseInt(event.target.value));
+                            const next = parseBoundedInt(
+                                event.target.value,
+                                NUM_COMMENTS_MIN,
+                                NUM_COMMENTS_MAX
+                            );
+                            if (next !== undefined) {
+                                setNumComments(next);
+                            }
                         }}
                         helperText="Recommended: 15-30"
                     />
@@ -124,12 +151,19 @@ export default function CommentaryConfig({
                         value={maxToken}
                         slotProps={{
                             htmlInput: {
-                                min: 256,
-                                max: 8192,
+                                min: MAX_TOKEN_MIN,
+                                max: MAX_TOKEN_MAX,
                             },
                         }}
                         onChange={(event) => {
-                            setMaxToken(parseInt(event.target.value));
+                            const next = parseBoundedInt(
+                                event.target.value,
+                                MAX_TOKEN_MIN,
+                                MAX_TOKEN_MAX
+                            );
+                            if (next !== undefined) {
+                                setMaxToken(next);
+                            }
                         }}
                         helperText="Recommended: 512-2048"
                     />
