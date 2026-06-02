@@ -2,6 +2,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import CommentIcon from "@mui/icons-material/Comment";
 import InfoIcon from "@mui/icons-material/Info";
+import LoginIcon from "@mui/icons-material/Login";
 import LogoutIcon from "@mui/icons-material/Logout";
 import SettingsIcon from "@mui/icons-material/Settings";
 import {
@@ -79,6 +80,11 @@ function NavDrawerContent({
         onAfterAction?.();
     }
 
+    function handleLogin() {
+        onNavigate("/login");
+        onAfterAction?.();
+    }
+
     return (
         <>
             <Box
@@ -134,16 +140,23 @@ function NavDrawerContent({
                         </ListItem>
                     ))}
 
-                {isAuthenticated && (
-                    <ListItem disablePadding>
+                <ListItem disablePadding>
+                    {isAuthenticated ? (
                         <ListItemButton onClick={handleLogout}>
                             <ListItemIcon sx={{ minWidth: 36 }}>
                                 <LogoutIcon />
                             </ListItemIcon>
                             <ListItemText primary="Logout" />
                         </ListItemButton>
-                    </ListItem>
-                )}
+                    ) : (
+                        <ListItemButton onClick={handleLogin}>
+                            <ListItemIcon sx={{ minWidth: 36 }}>
+                                <LoginIcon />
+                            </ListItemIcon>
+                            <ListItemText primary="Login" />
+                        </ListItemButton>
+                    )}
+                </ListItem>
             </List>
         </>
     );
