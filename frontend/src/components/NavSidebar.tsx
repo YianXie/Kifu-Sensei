@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import CommentIcon from "@mui/icons-material/Comment";
 import HomeIcon from "@mui/icons-material/Home";
@@ -17,7 +17,7 @@ import {
 
 import { useAuth } from "@/contexts/AuthContext";
 
-const DRAWER_WIDTH = 220;
+export const DRAWER_WIDTH = 220;
 
 const navItems = [
     {
@@ -46,28 +46,41 @@ const bottomItems = [
     },
 ];
 
-export default function NavSidebar() {
-    const { isAuthenticated, logout } = useAuth();
-    const navigate = useNavigate();
+const drawerPaperSx = {
+    width: DRAWER_WIDTH,
+    boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "column",
+} as const;
 
-    function handleNav(to: string) {
-        navigate(to);
+interface NavSidebarProps {
+    mobileOpen: boolean;
+    onMobileClose: () => void;
+}
+
+interface NavDrawerContentProps {
+    onNavigate: (to: string) => void;
+    onAfterAction?: () => void;
+}
+
+function NavDrawerContent({
+    onNavigate,
+    onAfterAction,
+}: NavDrawerContentProps) {
+    const { isAuthenticated, logout } = useAuth();
+    const location = useLocation();
+
+    function isActive(to: string) {
+        return location.pathname === to;
+    }
+
+    function handleLogout() {
+        logout();
+        onAfterAction?.();
     }
 
     return (
-        <Drawer
-            variant="permanent"
-            sx={{
-                width: DRAWER_WIDTH,
-                flexShrink: 0,
-                "& .MuiDrawer-paper": {
-                    width: DRAWER_WIDTH,
-                    boxSizing: "border-box",
-                    display: "flex",
-                    flexDirection: "column",
-                },
-            }}
-        >
+        <>
             <Box
                 sx={{
                     px: 2,
@@ -88,7 +101,10 @@ export default function NavSidebar() {
                     )
                     .map((item) => (
                         <ListItem key={item.label} disablePadding>
-                            <ListItemButton onClick={() => handleNav(item.to)}>
+                            <ListItemButton
+                                selected={isActive(item.to)}
+                                onClick={() => onNavigate(item.to)}
+                            >
                                 <ListItemIcon sx={{ minWidth: 36 }}>
                                     {item.icon}
                                 </ListItemIcon>
@@ -106,7 +122,10 @@ export default function NavSidebar() {
                     .filter((item) => !item.protected || isAuthenticated)
                     .map((item) => (
                         <ListItem key={item.label} disablePadding>
-                            <ListItemButton onClick={() => handleNav(item.to)}>
+                            <ListItemButton
+                                selected={isActive(item.to)}
+                                onClick={() => onNavigate(item.to)}
+                            >
                                 <ListItemIcon sx={{ minWidth: 36 }}>
                                     {item.icon}
                                 </ListItemIcon>
@@ -117,7 +136,7 @@ export default function NavSidebar() {
 
                 {isAuthenticated && (
                     <ListItem disablePadding>
-                        <ListItemButton onClick={logout}>
+                        <ListItemButton onClick={handleLogout}>
                             <ListItemIcon sx={{ minWidth: 36 }}>
                                 <LogoutIcon />
                             </ListItemIcon>
@@ -126,6 +145,57 @@ export default function NavSidebar() {
                     </ListItem>
                 )}
             </List>
-        </Drawer>
+        </>
+    );
+}
+
+export default function NavSidebar({
+    mobileOpen,
+    onMobileClose,
+}: NavSidebarProps) {
+    const navigate = useNavigate();
+
+    function handleNavigate(to: string) {
+        if (to) {
+            navigate(to);
+        }
+        onMobileClose();
+    }
+
+    return (
+        <Box
+            component="nav"
+            sx={{
+                width: { md: DRAWER_WIDTH },
+                flexShrink: { md: 0 },
+            }}
+        >
+            <Drawer
+                variant="temporary"
+                open={mobileOpen}
+                onClose={onMobileClose}
+                ModalProps={{ keepMounted: true }}
+                sx={{
+                    display: { xs: "block", md: "none" },
+                    "& .MuiDrawer-paper": drawerPaperSx,
+                }}
+            >
+                <NavDrawerContent
+                    onNavigate={handleNavigate}
+                    onAfterAction={onMobileClose}
+                />
+            </Drawer>
+
+            <Drawer
+                variant="permanent"
+                sx={{
+                    display: { xs: "none", md: "block" },
+                    "& .MuiDrawer-paper": drawerPaperSx,
+                }}
+                open
+            >
+                <NavDrawerContent onNavigate={(to) => navigate(to)} />
+            </Drawer>
+        </Box>
     );
 }
