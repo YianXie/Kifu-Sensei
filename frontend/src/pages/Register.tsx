@@ -41,6 +41,7 @@ export default function Register() {
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
         setError(null);
+        const normalizedEmail = email.trim().toLowerCase();
 
         if (password !== confirm) {
             setError("Passwords do not match.");
@@ -49,9 +50,12 @@ export default function Register() {
 
         setLoading(true);
         try {
-            await api.post(ENDPOINTS.register, { email, password });
+            await api.post(ENDPOINTS.register, {
+                email: normalizedEmail,
+                password,
+            });
             // Log the new user in so they can immediately set up their API key.
-            await login(email, password);
+            await login(normalizedEmail, password);
             toast.success("Account created!");
             navigate("/setup-api-key", { replace: true });
         } catch (err) {
