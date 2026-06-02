@@ -10,7 +10,7 @@ import {
 
 import Layout from "@/components/Layout";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import Commentary from "@/pages/Commentary";
 import Home from "@/pages/Home";
 import Login from "@/pages/Login";
@@ -20,12 +20,27 @@ import Settings from "@/pages/Settings";
 import SetupApiKey from "@/pages/SetupApiKey";
 
 function ThemedApp() {
+    const { userSettings } = useAuth();
     const prefersDark = useMediaQuery("(prefers-color-scheme: dark)");
+    const preferredTheme = userSettings?.preferences?.theme;
+    const themeModePreference =
+        preferredTheme === "light" ||
+        preferredTheme === "dark" ||
+        preferredTheme === "system"
+            ? preferredTheme
+            : "system";
+    const resolvedMode =
+        themeModePreference === "system"
+            ? prefersDark
+                ? "dark"
+                : "light"
+            : themeModePreference;
+
     const theme = useMemo(
         () =>
             createTheme({
                 palette: {
-                    mode: prefersDark ? "dark" : "light",
+                    mode: resolvedMode,
                 },
                 typography: {
                     fontFamily: [
@@ -37,39 +52,37 @@ function ThemedApp() {
                     ].join(","),
                 },
             }),
-        [prefersDark]
+        [resolvedMode]
     );
 
     return (
         <ThemeProvider theme={theme}>
             <CssBaseline />
-            <BrowserRouter>
-                <AuthProvider>
-                    <Routes>
-                        <Route element={<Layout />}>
-                            <Route path="/home" element={<Home />} />
-                            <Route path="/login" element={<Login />} />
-                            <Route path="/register" element={<Register />} />
+            <Routes>
+                <Route element={<Layout />}>
+                    <Route path="/home" element={<Home />} />
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/register" element={<Register />} />
 
-                            <Route element={<ProtectedRoute />}>
-                                <Route
-                                    path="/settings"
-                                    element={<Settings />}
-                                />
-                                <Route
-                                    path="/setup-api-key"
-                                    element={<SetupApiKey />}
-                                />
-                                <Route path="/" element={<Commentary />} />
-                            </Route>
+                    <Route element={<ProtectedRoute />}>
+                        <Route path="/settings" element={<Settings />} />
+                        <Route path="/setup-api-key" element={<SetupApiKey />} />
+                        <Route path="/" element={<Commentary />} />
+                    </Route>
 
-                            <Route path="*" element={<NotFound />} />
-                        </Route>
-                    </Routes>
-                </AuthProvider>
-            </BrowserRouter>
+                    <Route path="*" element={<NotFound />} />
+                </Route>
+            </Routes>
         </ThemeProvider>
     );
 }
 
-export default ThemedApp;
+export default function App() {
+    return (
+        <BrowserRouter>
+            <AuthProvider>
+                <ThemedApp />
+            </AuthProvider>
+        </BrowserRouter>
+    );
+}

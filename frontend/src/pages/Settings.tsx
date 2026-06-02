@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "react-toastify";
 
 import {
@@ -43,6 +43,16 @@ export default function Settings() {
 
     const [deletePassword, setDeletePassword] = useState("");
     const [deleteLoading, setDeleteLoading] = useState(false);
+
+    useEffect(() => {
+        const nextTheme =
+            prefs.theme === "light" ||
+            prefs.theme === "dark" ||
+            prefs.theme === "system"
+                ? prefs.theme
+                : "system";
+        setTheme(nextTheme);
+    }, [prefs.theme]);
 
     async function handleUpdateTheme() {
         setThemeLoading(true);
