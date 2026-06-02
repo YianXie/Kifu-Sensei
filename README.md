@@ -1,8 +1,8 @@
-# Kifu Sensei
+# Kifu-Sensei
 
 **The first Go game review tool with move-by-move natural-language commentary.**
 
-Every existing AI review tool — AI Sensei, KaTrain, OGS, ZBaduk — shows you that your move lost 8 points. None of them tell you *why*. Kifu Sensei bridges that gap: it combines KataGo's superhuman analysis with Claude to produce plain-English commentary targeted at SDK–DDK players, grounded entirely in the board data rather than invented tactical justifications.
+Every existing AI review tool — AI Sensei, KaTrain, OGS, ZBaduk — shows you that your move lost 8 points. None of them tell you _why_. Kifu-Sensei bridges that gap: it combines KataGo's superhuman analysis with Claude to produce plain-English commentary targeted at SDK–DDK players, grounded entirely in the board data rather than invented tactical justifications.
 
 The closest analogue in another game is Chess.com's Diamond Coach. Nothing equivalent exists for Go.
 
@@ -32,13 +32,13 @@ LLM cost per game review is well under $0.10 with prompt caching. You supply you
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Analysis engine | KataGo (self-hosted HTTP API) |
-| Commentary | Claude (`claude-haiku-4-5`) via Anthropic API |
-| Backend | FastAPI, SQLModel, SQLite/PostgreSQL, JWT auth, Fernet encryption |
-| Frontend | React 18, TypeScript, Vite, MUI, `@sabaki/go-board` |
-| Package management | `uv` (backend), `npm` (frontend) |
+| Layer              | Technology                                                        |
+| ------------------ | ----------------------------------------------------------------- |
+| Analysis engine    | KataGo (self-hosted HTTP API)                                     |
+| Commentary         | Claude (`claude-haiku-4-5`) via Anthropic API                     |
+| Backend            | FastAPI, SQLModel, SQLite/PostgreSQL, JWT auth, Fernet encryption |
+| Frontend           | React 18, TypeScript, Vite, MUI, `@sabaki/go-board`               |
+| Package management | `uv` (backend), `npm` (frontend)                                  |
 
 ---
 

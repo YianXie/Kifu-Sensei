@@ -1,6 +1,6 @@
-# Kifu Sensei Backend
+# Kifu-Sensei Backend
 
-FastAPI backend for Kifu Sensei. Provides JWT authentication, user settings, and
+FastAPI backend for Kifu-Sensei. Provides JWT authentication, user settings, and
 SGF → KataGo game-commentary generation.
 
 ## Stack

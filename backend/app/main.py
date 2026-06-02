@@ -17,7 +17,7 @@ async def lifespan(_: FastAPI):
     close_http_client()
 
 
-app = FastAPI(title="Kifu Sensei API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Kifu-Sensei API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
