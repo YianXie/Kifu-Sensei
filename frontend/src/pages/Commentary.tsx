@@ -51,6 +51,26 @@ export default function Commentary() {
     const moves = (result?.moves ?? []) as GameMove[];
     const initialStones = (result?.initial_stones ?? []) as GameMove[];
     const boardSize = result?.board_size ?? 19;
+    const commentedTurns = useMemo(
+        () =>
+            (result?.comments ?? [])
+                .map((item) => item.turn)
+                .filter((turn, index, arr) => {
+                    const isValidTurn = turn >= 0 && turn <= moves.length;
+                    return isValidTurn && arr.indexOf(turn) === index;
+                })
+                .sort((a, b) => a - b),
+        [result, moves.length]
+    );
+    const currentCommentTurnIndex = commentedTurns.indexOf(currentMoveIndex);
+    const hasPreviousCommentMove =
+        currentCommentTurnIndex >= 0
+            ? currentCommentTurnIndex > 0
+            : commentedTurns.some((turn) => turn < currentMoveIndex);
+    const hasNextCommentMove =
+        currentCommentTurnIndex >= 0
+            ? currentCommentTurnIndex < commentedTurns.length - 1
+            : commentedTurns.some((turn) => turn > currentMoveIndex);
 
     function handleFile(uploadedFile: File | undefined) {
         if (!uploadedFile || !isSgfFile(uploadedFile)) {
@@ -136,6 +156,19 @@ export default function Commentary() {
         setCurrentMoveIndex(0);
     }
 
+    function handleJumpToComment(direction: "prev" | "next") {
+        if (direction === "prev") {
+            const previous = [...commentedTurns]
+                .reverse()
+                .find((turn) => turn < currentMoveIndex);
+            if (typeof previous === "number") setCurrentMoveIndex(previous);
+            return;
+        }
+
+        const next = commentedTurns.find((turn) => turn > currentMoveIndex);
+        if (typeof next === "number") setCurrentMoveIndex(next);
+    }
+
     if (isLoading) {
         return (
             <Container maxWidth="md">
@@ -219,6 +252,12 @@ export default function Commentary() {
                         maxMove={moves.length}
                         currentMoveIndex={currentMoveIndex}
                         onMoveChange={handleMoveChange}
+                        onJumpToPreviousComment={() =>
+                            handleJumpToComment("prev")
+                        }
+                        onJumpToNextComment={() => handleJumpToComment("next")}
+                        hasPreviousCommentMove={hasPreviousCommentMove}
+                        hasNextCommentMove={hasNextCommentMove}
                         sx={{ borderRadius: 2, mt: 1 }}
                     />
                     <Box

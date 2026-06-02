@@ -308,12 +308,17 @@ export default function GoBoard({
                 display: "flex",
                 flexDirection: { xs: "column", md: "row" },
                 gap: 2,
-                alignItems: "flex-start",
+                alignItems: { xs: "flex-start", md: "stretch" },
                 width: "100%",
             }}
         >
             <Box
-                sx={{ flex: "0 0 auto", maxWidth: CANVAS_SIZE, width: "100%" }}
+                sx={{
+                    flex: "0 0 auto",
+                    width: "100%",
+                    maxWidth: CANVAS_SIZE,
+                    alignSelf: "flex-start",
+                }}
             >
                 <canvas
                     ref={canvasRef}
@@ -342,27 +347,31 @@ export default function GoBoard({
                 sx={{
                     flex: 1,
                     minWidth: { md: 280 },
-                    minHeight: 200,
+                    minHeight: { xs: 200, md: CANVAS_SIZE },
+                    maxHeight: { md: CANVAS_SIZE },
                     p: 2,
                     display: "flex",
                     flexDirection: "column",
                     gap: 1,
+                    overflow: "hidden",
                 }}
             >
                 <Typography variant="subtitle2" color="text.secondary">
                     Move {currentMoveIndex} / {moves.length}
                 </Typography>
-                {currentComment ? (
-                    <Typography variant="body1" sx={{ whiteSpace: "pre-wrap" }}>
-                        {currentComment}
-                    </Typography>
-                ) : (
-                    <Typography variant="body2" color="text.secondary">
-                        {currentMoveIndex === 0
-                            ? "Starting position — no commentary for this turn."
-                            : "No commentary was generated for this move."}
-                    </Typography>
-                )}
+                <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", pr: 0.5 }}>
+                    {currentComment ? (
+                        <Typography variant="body1" sx={{ whiteSpace: "pre-wrap" }}>
+                            {currentComment}
+                        </Typography>
+                    ) : (
+                        <Typography variant="body2" color="text.secondary">
+                            {currentMoveIndex === 0
+                                ? "Starting position — no commentary for this turn."
+                                : "No commentary was generated for this move."}
+                        </Typography>
+                    )}
+                </Box>
             </Paper>
         </Box>
     );

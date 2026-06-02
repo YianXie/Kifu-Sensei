@@ -6,6 +6,7 @@ import SkipNextIcon from "@mui/icons-material/SkipNext";
 import SkipPreviousIcon from "@mui/icons-material/SkipPrevious";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import type { SxProps, Theme } from "@mui/material/styles";
 
@@ -17,11 +18,19 @@ const Controls = ({
     maxMove,
     currentMoveIndex,
     onMoveChange,
+    onJumpToPreviousComment,
+    onJumpToNextComment,
+    hasPreviousCommentMove = false,
+    hasNextCommentMove = false,
     sx: sxOverride,
 }: {
     maxMove: number;
     currentMoveIndex: number;
     onMoveChange: (amount: number) => void;
+    onJumpToPreviousComment?: () => void;
+    onJumpToNextComment?: () => void;
+    hasPreviousCommentMove?: boolean;
+    hasNextCommentMove?: boolean;
     sx?: SxProps<Theme>;
 }) => {
     return (
@@ -65,6 +74,29 @@ const Controls = ({
                     onMoveChange={onMoveChange}
                     disabled={currentMoveIndex <= 0}
                 />
+                <Tooltip
+                    title="Jump to previous move with commentary"
+                    placement="top"
+                    arrow
+                >
+                    <span>
+                        <ControlMoveButton
+                            amount={0}
+                            icon={
+                                <ArrowBackIosIcon
+                                    sx={{
+                                        color: hasPreviousCommentMove
+                                            ? "warning.main"
+                                            : "default",
+                                    }}
+                                />
+                            }
+                            label="Jump to previous move with commentary"
+                            onMoveChange={() => onJumpToPreviousComment?.()}
+                            disabled={!hasPreviousCommentMove}
+                        />
+                    </span>
+                </Tooltip>
             </Stack>
 
             <Typography
@@ -86,6 +118,30 @@ const Controls = ({
                     onMoveChange={onMoveChange}
                     disabled={currentMoveIndex >= maxMove}
                 />
+                <Tooltip
+                    title="Jump to next move with commentary"
+                    placement="top"
+                    arrow
+                >
+                    <span>
+                        <ControlMoveButton
+                            amount={0}
+                            icon={
+                                <ArrowForwardIosIcon
+                                    fontSize="small"
+                                    sx={{
+                                        color: hasNextCommentMove
+                                            ? "warning.main"
+                                            : "default",
+                                    }}
+                                />
+                            }
+                            label="Jump to next move with commentary"
+                            onMoveChange={() => onJumpToNextComment?.()}
+                            disabled={!hasNextCommentMove}
+                        />
+                    </span>
+                </Tooltip>
                 <ControlMoveButton
                     amount={FAST_FORWARD_AMOUNT}
                     icon={<FastForwardIcon />}
