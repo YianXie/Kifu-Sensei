@@ -14,6 +14,7 @@ import {
     ListItemButton,
     ListItemIcon,
     ListItemText,
+    Typography,
 } from "@mui/material";
 
 import { useAuth } from "@/contexts/AuthContext";
@@ -89,14 +90,27 @@ function NavDrawerContent({
         <>
             <Box
                 sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
                     px: 2,
                     py: 2.5,
-                    fontWeight: 700,
-                    fontSize: "1.1rem",
-                    letterSpacing: 0.5,
                 }}
             >
-                Kifu-Sensei
+                <img
+                    src="/favicon.svg"
+                    alt="Kifu-Sensei"
+                    width={32}
+                    height={32}
+                />
+                <Typography
+                    variant="h6"
+                    fontWeight={700}
+                    lineHeight={1.15}
+                    color="text.primary"
+                >
+                    Kifu-Sensei
+                </Typography>
             </Box>
 
             <List dense>
