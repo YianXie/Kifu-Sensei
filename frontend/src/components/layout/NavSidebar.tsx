@@ -27,14 +27,12 @@ const navItems = [
         icon: <InfoIcon />,
         to: "/about",
         protected: false,
-        visitorOnly: false,
     },
     {
         label: "Commentary",
         icon: <CommentIcon />,
         to: "/",
         protected: true,
-        visitorOnly: false,
     },
 ];
 
@@ -116,9 +114,6 @@ function NavDrawerContent({
             <List dense>
                 {navItems
                     .filter((item) => !item.protected || isAuthenticated)
-                    .filter((item) =>
-                        isAuthenticated ? !item.visitorOnly : true
-                    )
                     .map((item) => (
                         <ListItem key={item.label} disablePadding>
                             <ListItemButton

@@ -8,8 +8,8 @@ import {
     useMediaQuery,
 } from "@mui/material";
 
-import Layout from "@/components/Layout";
-import ProtectedRoute from "@/components/ProtectedRoute";
+import ProtectedRoute from "@/components/global/ProtectedRoute";
+import Layout from "@/components/layout/Layout";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import About from "@/pages/About";
 import Commentary from "@/pages/Commentary";
@@ -70,6 +70,9 @@ function ThemedApp() {
                             path="/setup-api-key"
                             element={<SetupApiKey />}
                         />
+                    </Route>
+
+                    <Route element={<ProtectedRoute customRedirect="/about" />}>
                         <Route path="/" element={<Commentary />} />
                     </Route>
 

@@ -20,7 +20,7 @@ import {
 } from "@mui/material";
 
 import api from "@/api";
-import CommentaryConfig from "@/components/CommentaryConfig";
+import CommentaryConfig from "@/components/commentary/CommentaryConfig";
 import { ENDPOINTS } from "@/constants";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/hooks/usePageTitle";

@@ -111,13 +111,6 @@ const Controls = ({
             </Typography>
 
             <Stack direction="row" spacing={0.5} sx={{ mr: "auto" }}>
-                <ControlMoveButton
-                    amount={1}
-                    icon={<ArrowForwardIosIcon fontSize="small" />}
-                    label="Move forward 1 move"
-                    onMoveChange={onMoveChange}
-                    disabled={currentMoveIndex >= maxMove}
-                />
                 <Tooltip
                     title="Jump to next move with commentary"
                     placement="top"
@@ -142,6 +135,14 @@ const Controls = ({
                         />
                     </span>
                 </Tooltip>
+                <ControlMoveButton
+                    amount={1}
+                    icon={<ArrowForwardIosIcon fontSize="small" />}
+                    label="Move forward 1 move"
+                    onMoveChange={onMoveChange}
+                    disabled={currentMoveIndex >= maxMove}
+                />
+
                 <ControlMoveButton
                     amount={FAST_FORWARD_AMOUNT}
                     icon={<FastForwardIcon />}

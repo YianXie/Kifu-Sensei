@@ -6,7 +6,7 @@ import "react-toastify/dist/ReactToastify.css";
 import MenuIcon from "@mui/icons-material/Menu";
 import { AppBar, Box, IconButton, Toolbar, Typography } from "@mui/material";
 
-import NavSidebar, { DRAWER_WIDTH } from "@/components/NavSidebar";
+import NavSidebar, { DRAWER_WIDTH } from "@/components/layout/NavSidebar";
 
 export default function Layout() {
     const [mobileOpen, setMobileOpen] = useState(false);

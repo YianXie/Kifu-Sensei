@@ -13,9 +13,9 @@ import {
 } from "@mui/material";
 
 import api from "@/api";
-import CommentaryConfig from "@/components/CommentaryConfig";
-import Controls from "@/components/Controls";
-import GoBoard from "@/components/GoBoard";
+import CommentaryConfig from "@/components/commentary/CommentaryConfig";
+import Controls from "@/components/commentary/Controls";
+import GoBoard from "@/components/commentary/GoBoard";
 import { ENDPOINTS } from "@/constants";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
@@ -43,7 +43,6 @@ export default function Commentary() {
     const [isDragOver, setIsDragOver] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [result, setResult] = useState<CommentaryResponse | null>(null);
-    const [currentMoveIndex, setCurrentMoveIndex] = useState(0);
     const [model, setModel] = useState<ClaudeModel>(defaultConfig.model);
     const [numComments, setNumComments] = useState<number>(
         defaultConfig.num_comments
@@ -65,6 +64,7 @@ export default function Commentary() {
     const moves = (result?.moves ?? []) as GameMove[];
     const initialStones = (result?.initial_stones ?? []) as GameMove[];
     const boardSize = result?.board_size ?? 19;
+    const [currentMoveIndex, setCurrentMoveIndex] = useState(0);
     const commentedTurns = useMemo(
         () =>
             (result?.comments ?? [])
@@ -76,15 +76,6 @@ export default function Commentary() {
                 .sort((a, b) => a - b),
         [result, moves.length]
     );
-    const currentCommentTurnIndex = commentedTurns.indexOf(currentMoveIndex);
-    const hasPreviousCommentMove =
-        currentCommentTurnIndex >= 0
-            ? currentCommentTurnIndex > 0
-            : commentedTurns.some((turn) => turn < currentMoveIndex);
-    const hasNextCommentMove =
-        currentCommentTurnIndex >= 0
-            ? currentCommentTurnIndex < commentedTurns.length - 1
-            : commentedTurns.some((turn) => turn > currentMoveIndex);
 
     function handleFile(uploadedFile: File | undefined) {
         if (!uploadedFile || !isSgfFile(uploadedFile)) {
@@ -154,6 +145,7 @@ export default function Commentary() {
                 }
             );
             setResult(data);
+            console.log(data);
             const firstCommentTurn = data.comments[0]?.turn ?? 0;
             setCurrentMoveIndex(firstCommentTurn);
         } catch (err) {
@@ -276,8 +268,12 @@ export default function Commentary() {
                             handleJumpToComment("prev")
                         }
                         onJumpToNextComment={() => handleJumpToComment("next")}
-                        hasPreviousCommentMove={hasPreviousCommentMove}
-                        hasNextCommentMove={hasNextCommentMove}
+                        hasPreviousCommentMove={commentedTurns.some(
+                            (turn) => turn < currentMoveIndex
+                        )}
+                        hasNextCommentMove={commentedTurns.some(
+                            (turn) => turn > currentMoveIndex
+                        )}
                         sx={{ borderRadius: 2, mt: 1 }}
                     />
                     <Box
