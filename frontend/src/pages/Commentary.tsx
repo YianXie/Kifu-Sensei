@@ -145,7 +145,6 @@ export default function Commentary() {
                 }
             );
             setResult(data);
-            console.log(data);
             const firstCommentTurn = data.comments[0]?.turn ?? 0;
             setCurrentMoveIndex(firstCommentTurn);
         } catch (err) {

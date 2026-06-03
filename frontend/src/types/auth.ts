@@ -8,8 +8,6 @@ export interface JwtPayload {
 export interface AuthUser {
     id: number;
     email: string;
-    preferences: Record<string, unknown>;
-    has_claude_api_key?: boolean;
 }
 
 export interface UserSettings {

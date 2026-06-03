@@ -68,7 +68,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 setUser({
                     id: decoded.user_id,
                     email: decoded.email,
-                    preferences: {},
                 });
                 const { data } = await api.get<UserSettings>(
                     ENDPOINTS.userSettings

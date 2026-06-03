@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 
@@ -25,11 +25,20 @@ export default function SetupApiKey() {
     usePageTitle("Set Up Claude API Key");
 
     const navigate = useNavigate();
-    const { updateUserSettings } = useAuth();
+    const { isLoading, userSettings, updateUserSettings } = useAuth();
 
     const [apiKey, setApiKey] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (isLoading) return;
+        if (userSettings?.has_claude_api_key) {
+            toast.error("You have already set up a Claude API key.");
+            navigate("/", { replace: true });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isLoading, userSettings]);
 
     async function handleSave(e: React.FormEvent) {
         e.preventDefault();

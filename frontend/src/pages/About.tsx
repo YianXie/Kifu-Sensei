@@ -12,13 +12,11 @@ export default function About() {
                 <Typography variant="h4" fontWeight={700} textAlign="center">
                     About
                 </Typography>
-                <Typography variant="body1">
+                <Typography variant="body1" lineHeight={1.5}>
                     Kifu-Sensei is an automated LLM-based tool that generates
                     move-by-move commentary for Go games. It uses KataGo to
-                    analyze the game and Claude to generate the commentary.
-                </Typography>
-                <Typography variant="body1">
-                    It is also an open-source project and is available on{" "}
+                    analyze the game and Claude to generate the commentary. It
+                    is also an open-source project and is available on{" "}
                     <Link
                         href="https://github.com/YianXie/Kifu-Sensei"
                         target="_blank"
@@ -27,6 +25,19 @@ export default function About() {
                         GitHub
                     </Link>
                     .
+                </Typography>
+                <Typography variant="body1" lineHeight={1.5}>
+                    To start using Kifu-Sensei, simply follow the{" "}
+                    <Link
+                        href="https://platform.claude.com/settings/keys"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >
+                        instructions
+                    </Link>{" "}
+                    to create a Claude API key. Then, go to the settings page
+                    and paste the API key into the input field. Finally, go to
+                    the Commentary page and upload your SGF file.
                 </Typography>
             </Stack>
 
