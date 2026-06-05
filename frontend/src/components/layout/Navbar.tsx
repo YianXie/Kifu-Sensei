@@ -9,6 +9,7 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import {
     AppBar,
     Box,
+    Button,
     Drawer,
     IconButton,
     Link,
@@ -224,7 +225,12 @@ export default function Navbar() {
                                     color="inherit"
                                     underline="hover"
                                 >
-                                    Login
+                                    <Button
+                                        variant="contained"
+                                        color="secondary"
+                                    >
+                                        Login
+                                    </Button>
                                 </Link>
                             )}
                         </Box>

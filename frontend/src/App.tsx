@@ -19,6 +19,8 @@ import Register from "@/pages/Register";
 import Settings from "@/pages/Settings";
 import SetupApiKey from "@/pages/SetupApiKey";
 
+import Logout from "./pages/Logout";
+
 function ThemedApp() {
     const { userSettings } = useAuth();
     const prefersDark = useMediaQuery("(prefers-color-scheme: dark)");
@@ -65,15 +67,13 @@ function ThemedApp() {
                     <Route path="/register" element={<Register />} />
 
                     <Route element={<ProtectedRoute />}>
+                        <Route path="/commentary" element={<Commentary />} />
                         <Route path="/settings" element={<Settings />} />
                         <Route
                             path="/setup-api-key"
                             element={<SetupApiKey />}
                         />
-                    </Route>
-
-                    <Route element={<ProtectedRoute customRedirect="/" />}>
-                        <Route path="/commentary" element={<Commentary />} />
+                        <Route path="/logout" element={<Logout />} />
                     </Route>
 
                     <Route path="*" element={<NotFound />} />
