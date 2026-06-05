@@ -25,7 +25,11 @@ import { ENDPOINTS } from "@/constants";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import type { UserSettings } from "@/types/auth";
-import { type ClaudeModel, readCommentaryConfig } from "@/types/commentary";
+import {
+    type ClaudeModel,
+    CommentaryLanguage,
+    readCommentaryConfig,
+} from "@/types/commentary";
 import { getErrorMessage } from "@/utils/errorFormatting";
 
 export default function Settings() {
@@ -54,6 +58,9 @@ export default function Settings() {
 
     const savedConfig = readCommentaryConfig(prefs);
     const [model, setModel] = useState<ClaudeModel>(savedConfig.model);
+    const [language, setLanguage] = useState<CommentaryLanguage>(
+        savedConfig.language
+    );
     const [numComments, setNumComments] = useState<number>(
         savedConfig.num_comments
     );
@@ -392,6 +399,8 @@ export default function Settings() {
                     <CommentaryConfig
                         model={model}
                         setModel={setModel}
+                        language={language}
+                        setLanguage={setLanguage}
                         numComments={numComments}
                         setNumComments={setNumComments}
                         maxToken={maxToken}

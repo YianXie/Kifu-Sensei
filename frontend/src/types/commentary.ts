@@ -5,8 +5,14 @@ export type ClaudeModel =
     | "claude-sonnet-4-6"
     | "claude-haiku-4-5";
 
+export type CommentaryLanguage =
+    | "english"
+    | "chinese (simplified)"
+    | "japanese";
+
 export type CommentaryConfigValues = {
     model: ClaudeModel;
+    language: CommentaryLanguage;
     num_comments: number;
     max_token: number;
     custom_instruction: string;
@@ -14,6 +20,7 @@ export type CommentaryConfigValues = {
 
 export const DEFAULT_COMMENTARY_CONFIG: CommentaryConfigValues = {
     model: "claude-haiku-4-5",
+    language: "english",
     num_comments: 20,
     max_token: 1024,
     custom_instruction: "",
@@ -23,6 +30,12 @@ const CLAUDE_MODELS: ClaudeModel[] = [
     "claude-opus-4-8",
     "claude-sonnet-4-6",
     "claude-haiku-4-5",
+];
+
+const COMMENTARY_LANGUAGES: CommentaryLanguage[] = [
+    "english",
+    "chinese (simplified)",
+    "japanese",
 ];
 
 /**
@@ -38,6 +51,7 @@ export function readCommentaryConfig(
         unknown
     >;
     const model = raw.model as ClaudeModel;
+    const language = raw.language as CommentaryLanguage;
     const numComments = Number(raw.num_comments);
     const maxToken = Number(raw.max_token);
     const customInstruction = raw.custom_instruction;
@@ -45,6 +59,9 @@ export function readCommentaryConfig(
         model: CLAUDE_MODELS.includes(model)
             ? model
             : DEFAULT_COMMENTARY_CONFIG.model,
+        language: COMMENTARY_LANGUAGES.includes(language)
+            ? language
+            : DEFAULT_COMMENTARY_CONFIG.language,
         num_comments: Number.isFinite(numComments)
             ? numComments
             : DEFAULT_COMMENTARY_CONFIG.num_comments,

@@ -80,6 +80,10 @@ _RULES_ALIASES: dict[str, str] = {
     "chinese-ogs": "chinese-ogs",
 }
 
+_CLAUDE_MODEL = "claude-haiku-4-5"
+_COMMENTARY_LANGUAGE = "english"
+_MAX_TOKENS = 1024
+
 
 def get_http_client() -> httpx.Client:
     """Get or create a reusable HTTP client instance."""
@@ -452,7 +456,9 @@ def winrate_request_to_detailed_request(
     return detailed_request
 
 
-def _generate_system_prompt(custom_instruction: str = "") -> str:
+def _generate_system_prompt(
+    custom_instruction: str = "", language: str = _COMMENTARY_LANGUAGE
+) -> str:
     prompt = """You are a Go game commentator writing move-by-move commentary for amateur players (SDK to DDK level).
 
     Your rules:
@@ -468,6 +474,7 @@ def _generate_system_prompt(custom_instruction: str = "") -> str:
             "not conflict with the rules above):\n"
             f"    {custom_instruction.strip()}\n"
         )
+    prompt += f"Always respond in {language}."
     return prompt
 
 
@@ -619,14 +626,10 @@ def _generate_user_prompt(
         "stick to what the data shows (winrate gain, score gain, where the PV runs).\n\n"
     )
 
-    prompt += "Example commentary:\n"
+    prompt += "Example commentary in English:\n"
     prompt += "With move 52, the game was still anyone's to win — Black held a slim +2.8 point lead and a 54% win probability. Black's choice of D6, however, was a significant misstep: KataGo ranked it only 9th among legal moves, and it handed back the lead entirely, swinging the score by over 3 points in a single move. The suggested C5 would have kept Black comfortably ahead (+4.1 points, 57.8% win probability); the principal variation running through D5, C6, and B5 suggests it was aimed at consolidating the left side, where White's stones at B9, C8, and D7 were building influence — though pinning down the exact tactical reason requires deeper reading than the data alone can confirm.\n"
 
     return prompt
-
-
-_CLAUDE_MODEL = "claude-haiku-4-5"
-_MAX_TOKENS = 1024
 
 
 def generate_commentary_with_claude(
@@ -634,6 +637,7 @@ def generate_commentary_with_claude(
     prompts: list[str],
     *,
     model: str = _CLAUDE_MODEL,
+    language: str = _COMMENTARY_LANGUAGE,
     max_token: int = _MAX_TOKENS,
     custom_instruction: str = "",
 ) -> list[str]:
@@ -651,7 +655,9 @@ def generate_commentary_with_claude(
 
     client = Anthropic(api_key=claude_api_key)
 
-    system_prompt = _generate_system_prompt(custom_instruction)
+    system_prompt = _generate_system_prompt(
+        custom_instruction=custom_instruction, language=language
+    )
     comments: list[str] = []
     for user_prompt in prompts:
         message = client.messages.create(
@@ -717,6 +723,7 @@ def generate_commentary(
     user: CurrentUser,
     *,
     model: str = _CLAUDE_MODEL,
+    language: str = _COMMENTARY_LANGUAGE,
     num_comments: int = 20,
     max_token: int = _MAX_TOKENS,
     custom_instruction: str = "",
@@ -788,6 +795,7 @@ def generate_commentary(
         user,
         prompts,
         model=model,
+        language=language,
         max_token=max_token,
         custom_instruction=custom_instruction,
     )

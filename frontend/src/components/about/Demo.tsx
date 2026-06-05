@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 
 import { DEMO_DATA } from "@/constants";
 
-import GameViewer from "../commentary/GameViewer";
+import GameViewer from "../game/GameViewer";
 
 export default function Demo({
     boardCanvasSize,

@@ -23,6 +23,7 @@ def commentary(payload: GenerateCommentaryRequest, user: CurrentUser) -> Generat
             payload.sgf_content,
             user,
             model=payload.model,
+            language=payload.language,
             num_comments=payload.num_comments,
             max_token=payload.max_token,
             custom_instruction=payload.custom_instruction,

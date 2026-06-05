@@ -65,6 +65,7 @@ class DetailResponse(BaseModel):
 class GenerateCommentaryRequest(BaseModel):
     sgf_content: str = Field(min_length=1)
     model: Literal["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"] = "claude-haiku-4-5"
+    language: Literal["english", "chinese (simplified)", "japanese"] = "english"
     num_comments: int = Field(default=20, ge=1, le=100)
     max_token: int = Field(default=1024, ge=256, le=8192)
     custom_instruction: str = Field(default="", max_length=1000)

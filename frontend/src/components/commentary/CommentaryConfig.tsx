@@ -12,12 +12,13 @@ import {
     Typography,
 } from "@mui/material";
 
-import type { ClaudeModel } from "@/types/commentary";
-
-const NUM_COMMENTS_MIN = 1;
-const NUM_COMMENTS_MAX = 100;
-const MAX_TOKEN_MIN = 256;
-const MAX_TOKEN_MAX = 8192;
+import {
+    MAX_TOKEN_MAX,
+    MAX_TOKEN_MIN,
+    NUM_COMMENTS_MAX,
+    NUM_COMMENTS_MIN,
+} from "@/constants/commentary/config";
+import type { ClaudeModel, CommentaryLanguage } from "@/types/commentary";
 
 function parseBoundedInt(
     raw: string,
@@ -37,6 +38,8 @@ function parseBoundedInt(
 export default function CommentaryConfig({
     model,
     setModel,
+    language,
+    setLanguage,
     numComments,
     setNumComments,
     maxToken,
@@ -46,6 +49,8 @@ export default function CommentaryConfig({
 }: {
     model: ClaudeModel;
     setModel: (value: ClaudeModel) => void;
+    language: CommentaryLanguage;
+    setLanguage: (value: CommentaryLanguage) => void;
     numComments: number;
     setNumComments: (value: number) => void;
     maxToken: number;
@@ -78,37 +83,61 @@ export default function CommentaryConfig({
 
                 <Divider />
 
-                <FormControl size="small" fullWidth>
-                    <InputLabel id="claude-model-select-label">
-                        Claude Model
-                    </InputLabel>
-                    <Select
-                        labelId="claude-model-select-label"
-                        value={model}
-                        label="Claude Model"
-                        onChange={(event) => {
-                            setModel(event.target.value as ClaudeModel);
-                        }}
-                    >
-                        <MenuItem value="claude-opus-4-8">
-                            Claude Opus 4.8
-                        </MenuItem>
-                        <MenuItem value="claude-sonnet-4-6">
-                            Claude Sonnet 4.6
-                        </MenuItem>
-                        <MenuItem value="claude-haiku-4-5">
-                            Claude Haiku 4.5
-                        </MenuItem>
-                    </Select>
-                    <FormHelperText>
-                        Select a model based on quality and speed preference.
-                    </FormHelperText>
-                </FormControl>
+                <Box sx={{ display: "flex", gap: 1.5 }}>
+                    <FormControl size="small" fullWidth>
+                        <InputLabel id="claude-model-select-label">
+                            Claude Model
+                        </InputLabel>
+                        <Select
+                            labelId="claude-model-select-label"
+                            value={model}
+                            label="Claude Model"
+                            onChange={(event) => {
+                                setModel(event.target.value);
+                            }}
+                        >
+                            <MenuItem value="claude-opus-4-8">
+                                Claude Opus 4.8
+                            </MenuItem>
+                            <MenuItem value="claude-sonnet-4-6">
+                                Claude Sonnet 4.6
+                            </MenuItem>
+                            <MenuItem value="claude-haiku-4-5">
+                                Claude Haiku 4.5
+                            </MenuItem>
+                        </Select>
+                        <FormHelperText>
+                            Select a model based on quality and speed
+                            preference.
+                        </FormHelperText>
+                    </FormControl>
+                    <FormControl size="small" fullWidth>
+                        <InputLabel id="commentary-language-select-label">
+                            Commentary Language
+                        </InputLabel>
+                        <Select
+                            labelId="commentary-language-select-label"
+                            value={language}
+                            label="Commentary Language"
+                            onChange={(event) => {
+                                setLanguage(event.target.value);
+                            }}
+                        >
+                            <MenuItem value="english">English</MenuItem>
+                            <MenuItem value="chinese (simplified)">
+                                Chinese (simplified)
+                            </MenuItem>
+                            <MenuItem value="japanese">Japanese</MenuItem>
+                        </Select>
+                        <FormHelperText>
+                            Select a language based on your preference.
+                        </FormHelperText>
+                    </FormControl>
+                </Box>
 
                 <Box
                     sx={{
-                        display: "grid",
-                        gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+                        display: "flex",
                         gap: 1.5,
                     }}
                 >
@@ -135,6 +164,7 @@ export default function CommentaryConfig({
                                 setNumComments(next);
                             }
                         }}
+                        sx={{ flex: 1 }}
                         helperText="Recommended: 15-30"
                     />
                     <TextField
@@ -160,6 +190,7 @@ export default function CommentaryConfig({
                                 setMaxToken(next);
                             }
                         }}
+                        sx={{ flex: 1 }}
                         helperText="Recommended: 512-2048"
                     />
                 </Box>

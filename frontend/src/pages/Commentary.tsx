@@ -14,12 +14,13 @@ import {
 
 import api from "@/api";
 import CommentaryConfig from "@/components/commentary/CommentaryConfig";
-import GameViewer from "@/components/commentary/GameViewer";
+import GameViewer from "@/components/game/GameViewer";
 import { ENDPOINTS } from "@/constants";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import {
     type ClaudeModel,
+    CommentaryLanguage,
     type CommentaryResponse,
     readCommentaryConfig,
 } from "@/types/commentary";
@@ -43,6 +44,9 @@ export default function Commentary() {
     const [isLoading, setIsLoading] = useState(false);
     const [result, setResult] = useState<CommentaryResponse | null>(null);
     const [model, setModel] = useState<ClaudeModel>(defaultConfig.model);
+    const [language, setLanguage] = useState<CommentaryLanguage>(
+        defaultConfig.language
+    );
     const [numComments, setNumComments] = useState<number>(
         defaultConfig.num_comments
     );
@@ -127,6 +131,7 @@ export default function Commentary() {
                 {
                     sgf_content: sgfContent,
                     model,
+                    language,
                     num_comments: numComments,
                     max_token: maxToken,
                     custom_instruction: customInstruction,
@@ -340,6 +345,8 @@ export default function Commentary() {
                     <CommentaryConfig
                         model={model}
                         setModel={setModel}
+                        language={language}
+                        setLanguage={setLanguage}
                         numComments={numComments}
                         setNumComments={setNumComments}
                         maxToken={maxToken}

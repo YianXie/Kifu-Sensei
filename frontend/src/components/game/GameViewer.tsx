@@ -1,6 +1,6 @@
 import { Box } from "@mui/material";
 
-import { DEFAULT_BOARD_CANVAS_SIZE } from "@/constants/go/goBoard";
+import { DEFAULT_BOARD_CANVAS_SIZE } from "@/constants/game/goBoard";
 import { GameMove } from "@/types/game";
 
 import CommentPanel from "./CommentPanel";

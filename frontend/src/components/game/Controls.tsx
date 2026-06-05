@@ -14,7 +14,7 @@ import Typography from "@mui/material/Typography";
 import type { SxProps, Theme } from "@mui/material/styles";
 
 import placeStoneSoundInstance from "@/assets/sounds/placeStoneSoundInstance";
-import { FAST_FORWARD_AMOUNT } from "@/constants/go/controls";
+import { FAST_FORWARD_AMOUNT } from "@/constants/game/controls";
 
 function ControlMoveButton({
     icon,
