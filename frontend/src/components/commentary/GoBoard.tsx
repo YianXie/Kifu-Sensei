@@ -3,33 +3,27 @@ import Board from "@sabaki/go-board";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import Box from "@mui/material/Box";
-import Paper from "@mui/material/Paper";
-import Typography from "@mui/material/Typography";
 
-import Controls from "@/components/commentary/Controls";
 import { GTP_LETTERS } from "@/constants";
 import { DEFAULT_BOARD_CANVAS_SIZE } from "@/constants/go/goBoard";
 import { type GameMove, isValidMove } from "@/types/game";
-
-type GoBoardProps = {
-    boardSize: number;
-    boardCanvasSize?: number;
-    moves: GameMove[];
-    initialStones?: GameMove[];
-    comments: Record<number, string>;
-    currentMoveIndex: number;
-    setCurrentMoveIndex: (index: number) => void;
-};
 
 export default function GoBoard({
     boardSize,
     boardCanvasSize = DEFAULT_BOARD_CANVAS_SIZE,
     moves,
     initialStones = [],
-    comments,
     currentMoveIndex,
-    setCurrentMoveIndex,
-}: GoBoardProps) {
+    onMoveChange,
+}: {
+    boardSize: number;
+    boardCanvasSize?: number;
+    moves: GameMove[];
+    initialStones?: GameMove[];
+    comments: Record<number, string>;
+    currentMoveIndex: number;
+    onMoveChange: (amount: number) => void;
+}) {
     const padding = boardCanvasSize * 0.0625;
     const margin = (boardCanvasSize - padding * 2) / (boardSize - 1);
     const stoneRadius = margin / 2;
@@ -41,9 +35,6 @@ export default function GoBoard({
         null
     );
     const [scrollKeyIsPressed, setScrollKeyIsPressed] = useState(false);
-
-    const commentedTurns = Object.keys(comments).map((turn) => parseInt(turn));
-    const currentComment = comments[currentMoveIndex] ?? null;
 
     const boardToCanvasCoords = useCallback(
         (row: number, col: number) => {
@@ -239,14 +230,6 @@ export default function GoBoard({
         [boardImageData, drawStones]
     );
 
-    const onMoveChange = useCallback(
-        (amount: number) => {
-            const next = currentMoveIndex + amount;
-            setCurrentMoveIndex(Math.max(0, Math.min(next, moves.length)));
-        },
-        [currentMoveIndex, moves.length, setCurrentMoveIndex]
-    );
-
     useEffect(() => {
         if (boardSize > 19 || boardSize < 2) return;
 
@@ -337,114 +320,20 @@ export default function GoBoard({
         };
     }, [onMoveChange, scrollKeyIsPressed]);
 
-    function handleJumpToComment(direction: "prev" | "next") {
-        if (direction === "prev") {
-            const previous = [...commentedTurns]
-                .reverse()
-                .find((turn) => turn < currentMoveIndex);
-            if (previous) setCurrentMoveIndex(previous);
-            return;
-        }
-        const next = commentedTurns.find((turn) => turn > currentMoveIndex);
-        if (next) setCurrentMoveIndex(next);
-    }
-
     return (
-        <Box
-            sx={{
-                display: "flex",
-                flexDirection: { xs: "column", md: "row" },
-                gap: 2,
-                alignItems: { xs: "center", md: "flex-start" },
-                width: "100%",
-            }}
-        >
-            <Box sx={{ width: "100%", maxWidth: boardCanvasSize }}>
-                <Box
-                    sx={{
-                        flex: "0 0 auto",
-                        width: "100%",
-                        maxWidth: boardCanvasSize,
-                        alignSelf: "flex-start",
-                    }}
-                >
-                    <canvas
-                        ref={canvasRef}
-                        width={boardCanvasSize}
-                        height={boardCanvasSize}
-                        style={{
-                            width: "100%",
-                            height: "auto",
-                            display: "block",
-                            maxWidth: `${boardCanvasSize}px`,
-                            cursor: "pointer",
-                        }}
-                    />
-                </Box>
-
-                <Controls
-                    maxMove={moves.length}
-                    currentMoveIndex={currentMoveIndex}
-                    onMoveChange={onMoveChange}
-                    onJumpToPreviousComment={() => handleJumpToComment("prev")}
-                    onJumpToNextComment={() => handleJumpToComment("next")}
-                    hasPreviousCommentMove={commentedTurns.some(
-                        (turn) => turn < currentMoveIndex
-                    )}
-                    hasNextCommentMove={commentedTurns.some(
-                        (turn) => turn > currentMoveIndex
-                    )}
-                    sx={{
-                        borderRadius: 2,
-                        mt: 1,
-                        width: "100%",
-                        maxWidth: boardCanvasSize,
-                    }}
-                />
-            </Box>
-
-            <Box>
-                <Paper
-                    variant="outlined"
-                    sx={{
-                        flex: 1,
-                        minWidth: { md: 280 },
-                        width: { xs: "100%", md: boardCanvasSize / 3 },
-                        minHeight: { xs: 200, md: boardCanvasSize },
-                        maxHeight: { xs: 350, md: boardCanvasSize },
-                        p: 2,
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 1,
-                        overflow: "hidden",
-                    }}
-                >
-                    <Typography variant="subtitle2" color="text.secondary">
-                        Move {currentMoveIndex} / {moves.length}
-                    </Typography>
-                    <Box
-                        sx={{
-                            flex: 1,
-                            minHeight: 0,
-                            overflowY: "auto",
-                            pr: 0.5,
-                            scrollbarWidth: "none",
-                        }}
-                    >
-                        {currentComment ? (
-                            <Typography variant="body2">
-                                {currentComment}
-                            </Typography>
-                        ) : (
-                            <Typography variant="body2" color="text.secondary">
-                                {currentMoveIndex === 0
-                                    ? "Starting position — no commentary for this turn."
-                                    : "No commentary was generated for this move."}
-                            </Typography>
-                        )}
-                    </Box>
-                </Paper>
-            </Box>
+        <Box sx={{ width: "100%", maxWidth: boardCanvasSize }}>
+            <canvas
+                ref={canvasRef}
+                width={boardCanvasSize}
+                height={boardCanvasSize}
+                style={{
+                    width: "100%",
+                    height: "auto",
+                    display: "block",
+                    maxWidth: `${boardCanvasSize}px`,
+                    cursor: "pointer",
+                }}
+            />
         </Box>
     );
 }

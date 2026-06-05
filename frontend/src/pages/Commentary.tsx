@@ -14,8 +14,7 @@ import {
 
 import api from "@/api";
 import CommentaryConfig from "@/components/commentary/CommentaryConfig";
-import Controls from "@/components/commentary/Controls";
-import GoBoard from "@/components/commentary/GoBoard";
+import GameViewer from "@/components/commentary/GameViewer";
 import { ENDPOINTS } from "@/constants";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
@@ -65,17 +64,6 @@ export default function Commentary() {
     const initialStones = (result?.initial_stones ?? []) as GameMove[];
     const boardSize = result?.board_size ?? 19;
     const [currentMoveIndex, setCurrentMoveIndex] = useState(0);
-    const commentedTurns = useMemo(
-        () =>
-            (result?.comments ?? [])
-                .map((item) => item.turn)
-                .filter((turn, index, arr) => {
-                    const isValidTurn = turn >= 0 && turn <= moves.length;
-                    return isValidTurn && arr.indexOf(turn) === index;
-                })
-                .sort((a, b) => a - b),
-        [result, moves.length]
-    );
 
     function handleFile(uploadedFile: File | undefined) {
         if (!uploadedFile || !isSgfFile(uploadedFile)) {
@@ -155,29 +143,10 @@ export default function Commentary() {
         }
     }
 
-    function handleMoveChange(amount: number) {
-        setCurrentMoveIndex((prev) =>
-            Math.max(0, Math.min(prev + amount, moves.length))
-        );
-    }
-
     function handleNewGame() {
         setResult(null);
         setFile(null);
         setCurrentMoveIndex(0);
-    }
-
-    function handleJumpToComment(direction: "prev" | "next") {
-        if (direction === "prev") {
-            const previous = [...commentedTurns]
-                .reverse()
-                .find((turn) => turn < currentMoveIndex);
-            if (typeof previous === "number") setCurrentMoveIndex(previous);
-            return;
-        }
-
-        const next = commentedTurns.find((turn) => turn > currentMoveIndex);
-        if (typeof next === "number") setCurrentMoveIndex(next);
     }
 
     if (isLoading) {
@@ -223,10 +192,7 @@ export default function Commentary() {
                     <Typography variant="h5" sx={{ fontWeight: 700 }}>
                         Claude API key required
                     </Typography>
-                    <Typography
-                        color="text.secondary"
-                        sx={{ maxWidth: 420 }}
-                    >
+                    <Typography color="text.secondary" sx={{ maxWidth: 420 }}>
                         You skipped setting up your Claude API key. Add it to
                         start generating commentary on your games.
                     </Typography>
@@ -254,29 +220,13 @@ export default function Commentary() {
                         alignItems: "stretch",
                     }}
                 >
-                    <GoBoard
+                    <GameViewer
                         boardSize={boardSize}
                         moves={moves}
                         initialStones={initialStones}
                         comments={commentsByTurn}
                         currentMoveIndex={currentMoveIndex}
                         setCurrentMoveIndex={setCurrentMoveIndex}
-                    />
-                    <Controls
-                        maxMove={moves.length}
-                        currentMoveIndex={currentMoveIndex}
-                        onMoveChange={handleMoveChange}
-                        onJumpToPreviousComment={() =>
-                            handleJumpToComment("prev")
-                        }
-                        onJumpToNextComment={() => handleJumpToComment("next")}
-                        hasPreviousCommentMove={commentedTurns.some(
-                            (turn) => turn < currentMoveIndex
-                        )}
-                        hasNextCommentMove={commentedTurns.some(
-                            (turn) => turn > currentMoveIndex
-                        )}
-                        sx={{ borderRadius: 2, mt: 1 }}
                     />
                     <Box
                         sx={{

@@ -1,20 +1,52 @@
+import type { ReactNode } from "react";
+
 import ArrowBackIosIcon from "@mui/icons-material/ArrowBackIos";
 import ArrowForwardIosIcon from "@mui/icons-material/ArrowForwardIos";
 import FastForwardIcon from "@mui/icons-material/FastForward";
 import FastRewindIcon from "@mui/icons-material/FastRewind";
 import SkipNextIcon from "@mui/icons-material/SkipNext";
 import SkipPreviousIcon from "@mui/icons-material/SkipPrevious";
+import IconButton from "@mui/material/IconButton";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import type { SxProps, Theme } from "@mui/material/styles";
 
+import placeStoneSoundInstance from "@/assets/sounds/placeStoneSoundInstance";
 import { FAST_FORWARD_AMOUNT } from "@/constants/go/controls";
 
-import ControlMoveButton from "./ControlMoveButton";
+function ControlMoveButton({
+    icon,
+    label,
+    amount,
+    onMoveChange,
+    disabled,
+}: {
+    icon: ReactNode;
+    label: string;
+    amount: number;
+    onMoveChange: (amount: number) => void;
+    disabled: boolean;
+}) {
+    return (
+        <span>
+            <IconButton
+                disabled={disabled}
+                aria-label={label}
+                onClick={() => {
+                    placeStoneSoundInstance.currentTime = 0;
+                    void placeStoneSoundInstance.play();
+                    onMoveChange(amount);
+                }}
+            >
+                {icon}
+            </IconButton>
+        </span>
+    );
+}
 
-const Controls = ({
+export default function Controls({
     maxMove,
     currentMoveIndex,
     onMoveChange,
@@ -32,7 +64,7 @@ const Controls = ({
     hasPreviousCommentMove?: boolean;
     hasNextCommentMove?: boolean;
     sx?: SxProps<Theme>;
-}) => {
+}) {
     return (
         <Paper
             sx={[
@@ -185,6 +217,4 @@ const Controls = ({
             </Stack>
         </Paper>
     );
-};
-
-export default Controls;
+}

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 
 import { DEMO_DATA } from "@/constants";
 
-import GoBoard from "../commentary/GoBoard";
+import GameViewer from "../commentary/GameViewer";
 
 export default function Demo({
     boardCanvasSize,
@@ -23,7 +23,7 @@ export default function Demo({
     const [currentMoveIndex, setCurrentMoveIndex] = useState(commentedTurns[0]);
 
     return (
-        <GoBoard
+        <GameViewer
             boardSize={DEMO_DATA.board_size}
             boardCanvasSize={boardCanvasSize}
             moves={DEMO_DATA.moves}

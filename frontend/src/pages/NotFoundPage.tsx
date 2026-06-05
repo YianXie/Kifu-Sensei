@@ -123,7 +123,7 @@ export default function NotFound() {
                     <Button
                         variant="contained"
                         size="large"
-                        onClick={() => navigate("/home")}
+                        onClick={() => navigate("/")}
                     >
                         Back to home
                     </Button>
