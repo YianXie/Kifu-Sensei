@@ -56,7 +56,10 @@ export default function Login() {
                     minHeight: "80vh",
                 }}
             >
-                <Typography variant="h4" fontWeight={700} textAlign="center">
+                <Typography
+                    variant="h4"
+                    sx={{ fontWeight: 700, textAlign: "center" }}
+                >
                     Log In
                 </Typography>
 
@@ -98,9 +101,9 @@ export default function Login() {
                 </Box>
 
                 <Typography
-                    textAlign="center"
                     variant="body2"
                     color="text.secondary"
+                    sx={{ textAlign: "center" }}
                 >
                     Don&apos;t have an account?{" "}
                     <Link

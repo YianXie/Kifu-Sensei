@@ -76,7 +76,10 @@ export default function Register() {
                     minHeight: "80vh",
                 }}
             >
-                <Typography variant="h4" fontWeight={700} textAlign="center">
+                <Typography
+                    variant="h4"
+                    sx={{ fontWeight: 700, textAlign: "center" }}
+                >
                     Create Account
                 </Typography>
 
@@ -104,7 +107,7 @@ export default function Register() {
                         onChange={(e) => setPassword(e.target.value)}
                         required
                         fullWidth
-                        inputProps={{ minLength: 8 }}
+                        slotProps={{ htmlInput: { minLength: 8 } }}
                         autoComplete="new-password"
                     />
                     <TextField
@@ -128,9 +131,9 @@ export default function Register() {
                 </Box>
 
                 <Typography
-                    textAlign="center"
                     variant="body2"
                     color="text.secondary"
+                    sx={{ textAlign: "center" }}
                 >
                     Already have an account?{" "}
                     <Link

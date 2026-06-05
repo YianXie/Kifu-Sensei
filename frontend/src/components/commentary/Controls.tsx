@@ -10,9 +10,9 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import type { SxProps, Theme } from "@mui/material/styles";
 
-import ControlMoveButton from "./ControlMoveButton";
+import { FAST_FORWARD_AMOUNT } from "@/constants/go/controls";
 
-const FAST_FORWARD_AMOUNT = 5;
+import ControlMoveButton from "./ControlMoveButton";
 
 const Controls = ({
     maxMove,
@@ -40,10 +40,20 @@ const Controls = ({
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    gap: 1,
-                    p: 1,
+                    containerType: "inline-size",
+                    gap: "clamp(1px, 1cqw, 8px)",
+                    p: "clamp(3px, 1.5cqw, 8px)",
                     borderRadius: "0 0 12px 12px",
-                    flexWrap: "wrap",
+                    flexWrap: "nowrap",
+                    overflow: "hidden",
+                    "& .MuiIconButton-root": {
+                        width: "clamp(20px, 9cqw, 40px)",
+                        height: "clamp(20px, 9cqw, 40px)",
+                        p: 0,
+                    },
+                    "& .MuiSvgIcon-root": {
+                        fontSize: "clamp(0.875rem, 5cqw, 1.5rem)",
+                    },
                 },
                 ...(Array.isArray(sxOverride)
                     ? sxOverride
@@ -52,7 +62,14 @@ const Controls = ({
                       : []),
             ]}
         >
-            <Stack direction="row" spacing={0.5} sx={{ ml: "auto" }}>
+            <Stack
+                direction="row"
+                sx={{
+                    gap: "clamp(1px, 1cqw, 4px)",
+                    ml: "auto",
+                    minWidth: 0,
+                }}
+            >
                 <ControlMoveButton
                     amount={-maxMove}
                     icon={<SkipPreviousIcon />}
@@ -102,15 +119,23 @@ const Controls = ({
             <Typography
                 variant="body2"
                 sx={{
-                    minWidth: 40,
+                    minWidth: "clamp(20px, 8cqw, 40px)",
                     textAlign: "center",
                     fontWeight: 500,
+                    flexShrink: 0,
                 }}
             >
                 {currentMoveIndex}
             </Typography>
 
-            <Stack direction="row" spacing={0.5} sx={{ mr: "auto" }}>
+            <Stack
+                direction="row"
+                sx={{
+                    gap: "clamp(1px, 1cqw, 4px)",
+                    mr: "auto",
+                    minWidth: 0,
+                }}
+            >
                 <Tooltip
                     title="Jump to next move with commentary"
                     placement="top"

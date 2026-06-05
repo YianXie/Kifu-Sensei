@@ -103,9 +103,8 @@ function NavDrawerContent({
                 />
                 <Typography
                     variant="h6"
-                    fontWeight={700}
-                    lineHeight={1.15}
                     color="text.primary"
+                    sx={{ fontWeight: 700, lineHeight: 1.15 }}
                 >
                     Kifu-Sensei
                 </Typography>

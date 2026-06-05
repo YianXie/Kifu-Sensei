@@ -1,0 +1,1 @@
+export const DEFAULT_BOARD_CANVAS_SIZE = 800;

@@ -102,14 +102,18 @@ export default function NotFound() {
                     Error 404
                 </Typography>
 
-                <Typography variant="h4" component="h1" fontWeight={700}>
+                <Typography
+                    variant="h4"
+                    component="h1"
+                    sx={{ fontWeight: 700 }}
+                >
                     Page not found
                 </Typography>
 
                 <Typography
                     variant="body1"
                     color="text.secondary"
-                    maxWidth={420}
+                    sx={{ maxWidth: 420 }}
                 >
                     That URL isn&apos;t part of Kifu-Sensei—like a move outside
                     the board lines. Double-check the address or head back home.

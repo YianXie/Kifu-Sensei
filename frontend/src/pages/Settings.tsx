@@ -226,11 +226,11 @@ export default function Settings() {
     }
 
     return (
-        <Box maxWidth={560}>
-            <Typography variant="h4" fontWeight={700} mb={1}>
+        <Box sx={{ maxWidth: 560 }}>
+            <Typography variant="h4" sx={{ mb: 1, fontWeight: 700 }}>
                 Settings
             </Typography>
-            <Typography color="text.secondary" mb={3}>
+            <Typography color="text.secondary" sx={{ mb: 3 }}>
                 {user?.email}
             </Typography>
 
@@ -247,7 +247,7 @@ export default function Settings() {
             {/* Account */}
             {tab === 0 && (
                 <Box>
-                    <Typography variant="h6" fontWeight={600} mb={2}>
+                    <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
                         Update Email
                     </Typography>
                     {emailError && (
@@ -292,7 +292,7 @@ export default function Settings() {
 
                     <Divider sx={{ my: 4 }} />
 
-                    <Typography variant="h6" fontWeight={600} mb={2}>
+                    <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
                         Update Password
                     </Typography>
                     {passwordError && (
@@ -325,7 +325,7 @@ export default function Settings() {
                             onChange={(e) => setNewPassword(e.target.value)}
                             required
                             fullWidth
-                            inputProps={{ minLength: 8 }}
+                            slotProps={{ htmlInput: { minLength: 8 } }}
                         />
                         <TextField
                             label="Confirm New Password"
@@ -348,9 +348,8 @@ export default function Settings() {
 
                     <Typography
                         variant="h6"
-                        fontWeight={600}
-                        mb={2}
                         color="error"
+                        sx={{ mb: 2, fontWeight: 600 }}
                     >
                         Danger Zone
                     </Typography>
@@ -381,7 +380,7 @@ export default function Settings() {
             {/* Default Commentary Config */}
             {tab === 1 && (
                 <Box>
-                    <Typography color="text.secondary" mb={2}>
+                    <Typography color="text.secondary" sx={{ mb: 2 }}>
                         These values are used as the defaults on the Commentary
                         page.
                     </Typography>
@@ -414,7 +413,7 @@ export default function Settings() {
             {/* Miscellaneous */}
             {tab === 2 && (
                 <Box>
-                    <Typography variant="h6" fontWeight={600} mb={2}>
+                    <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
                         Theme
                     </Typography>
                     {themeError && (
@@ -455,10 +454,10 @@ export default function Settings() {
 
                     <Divider sx={{ my: 4 }} />
 
-                    <Typography variant="h6" fontWeight={600} mb={1}>
+                    <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
                         Claude API Key
                     </Typography>
-                    <Typography color="text.secondary" mb={2}>
+                    <Typography color="text.secondary" sx={{ mb: 2 }}>
                         {hasClaudeApiKey
                             ? "A Claude API key is set. You can update it with a new key at any time."
                             : "No Claude API key is set yet. Add one to start generating commentary."}

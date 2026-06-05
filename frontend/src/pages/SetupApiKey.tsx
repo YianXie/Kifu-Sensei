@@ -81,10 +81,10 @@ export default function SetupApiKey() {
                         color="primary"
                         sx={{ fontSize: 48, mb: 1 }}
                     />
-                    <Typography variant="h4" fontWeight={700}>
+                    <Typography variant="h4" sx={{ fontWeight: 700 }}>
                         Add your Claude API key
                     </Typography>
-                    <Typography color="text.secondary" mt={1}>
+                    <Typography color="text.secondary" sx={{ mt: 1 }}>
                         Kifu-Sensei uses Claude to write commentary on your
                         games. Your key is encrypted before it&apos;s stored and
                         is never shared.
@@ -134,9 +134,9 @@ export default function SetupApiKey() {
                 </Box>
 
                 <Typography
-                    textAlign="center"
                     variant="body2"
                     color="text.secondary"
+                    sx={{ textAlign: "center" }}
                 >
                     Don&apos;t have a key yet?{" "}
                     <MuiLink

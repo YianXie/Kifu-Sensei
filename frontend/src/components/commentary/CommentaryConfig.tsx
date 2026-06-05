@@ -68,7 +68,7 @@ export default function CommentaryConfig({
         >
             <Stack spacing={3}>
                 <Box>
-                    <Typography variant="h6" fontWeight={700}>
+                    <Typography variant="h6" sx={{ fontWeight: 700 }}>
                         Commentary Configuration
                     </Typography>
                     <Typography variant="body2" color="text.secondary">

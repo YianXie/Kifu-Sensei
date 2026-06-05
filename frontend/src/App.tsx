@@ -11,8 +11,8 @@ import {
 import ProtectedRoute from "@/components/global/ProtectedRoute";
 import Layout from "@/components/layout/Layout";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import About from "@/pages/About";
 import Commentary from "@/pages/Commentary";
+import Home from "@/pages/Home";
 import Login from "@/pages/Login";
 import NotFound from "@/pages/NotFoundPage";
 import Register from "@/pages/Register";
@@ -60,7 +60,7 @@ function ThemedApp() {
             <CssBaseline />
             <Routes>
                 <Route element={<Layout />}>
-                    <Route path="/about" element={<About />} />
+                    <Route path="/" element={<Home />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/register" element={<Register />} />
 
@@ -72,8 +72,8 @@ function ThemedApp() {
                         />
                     </Route>
 
-                    <Route element={<ProtectedRoute customRedirect="/about" />}>
-                        <Route path="/" element={<Commentary />} />
+                    <Route element={<ProtectedRoute customRedirect="/" />}>
+                        <Route path="/commentary" element={<Commentary />} />
                     </Route>
 
                     <Route path="*" element={<NotFound />} />

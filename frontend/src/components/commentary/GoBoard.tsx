@@ -6,31 +6,34 @@ import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
 
+import Controls from "@/components/commentary/Controls";
 import { GTP_LETTERS } from "@/constants";
+import { DEFAULT_BOARD_CANVAS_SIZE } from "@/constants/go/goBoard";
 import { type GameMove, isValidMove } from "@/types/game";
-
-const CANVAS_SIZE = 800;
-const PADDING = 50;
 
 type GoBoardProps = {
     boardSize: number;
+    boardCanvasSize?: number;
     moves: GameMove[];
     initialStones?: GameMove[];
-    commentsByTurn: Record<number, string>;
+    comments: Record<number, string>;
     currentMoveIndex: number;
-    onMoveIndexChange: (index: number) => void;
+    setCurrentMoveIndex: (index: number) => void;
 };
 
 export default function GoBoard({
     boardSize,
+    boardCanvasSize = DEFAULT_BOARD_CANVAS_SIZE,
     moves,
     initialStones = [],
-    commentsByTurn,
+    comments,
     currentMoveIndex,
-    onMoveIndexChange,
+    setCurrentMoveIndex,
 }: GoBoardProps) {
-    const margin = (CANVAS_SIZE - PADDING * 2) / (boardSize - 1);
+    const padding = boardCanvasSize * 0.0625;
+    const margin = (boardCanvasSize - padding * 2) / (boardSize - 1);
     const stoneRadius = margin / 2;
+    const fontSize = stoneRadius * 0.75;
 
     const gameRef = useRef(Board.fromDimensions(boardSize));
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -39,22 +42,18 @@ export default function GoBoard({
     );
     const [scrollKeyIsPressed, setScrollKeyIsPressed] = useState(false);
 
-    const currentComment = commentsByTurn[currentMoveIndex] ?? null;
+    const commentedTurns = Object.keys(comments).map((turn) => parseInt(turn));
+    const currentComment = comments[currentMoveIndex] ?? null;
 
-    const onMoveChange = useCallback(
-        (amount: number) => {
-            const next = currentMoveIndex + amount;
-            onMoveIndexChange(Math.max(0, Math.min(next, moves.length)));
+    const boardToCanvasCoords = useCallback(
+        (row: number, col: number) => {
+            return [
+                margin * col + padding,
+                (boardSize - row - 1) * margin + padding,
+            ] as const;
         },
-        [currentMoveIndex, moves.length, onMoveIndexChange]
+        [boardSize, margin, padding]
     );
-
-    const boardToCanvasCoords = (row: number, col: number) => {
-        return [
-            margin * col + PADDING,
-            (boardSize - row - 1) * margin + PADDING,
-        ] as const;
-    };
 
     const buildBoardAtMove = useCallback(
         (moveIndex: number) => {
@@ -80,136 +79,173 @@ export default function GoBoard({
         [boardSize, initialStones, moves]
     );
 
-    const drawBoard = (canvasContext: CanvasRenderingContext2D) => {
-        canvasContext.fillStyle = "#DCB35C";
-        canvasContext.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+    const drawBoard = useCallback(
+        (canvasContext: CanvasRenderingContext2D) => {
+            canvasContext.fillStyle = "#DCB35C";
+            canvasContext.fillRect(0, 0, boardCanvasSize, boardCanvasSize);
 
-        for (let i = 0; i < boardSize; i++) {
-            canvasContext.strokeStyle = "#333";
-            canvasContext.lineWidth =
-                i === 0 || i === boardSize - 1 ? 1.25 : 0.75;
+            for (let i = 0; i < boardSize; i++) {
+                canvasContext.strokeStyle = "#333";
+                canvasContext.lineWidth =
+                    i === 0 || i === boardSize - 1 ? 1.25 : 0.75;
 
-            canvasContext.beginPath();
-            canvasContext.moveTo(PADDING + margin * i, PADDING);
-            canvasContext.lineTo(PADDING + margin * i, CANVAS_SIZE - PADDING);
-            canvasContext.moveTo(PADDING, PADDING + margin * i);
-            canvasContext.lineTo(CANVAS_SIZE - PADDING, PADDING + margin * i);
-            canvasContext.stroke();
-            canvasContext.closePath();
+                canvasContext.beginPath();
+                canvasContext.moveTo(padding + margin * i, padding);
+                canvasContext.lineTo(
+                    padding + margin * i,
+                    boardCanvasSize - padding
+                );
+                canvasContext.moveTo(padding, padding + margin * i);
+                canvasContext.lineTo(
+                    boardCanvasSize - padding,
+                    padding + margin * i
+                );
+                canvasContext.stroke();
+                canvasContext.closePath();
 
-            if (boardSize === 19 && [3, 9, 15].includes(i)) {
-                for (let x = 0; x < 3; x++) {
-                    canvasContext.beginPath();
-                    canvasContext.arc(
-                        PADDING + margin * i,
-                        PADDING + margin * 3 + margin * 6 * x,
-                        stoneRadius / 4,
-                        0,
-                        2 * Math.PI
-                    );
-                    canvasContext.fillStyle = "#333";
-                    canvasContext.fill();
-                    canvasContext.closePath();
+                if (boardSize === 19 && [3, 9, 15].includes(i)) {
+                    for (let x = 0; x < 3; x++) {
+                        canvasContext.beginPath();
+                        canvasContext.arc(
+                            padding + margin * i,
+                            padding + margin * 3 + margin * 6 * x,
+                            stoneRadius / 4,
+                            0,
+                            2 * Math.PI
+                        );
+                        canvasContext.fillStyle = "#333";
+                        canvasContext.fill();
+                        canvasContext.closePath();
+                    }
                 }
             }
-        }
-    };
+        },
+        [boardCanvasSize, boardSize, margin, padding, stoneRadius]
+    );
 
-    const drawCoords = (canvasContext: CanvasRenderingContext2D) => {
-        canvasContext.font = "15px Arial";
-        canvasContext.textBaseline = "middle";
-        canvasContext.textAlign = "center";
-        canvasContext.fillStyle = "#222";
+    const drawCoords = useCallback(
+        (canvasContext: CanvasRenderingContext2D) => {
+            canvasContext.font = `${fontSize}px Arial`;
+            canvasContext.textBaseline = "middle";
+            canvasContext.textAlign = "center";
+            canvasContext.fillStyle = "#222";
 
-        for (let i = 0; i < boardSize; i++) {
-            const letter = GTP_LETTERS[i] ?? String(i + 1);
-            canvasContext.fillText(
-                letter,
-                PADDING + margin * i,
-                CANVAS_SIZE - PADDING / 2
-            );
-            canvasContext.fillText(letter, PADDING + margin * i, PADDING / 2);
-            canvasContext.fillText(
-                String(i + 1),
-                CANVAS_SIZE - PADDING / 2,
-                CANVAS_SIZE - PADDING - margin * i
-            );
-            canvasContext.fillText(
-                String(i + 1),
-                PADDING / 2,
-                CANVAS_SIZE - PADDING - margin * i
-            );
-        }
-    };
+            for (let i = 0; i < boardSize; i++) {
+                const letter = GTP_LETTERS[i] ?? String(i + 1);
+                canvasContext.fillText(
+                    letter,
+                    padding + margin * i,
+                    boardCanvasSize - padding / 2
+                );
+                canvasContext.fillText(
+                    letter,
+                    padding + margin * i,
+                    padding / 2
+                );
+                canvasContext.fillText(
+                    String(i + 1),
+                    boardCanvasSize - padding / 2,
+                    boardCanvasSize - padding - margin * i
+                );
+                canvasContext.fillText(
+                    String(i + 1),
+                    padding / 2,
+                    boardCanvasSize - padding - margin * i
+                );
+            }
+        },
+        [boardCanvasSize, boardSize, fontSize, margin, padding]
+    );
 
-    const drawStone = (
-        canvasContext: CanvasRenderingContext2D,
-        row: number,
-        col: number,
-        color: string,
-        highlight = false
-    ) => {
-        const [canvasX, canvasY] = boardToCanvasCoords(row, col);
-        canvasContext.fillStyle = color;
-        canvasContext.beginPath();
-        canvasContext.arc(canvasX, canvasY, stoneRadius - 2, 0, 2 * Math.PI);
-        canvasContext.stroke();
-        canvasContext.fill();
-        canvasContext.closePath();
-
-        if (highlight) {
+    const drawStone = useCallback(
+        (
+            canvasContext: CanvasRenderingContext2D,
+            row: number,
+            col: number,
+            color: string,
+            highlight = false
+        ) => {
+            const [canvasX, canvasY] = boardToCanvasCoords(row, col);
+            canvasContext.fillStyle = color;
             canvasContext.beginPath();
             canvasContext.arc(
                 canvasX,
                 canvasY,
-                stoneRadius / 4,
+                stoneRadius - 2,
                 0,
                 2 * Math.PI
             );
-            canvasContext.fillStyle = "red";
+            canvasContext.stroke();
             canvasContext.fill();
             canvasContext.closePath();
-        }
-    };
 
-    const drawStones = (canvasContext: CanvasRenderingContext2D) => {
-        const lastMove =
-            currentMoveIndex > 0 ? moves[currentMoveIndex - 1] : null;
-        let lastMoveCoords: [number, number] | null = null;
-        if (lastMove && isValidMove(lastMove)) {
-            const [, [row, col]] = lastMove;
-            lastMoveCoords = [row, col];
-        }
-
-        const board = gameRef.current;
-        for (let row = 0; row < board.signMap.length; row++) {
-            for (let col = 0; col < board.signMap[row].length; col++) {
-                const sign = board.get([row, col]);
-                if (sign === 0 || sign === null) continue;
-
-                const isHighlighted =
-                    lastMoveCoords !== null &&
-                    lastMoveCoords[0] === row &&
-                    lastMoveCoords[1] === col;
-
-                drawStone(
-                    canvasContext,
-                    row,
-                    col,
-                    sign === 1 ? "black" : "white",
-                    isHighlighted
+            if (highlight) {
+                canvasContext.beginPath();
+                canvasContext.arc(
+                    canvasX,
+                    canvasY,
+                    stoneRadius / 4,
+                    0,
+                    2 * Math.PI
                 );
+                canvasContext.fillStyle = "red";
+                canvasContext.fill();
+                canvasContext.closePath();
             }
-        }
-    };
+        },
+        [boardToCanvasCoords, stoneRadius]
+    );
 
-    const redrawBoardAndStones = (
-        canvasContext: CanvasRenderingContext2D | null
-    ) => {
-        if (!canvasRef.current || !boardImageData || !canvasContext) return;
-        canvasContext.putImageData(boardImageData, 0, 0);
-        drawStones(canvasContext);
-    };
+    const drawStones = useCallback(
+        (canvasContext: CanvasRenderingContext2D) => {
+            const lastMove =
+                currentMoveIndex > 0 ? moves[currentMoveIndex - 1] : null;
+            let lastMoveCoords: [number, number] | null = null;
+            if (lastMove && isValidMove(lastMove)) {
+                const [, [row, col]] = lastMove;
+                lastMoveCoords = [row, col];
+            }
+
+            const board = gameRef.current;
+            for (let row = 0; row < board.signMap.length; row++) {
+                for (let col = 0; col < board.signMap[row].length; col++) {
+                    const sign = board.get([row, col]);
+                    if (sign === 0 || sign === null) continue;
+
+                    const isHighlighted =
+                        lastMoveCoords !== null &&
+                        lastMoveCoords[0] === row &&
+                        lastMoveCoords[1] === col;
+
+                    drawStone(
+                        canvasContext,
+                        row,
+                        col,
+                        sign === 1 ? "black" : "white",
+                        isHighlighted
+                    );
+                }
+            }
+        },
+        [currentMoveIndex, drawStone, moves]
+    );
+
+    const redrawBoardAndStones = useCallback(
+        (canvasContext: CanvasRenderingContext2D | null) => {
+            if (!canvasRef.current || !boardImageData || !canvasContext) return;
+            canvasContext.putImageData(boardImageData, 0, 0);
+            drawStones(canvasContext);
+        },
+        [boardImageData, drawStones]
+    );
+
+    const onMoveChange = useCallback(
+        (amount: number) => {
+            const next = currentMoveIndex + amount;
+            setCurrentMoveIndex(Math.max(0, Math.min(next, moves.length)));
+        },
+        [currentMoveIndex, moves.length, setCurrentMoveIndex]
+    );
 
     useEffect(() => {
         if (boardSize > 19 || boardSize < 2) return;
@@ -223,8 +259,8 @@ export default function GoBoard({
         if (!canvasContext) return;
 
         const devicePixelRatio = window.devicePixelRatio || 1;
-        canvas.width = CANVAS_SIZE * devicePixelRatio;
-        canvas.height = CANVAS_SIZE * devicePixelRatio;
+        canvas.width = boardCanvasSize * devicePixelRatio;
+        canvas.height = boardCanvasSize * devicePixelRatio;
         canvasContext.scale(devicePixelRatio, devicePixelRatio);
 
         drawBoard(canvasContext);
@@ -233,24 +269,23 @@ export default function GoBoard({
             canvasContext.getImageData(
                 0,
                 0,
-                CANVAS_SIZE * devicePixelRatio,
-                CANVAS_SIZE * devicePixelRatio
+                boardCanvasSize * devicePixelRatio,
+                boardCanvasSize * devicePixelRatio
             )
         );
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [boardSize]);
+    }, [boardCanvasSize, boardSize, drawBoard, drawCoords]);
 
     useEffect(() => {
         gameRef.current = buildBoardAtMove(currentMoveIndex);
         const canvasContext = canvasRef.current?.getContext("2d") ?? null;
         redrawBoardAndStones(canvasContext);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
         currentMoveIndex,
         moves,
         initialStones,
         boardImageData,
         buildBoardAtMove,
+        redrawBoardAndStones,
     ]);
 
     useEffect(() => {
@@ -302,80 +337,114 @@ export default function GoBoard({
         };
     }, [onMoveChange, scrollKeyIsPressed]);
 
+    function handleJumpToComment(direction: "prev" | "next") {
+        if (direction === "prev") {
+            const previous = [...commentedTurns]
+                .reverse()
+                .find((turn) => turn < currentMoveIndex);
+            if (previous) setCurrentMoveIndex(previous);
+            return;
+        }
+        const next = commentedTurns.find((turn) => turn > currentMoveIndex);
+        if (next) setCurrentMoveIndex(next);
+    }
+
     return (
         <Box
             sx={{
                 display: "flex",
                 flexDirection: { xs: "column", md: "row" },
                 gap: 2,
-                alignItems: { xs: "flex-start", md: "stretch" },
+                alignItems: { xs: "center", md: "flex-start" },
                 width: "100%",
             }}
         >
-            <Box
-                sx={{
-                    flex: "0 0 auto",
-                    width: "100%",
-                    maxWidth: CANVAS_SIZE,
-                    alignSelf: "flex-start",
-                }}
-            >
-                <canvas
-                    ref={canvasRef}
-                    width={CANVAS_SIZE}
-                    height={CANVAS_SIZE}
-                    style={{
+            <Box sx={{ width: "100%", maxWidth: boardCanvasSize }}>
+                <Box
+                    sx={{
+                        flex: "0 0 auto",
                         width: "100%",
-                        height: "auto",
-                        display: "block",
-                        maxWidth: `${CANVAS_SIZE}px`,
-                        cursor: "pointer",
+                        maxWidth: boardCanvasSize,
+                        alignSelf: "flex-start",
+                    }}
+                >
+                    <canvas
+                        ref={canvasRef}
+                        width={boardCanvasSize}
+                        height={boardCanvasSize}
+                        style={{
+                            width: "100%",
+                            height: "auto",
+                            display: "block",
+                            maxWidth: `${boardCanvasSize}px`,
+                            cursor: "pointer",
+                        }}
+                    />
+                </Box>
+
+                <Controls
+                    maxMove={moves.length}
+                    currentMoveIndex={currentMoveIndex}
+                    onMoveChange={onMoveChange}
+                    onJumpToPreviousComment={() => handleJumpToComment("prev")}
+                    onJumpToNextComment={() => handleJumpToComment("next")}
+                    hasPreviousCommentMove={commentedTurns.some(
+                        (turn) => turn < currentMoveIndex
+                    )}
+                    hasNextCommentMove={commentedTurns.some(
+                        (turn) => turn > currentMoveIndex
+                    )}
+                    sx={{
+                        borderRadius: 2,
+                        mt: 1,
+                        width: "100%",
+                        maxWidth: boardCanvasSize,
                     }}
                 />
-                <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ display: "block", mt: 0.5 }}
-                >
-                    Click / → next move · Right-click / ← previous · Cmd/Ctrl +
-                    scroll to step
-                </Typography>
             </Box>
 
-            <Paper
-                variant="outlined"
-                sx={{
-                    flex: 1,
-                    minWidth: { md: 280 },
-                    minHeight: { xs: 200, md: CANVAS_SIZE },
-                    maxHeight: { md: CANVAS_SIZE },
-                    p: 2,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 1,
-                    overflow: "hidden",
-                }}
-            >
-                <Typography variant="subtitle2" color="text.secondary">
-                    Move {currentMoveIndex} / {moves.length}
-                </Typography>
-                <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", pr: 0.5 }}>
-                    {currentComment ? (
-                        <Typography
-                            variant="body1"
-                            sx={{ whiteSpace: "pre-wrap" }}
-                        >
-                            {currentComment}
-                        </Typography>
-                    ) : (
-                        <Typography variant="body2" color="text.secondary">
-                            {currentMoveIndex === 0
-                                ? "Starting position — no commentary for this turn."
-                                : "No commentary was generated for this move."}
-                        </Typography>
-                    )}
-                </Box>
-            </Paper>
+            <Box>
+                <Paper
+                    variant="outlined"
+                    sx={{
+                        flex: 1,
+                        minWidth: { md: 280 },
+                        width: { xs: "100%", md: boardCanvasSize / 3 },
+                        minHeight: { xs: 200, md: boardCanvasSize },
+                        maxHeight: { xs: 350, md: boardCanvasSize },
+                        p: 2,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 1,
+                        overflow: "hidden",
+                    }}
+                >
+                    <Typography variant="subtitle2" color="text.secondary">
+                        Move {currentMoveIndex} / {moves.length}
+                    </Typography>
+                    <Box
+                        sx={{
+                            flex: 1,
+                            minHeight: 0,
+                            overflowY: "auto",
+                            pr: 0.5,
+                            scrollbarWidth: "none",
+                        }}
+                    >
+                        {currentComment ? (
+                            <Typography variant="body2">
+                                {currentComment}
+                            </Typography>
+                        ) : (
+                            <Typography variant="body2" color="text.secondary">
+                                {currentMoveIndex === 0
+                                    ? "Starting position — no commentary for this turn."
+                                    : "No commentary was generated for this move."}
+                            </Typography>
+                        )}
+                    </Box>
+                </Paper>
+            </Box>
         </Box>
     );
 }

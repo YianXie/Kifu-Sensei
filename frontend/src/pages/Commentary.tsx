@@ -220,10 +220,13 @@ export default function Commentary() {
                     }}
                 >
                     <KeyOutlinedIcon color="primary" sx={{ fontSize: 56 }} />
-                    <Typography variant="h5" fontWeight={700}>
+                    <Typography variant="h5" sx={{ fontWeight: 700 }}>
                         Claude API key required
                     </Typography>
-                    <Typography color="text.secondary" maxWidth={420}>
+                    <Typography
+                        color="text.secondary"
+                        sx={{ maxWidth: 420 }}
+                    >
                         You skipped setting up your Claude API key. Add it to
                         start generating commentary on your games.
                     </Typography>
@@ -255,9 +258,9 @@ export default function Commentary() {
                         boardSize={boardSize}
                         moves={moves}
                         initialStones={initialStones}
-                        commentsByTurn={commentsByTurn}
+                        comments={commentsByTurn}
                         currentMoveIndex={currentMoveIndex}
-                        onMoveIndexChange={setCurrentMoveIndex}
+                        setCurrentMoveIndex={setCurrentMoveIndex}
                     />
                     <Controls
                         maxMove={moves.length}
@@ -356,8 +359,7 @@ export default function Commentary() {
                         <Typography
                             variant="body2"
                             color="text.secondary"
-                            textAlign="center"
-                            px={2}
+                            sx={{ px: 2, textAlign: "center" }}
                         >
                             {isDragOver
                                 ? "Drop .sgf file here"
