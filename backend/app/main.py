@@ -3,7 +3,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqladmin import Admin, ModelView
-from starlette.middleware.sessions import SessionMiddleware
 
 from app.admin_auth import AdminAuth
 from app.config import settings
@@ -24,7 +23,6 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="Kifu-Sensei API", version="0.1.0", lifespan=lifespan)
 admin = Admin(app, engine, authentication_backend=AdminAuth(secret_key=settings.secret_key))
 
-app.add_middleware(SessionMiddleware, secret_key=settings.secret_key)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
