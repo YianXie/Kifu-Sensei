@@ -8,7 +8,8 @@ export type ClaudeModel =
 export type CommentaryLanguage =
     | "english"
     | "chinese (simplified)"
-    | "japanese";
+    | "japanese"
+    | "korean";
 
 export type CommentaryConfigValues = {
     model: ClaudeModel;

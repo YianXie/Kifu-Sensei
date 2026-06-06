@@ -128,6 +128,7 @@ export default function CommentaryConfig({
                                 Chinese (simplified)
                             </MenuItem>
                             <MenuItem value="japanese">Japanese</MenuItem>
+                            <MenuItem value="korean">Korean</MenuItem>
                         </Select>
                         <FormHelperText>
                             Select a language based on your preference.
