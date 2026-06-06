@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, Column
+from sqlalchemy import JSON, Column, ForeignKey
 from sqlmodel import Field, SQLModel
 
 DEFAULT_USER_PREFERENCES: dict = {
@@ -45,6 +45,7 @@ class Commentary(SQLModel, table=True):
     __tablename__ = "commentaries"
 
     id: int | None = Field(default=None, primary_key=True)
+    user_id: int = Field(ForeignKey("users.id"))
     board_size: int = Field(default=19)
     moves: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     initial_stones: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False))

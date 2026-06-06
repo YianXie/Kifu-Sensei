@@ -47,6 +47,7 @@ class UserAdmin(ModelView, model=User):
 class CommentaryAdmin(ModelView, model=Commentary):
     column_list = [
         Commentary.id,
+        Commentary.user_id,
         Commentary.board_size,
         Commentary.moves,
         Commentary.initial_stones,

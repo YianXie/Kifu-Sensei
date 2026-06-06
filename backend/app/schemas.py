@@ -23,6 +23,9 @@ class UserPublic(BaseModel):
     preferences: dict
     has_claude_api_key: bool = False
 
+    class Config:
+        form_attributes = True
+
 
 class TokenPairResponse(BaseModel):
     access: str

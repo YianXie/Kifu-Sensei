@@ -2,7 +2,8 @@ import logging
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.deps import CurrentUser
+from app.deps import CurrentUser, SessionDep
+from app.models import Commentary
 from app.schemas import GenerateCommentaryRequest, GenerateCommentaryResponse
 from app.services.katago import generate_commentary
 
@@ -17,7 +18,11 @@ def health() -> dict[str, str]:
 
 
 @router.post("/commentary/", response_model=GenerateCommentaryResponse)
-def commentary(payload: GenerateCommentaryRequest, user: CurrentUser) -> GenerateCommentaryResponse:
+def commentary(
+    payload: GenerateCommentaryRequest,
+    user: CurrentUser,
+    session: SessionDep,
+) -> GenerateCommentaryResponse:
     try:
         commentary = generate_commentary(
             payload.sgf_content,
@@ -28,6 +33,17 @@ def commentary(payload: GenerateCommentaryRequest, user: CurrentUser) -> Generat
             max_token=payload.max_token,
             custom_instruction=payload.custom_instruction,
         )
+        session.add(
+            Commentary(
+                user_id=user.id,
+                board_size=commentary["board_size"],
+                moves=commentary["moves"],
+                initial_stones=commentary["initial_stones"],
+                comments=commentary["comments"],
+                annotated_sgf_content=commentary["annotated_sgf_content"],
+            )
+        )
+        session.commit()
         return commentary
     except Exception as exc:
         logger.exception("Failed to generate commentary")
