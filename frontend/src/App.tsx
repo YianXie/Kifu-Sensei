@@ -19,6 +19,7 @@ import Register from "@/pages/Register";
 import Settings from "@/pages/Settings";
 import SetupApiKey from "@/pages/SetupApiKey";
 
+import History from "./pages/History";
 import Logout from "./pages/Logout";
 
 function ThemedApp() {
@@ -69,6 +70,7 @@ function ThemedApp() {
                     <Route element={<ProtectedRoute />}>
                         <Route path="/commentary" element={<Commentary />} />
                         <Route path="/settings" element={<Settings />} />
+                        <Route path="/history" element={<History />} />
                         <Route
                             path="/setup-api-key"
                             element={<SetupApiKey />}

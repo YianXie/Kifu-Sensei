@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Link as RouterLink } from "react-router-dom";
 
+import { AccountCircle } from "@mui/icons-material";
 import CommentIcon from "@mui/icons-material/Comment";
+import HistoryIcon from "@mui/icons-material/History";
 import LoginIcon from "@mui/icons-material/Login";
 import LogoutIcon from "@mui/icons-material/Logout";
 import MenuIcon from "@mui/icons-material/Menu";
@@ -17,6 +19,8 @@ import {
     ListItem,
     ListItemButton,
     ListItemIcon,
+    Menu,
+    MenuItem,
     Toolbar,
     Typography,
     useMediaQuery,
@@ -29,11 +33,12 @@ export default function Navbar() {
     const { isAuthenticated } = useAuth();
 
     const [drawerOpen, setDrawerOpen] = useState(false);
+    const [authAnchorEl, setAuthAnchorEl] = useState<HTMLElement | null>(null);
 
     const theme = useTheme();
     const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
-    const navLeft = [
+    const navItems = [
         {
             label: "Commentary",
             to: "/commentary",
@@ -41,19 +46,25 @@ export default function Navbar() {
             icon: <CommentIcon />,
         },
     ];
-    const navRight = [
+    const authItems = [
         {
             label: "Settings",
             to: "/settings",
             protected: true,
             icon: <SettingsIcon />,
         },
+        {
+            label: "History",
+            to: "/history",
+            protected: true,
+            icon: <HistoryIcon />,
+        },
     ];
 
     const drawerContent = (
         <Box>
             <List sx={{ px: 2 }}>
-                {[...navLeft, ...navRight]
+                {[...navItems, ...authItems]
                     .filter((item) => isAuthenticated || !item.protected)
                     .map((item) => (
                         <ListItem
@@ -114,6 +125,14 @@ export default function Navbar() {
         </Box>
     );
 
+    const handleAuthMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+        setAuthAnchorEl(event.currentTarget);
+    };
+
+    const handleAuthMenuClose = () => {
+        setAuthAnchorEl(null);
+    };
+
     return (
         <AppBar
             position="static"
@@ -171,7 +190,7 @@ export default function Navbar() {
                                 flexGrow: 1,
                             }}
                         >
-                            {navLeft
+                            {navItems
                                 .filter(
                                     (item) => isAuthenticated || !item.protected
                                 )
@@ -194,30 +213,61 @@ export default function Navbar() {
                                 gap: 2,
                             }}
                         >
-                            {navRight
-                                .filter(
-                                    (item) => isAuthenticated || !item.protected
-                                )
-                                .map((item) => (
-                                    <Link
-                                        key={item.label}
-                                        to={item.to}
-                                        component={RouterLink}
-                                        color="inherit"
-                                        underline="hover"
-                                    >
-                                        {item.label}
-                                    </Link>
-                                ))}
                             {isAuthenticated ? (
-                                <Link
-                                    to="/logout"
-                                    component={RouterLink}
-                                    color="inherit"
-                                    underline="hover"
-                                >
-                                    Logout
-                                </Link>
+                                <Box>
+                                    <IconButton
+                                        size="medium"
+                                        aria-label="account"
+                                        aria-controls="auth-menu"
+                                        aria-haspopup="true"
+                                        onClick={handleAuthMenuOpen}
+                                        color="inherit"
+                                    >
+                                        <AccountCircle fontSize="large" />
+                                    </IconButton>
+                                    <Menu
+                                        id="auth-menu"
+                                        anchorEl={authAnchorEl}
+                                        anchorOrigin={{
+                                            vertical: "bottom",
+                                            horizontal: "right",
+                                        }}
+                                        keepMounted
+                                        transformOrigin={{
+                                            vertical: "top",
+                                            horizontal: "right",
+                                        }}
+                                        open={Boolean(authAnchorEl)}
+                                        onClose={handleAuthMenuClose}
+                                    >
+                                        {authItems.map((item) => (
+                                            <MenuItem
+                                                key={item.label}
+                                                onClick={handleAuthMenuClose}
+                                            >
+                                                <Link
+                                                    key={item.label}
+                                                    to={item.to}
+                                                    component={RouterLink}
+                                                    color="inherit"
+                                                    underline="none"
+                                                >
+                                                    {item.label}
+                                                </Link>
+                                            </MenuItem>
+                                        ))}
+                                        <MenuItem onClick={handleAuthMenuClose}>
+                                            <Link
+                                                to="/logout"
+                                                component={RouterLink}
+                                                color="inherit"
+                                                underline="none"
+                                            >
+                                                Logout
+                                            </Link>
+                                        </MenuItem>
+                                    </Menu>
+                                </Box>
                             ) : (
                                 <Link
                                     to="/login"
