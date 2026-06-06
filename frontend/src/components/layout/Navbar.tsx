@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link as RouterLink } from "react-router-dom";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 
 import { AccountCircle } from "@mui/icons-material";
 import CommentIcon from "@mui/icons-material/Comment";
@@ -31,6 +31,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 export default function Navbar() {
     const { isAuthenticated } = useAuth();
+    const navigate = useNavigate();
 
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [authAnchorEl, setAuthAnchorEl] = useState<HTMLElement | null>(null);
@@ -43,21 +44,19 @@ export default function Navbar() {
             label: "Commentary",
             to: "/commentary",
             protected: true,
-            icon: <CommentIcon />,
+            icon: <CommentIcon fontSize="small" />,
         },
     ];
     const authItems = [
         {
             label: "Settings",
             to: "/settings",
-            protected: true,
-            icon: <SettingsIcon />,
+            icon: <SettingsIcon fontSize="small" />,
         },
         {
             label: "History",
             to: "/history",
-            protected: true,
-            icon: <HistoryIcon />,
+            icon: <HistoryIcon fontSize="small" />,
         },
     ];
 
@@ -65,7 +64,11 @@ export default function Navbar() {
         <Box>
             <List sx={{ px: 2 }}>
                 {[...navItems, ...authItems]
-                    .filter((item) => isAuthenticated || !item.protected)
+                    .filter(
+                        (item) =>
+                            isAuthenticated ||
+                            ("protected" in item ? !item.protected : false)
+                    )
                     .map((item) => (
                         <ListItem
                             key={item.label}
@@ -94,7 +97,7 @@ export default function Navbar() {
                     {isAuthenticated ? (
                         <ListItemButton>
                             <ListItemIcon>
-                                <LogoutIcon />
+                                <LogoutIcon fontSize="small" />
                             </ListItemIcon>
                             <Link
                                 component={RouterLink}
@@ -108,7 +111,7 @@ export default function Navbar() {
                     ) : (
                         <ListItemButton>
                             <ListItemIcon>
-                                <LoginIcon />
+                                <LoginIcon fontSize="small" />
                             </ListItemIcon>
                             <Link
                                 component={RouterLink}
@@ -243,28 +246,41 @@ export default function Navbar() {
                                         {authItems.map((item) => (
                                             <MenuItem
                                                 key={item.label}
-                                                onClick={handleAuthMenuClose}
+                                                onClick={() => {
+                                                    navigate(item.to);
+                                                    handleAuthMenuClose();
+                                                }}
                                             >
-                                                <Link
-                                                    key={item.label}
-                                                    to={item.to}
-                                                    component={RouterLink}
-                                                    color="inherit"
-                                                    underline="none"
+                                                <Box
+                                                    sx={{
+                                                        display: "flex",
+                                                        alignItems: "center",
+                                                        gap: 1,
+                                                    }}
                                                 >
-                                                    {item.label}
-                                                </Link>
+                                                    {item.icon}
+                                                    <Typography>
+                                                        {item.label}
+                                                    </Typography>
+                                                </Box>
                                             </MenuItem>
                                         ))}
-                                        <MenuItem onClick={handleAuthMenuClose}>
-                                            <Link
-                                                to="/logout"
-                                                component={RouterLink}
-                                                color="inherit"
-                                                underline="none"
+                                        <MenuItem
+                                            onClick={() => {
+                                                navigate("/logout");
+                                                handleAuthMenuClose();
+                                            }}
+                                        >
+                                            <Box
+                                                sx={{
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    gap: 1,
+                                                }}
                                             >
-                                                Logout
-                                            </Link>
+                                                <LogoutIcon fontSize="small" />
+                                                <Typography>Logout</Typography>
+                                            </Box>
                                         </MenuItem>
                                     </Menu>
                                 </Box>
