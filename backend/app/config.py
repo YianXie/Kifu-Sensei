@@ -5,12 +5,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore", case_sensitive=False
+    )
 
     environment: str = "development"
 
     # Auth / JWT
     secret_key: str = "dev-insecure-key-replace-in-production"
+    admin_username: str = "dev-admin"
+    admin_password: str = "dev-admin-password"
     access_token_lifetime: timedelta = timedelta(minutes=30)
     refresh_token_lifetime: timedelta = timedelta(days=7)
     jwt_algorithm: str = "HS256"
@@ -49,6 +53,10 @@ def get_settings() -> "Settings":
         raise RuntimeError("SECRET_KEY environment variable is required in production")
     if settings.is_production and settings.encryption_key.startswith("dev-insecure"):
         raise RuntimeError("ENCRYPTION_KEY environment variable is required in production")
+    if settings.is_production and (
+        settings.admin_username == "dev-admin" or settings.admin_password == "dev-admin-password"
+    ):
+        raise RuntimeError("ADMIN_USERNAME and ADMIN_PASSWORD are required in production")
     if not settings.api_endpoint:
         raise RuntimeError("API_ENDPOINT must be set")
     return settings
