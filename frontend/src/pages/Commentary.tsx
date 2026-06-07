@@ -104,7 +104,7 @@ export default function Commentary() {
     }
 
     function handleDownloadSGF() {
-        if (!result?.annotated_sgf_content) {
+        if (!result) {
             toast.error("No annotated sgf file content found in the frontend!");
             return;
         }

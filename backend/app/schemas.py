@@ -87,7 +87,7 @@ class GenerateCommentaryResponse(BaseModel):
     moves: list[list]
     initial_stones: list[list]
     comments: list[CommentaryItemSchema]
-    annotated_sgf_content: str | None
+    annotated_sgf_content: str
 
 
 class UserCommentaryHistory(BaseModel):

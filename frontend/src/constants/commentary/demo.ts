@@ -3,6 +3,7 @@ import { CommentaryResponse } from "../../types/commentary";
 export const DEMO_DATA: CommentaryResponse = {
     board_size: 19,
     sgf_file_name: "demo.sgf",
+    language: "english",
     moves: [
         ["B", [15, 15]],
         ["W", [3, 3]],
@@ -288,5 +289,5 @@ export const DEMO_DATA: CommentaryResponse = {
                 "# Move 120 Commentary\n\nWhite is in a commanding position, leading by 12.6 points with a 95.8% win probability, but the move F5 represents a significant letdown. While F5 improves the score by 2.6 points and gains 1.3% win rate, it ranks only 12th among candidate moves and carries an extremely low policy prior (0.007), suggesting the neural net would almost never play here naturally. In contrast, KataGo's top suggestion J12 is transformative: it flips the game entirely, giving Black a 96.3% win probability and a +12.8 point lead—a swing of over 25 points in a single move. Looking at the board, J12 initiates a forcing sequence along the upper-left corridor (the PV continues H9, J6, D14, D12, B12) that exploits Black's existing strength in that region (shown by strong Black ownership on the upper and left sides), whereas F5, despite sitting in a locally favorable spot for White, leaves Black's winning strategy untouched and fails to disrupt the critical upper-side play where the game is actually being decided.",
         },
     ],
-    annotated_sgf_content: null,
+    annotated_sgf_content: "",
 };
