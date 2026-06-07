@@ -37,6 +37,7 @@ const COMMENTARY_LANGUAGES: CommentaryLanguage[] = [
     "english",
     "chinese (simplified)",
     "japanese",
+    "korean",
 ];
 
 /**
