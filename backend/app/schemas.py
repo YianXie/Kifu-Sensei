@@ -67,6 +67,7 @@ class DetailResponse(BaseModel):
 
 class GenerateCommentaryRequest(BaseModel):
     sgf_content: str = Field(min_length=1)
+    sgf_file_name: str = Field(min_length=5)
     model: Literal["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"] = "claude-haiku-4-5"
     language: Literal["english", "chinese (simplified)", "japanese", "korean"] = "english"
     num_comments: int = Field(default=20, ge=1, le=100)
@@ -81,7 +82,13 @@ class CommentaryItemSchema(BaseModel):
 
 class GenerateCommentaryResponse(BaseModel):
     board_size: int
+    sgf_file_name: str
+    language: Literal["english", "chinese (simplified)", "japanese", "korean"]
     moves: list[list]
     initial_stones: list[list]
     comments: list[CommentaryItemSchema]
     annotated_sgf_content: str
+
+
+class UserCommentaryHistory(BaseModel):
+    commentaries: list[GenerateCommentaryResponse]

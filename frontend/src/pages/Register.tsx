@@ -12,7 +12,7 @@ import {
 } from "@mui/material";
 
 import api from "@/api";
-import { ENDPOINTS } from "@/constants";
+import { ENDPOINTS } from "@/constants/global/endpoints";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { getErrorMessage } from "@/utils/errorFormatting";

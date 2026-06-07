@@ -47,6 +47,8 @@ class Commentary(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     user_id: int = Field(ForeignKey("users.id"))
     board_size: int = Field(default=19)
+    sgf_file_name: str = Field(default="")
+    language: str = Field(default="english")
     moves: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     initial_stones: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     comments: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False))

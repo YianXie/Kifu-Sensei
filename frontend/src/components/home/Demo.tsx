@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { DEMO_DATA } from "@/constants";
+import { DEMO_DATA } from "@/constants/commentary/demo";
 
 import GameViewer from "../game/GameViewer";
 

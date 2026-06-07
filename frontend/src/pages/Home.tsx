@@ -13,7 +13,7 @@ import {
     Typography,
 } from "@mui/material";
 
-import Demo from "@/components/about/Demo";
+import Demo from "@/components/home/Demo";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
 

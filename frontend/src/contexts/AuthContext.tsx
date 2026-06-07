@@ -9,7 +9,7 @@ import React, {
 import { jwtDecode } from "jwt-decode";
 
 import api from "@/api";
-import { ENDPOINTS } from "@/constants";
+import { ENDPOINTS } from "@/constants/global/endpoints";
 import {
     AuthUser,
     JwtPayload,

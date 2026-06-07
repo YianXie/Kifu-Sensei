@@ -15,7 +15,7 @@ import {
 import api from "@/api";
 import CommentaryConfig from "@/components/commentary/CommentaryConfig";
 import GameViewer from "@/components/game/GameViewer";
-import { ENDPOINTS } from "@/constants";
+import { ENDPOINTS } from "@/constants/global/endpoints";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import {
@@ -126,9 +126,11 @@ export default function Commentary() {
         try {
             setIsLoading(true);
             const sgfContent = await file?.text();
+            const sgfFileName = file?.name;
             const { data } = await api.post<CommentaryResponse>(
                 ENDPOINTS.commentary,
                 {
+                    sgf_file_name: sgfFileName,
                     sgf_content: sgfContent,
                     model,
                     language,

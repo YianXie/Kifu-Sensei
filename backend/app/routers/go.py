@@ -28,6 +28,7 @@ def commentary(
             payload.sgf_content,
             user,
             model=payload.model,
+            sgf_file_name=payload.sgf_file_name,
             language=payload.language,
             num_comments=payload.num_comments,
             max_token=payload.max_token,
@@ -37,6 +38,8 @@ def commentary(
             Commentary(
                 user_id=user.id,
                 board_size=commentary["board_size"],
+                sgf_file_name=commentary["sgf_file_name"],
+                language=commentary["language"],
                 moves=commentary["moves"],
                 initial_stones=commentary["initial_stones"],
                 comments=commentary["comments"],

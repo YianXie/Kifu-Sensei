@@ -21,7 +21,7 @@ import {
 
 import api from "@/api";
 import CommentaryConfig from "@/components/commentary/CommentaryConfig";
-import { ENDPOINTS } from "@/constants";
+import { ENDPOINTS } from "@/constants/global/endpoints";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import type { UserSettings } from "@/types/auth";

@@ -723,6 +723,7 @@ def generate_commentary(
     user: CurrentUser,
     *,
     model: str = _CLAUDE_MODEL,
+    sgf_file_name: str,
     language: str = _COMMENTARY_LANGUAGE,
     num_comments: int = 20,
     max_token: int = _MAX_TOKENS,
@@ -809,6 +810,8 @@ def generate_commentary(
     ]
     return {
         "board_size": board_size,
+        "sgf_file_name": sgf_file_name,
+        "language": language,
         "moves": frontend_moves,
         "initial_stones": frontend_initial,
         "comments": comments,

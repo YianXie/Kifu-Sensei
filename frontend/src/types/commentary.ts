@@ -83,6 +83,8 @@ export type CommentaryItem = {
 
 export type CommentaryResponse = {
     board_size: number;
+    sgf_file_name: string;
+    language: CommentaryLanguage;
     moves: GameMove[];
     initial_stones: GameMove[];
     comments: CommentaryItem[];

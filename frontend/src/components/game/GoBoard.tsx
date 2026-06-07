@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import Box from "@mui/material/Box";
 
-import { GTP_LETTERS } from "@/constants";
+import { GTP_LETTERS } from "@/constants/game/go";
 import { DEFAULT_BOARD_CANVAS_SIZE } from "@/constants/game/goBoard";
 import { type GameMove, isValidMove } from "@/types/game";
 

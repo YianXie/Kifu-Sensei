@@ -46,11 +46,12 @@ class CommentaryAdmin(ModelView, model=Commentary):
     column_list = [
         Commentary.id,
         Commentary.user_id,
-        Commentary.board_size,
-        Commentary.moves,
+        # Commentary.board_size,
+        Commentary.sgf_file_name,
+        # Commentary.moves,
         Commentary.initial_stones,
-        Commentary.comments,
-        Commentary.annotated_sgf_content,
+        # Commentary.comments,
+        # Commentary.annotated_sgf_content,
         Commentary.created_at,
     ]
 

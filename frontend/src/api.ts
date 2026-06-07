@@ -1,6 +1,6 @@
 import axios from "axios";
 
-import { ENDPOINTS } from "@/constants";
+import { ENDPOINTS } from "@/constants/global/endpoints";
 
 const api = axios.create({
     headers: { "Content-Type": "application/json" },

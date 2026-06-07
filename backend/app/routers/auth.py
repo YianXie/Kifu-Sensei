@@ -5,11 +5,12 @@ from sqlmodel import select
 from app.crypto import encrypt_secret
 from app.deps import CurrentUser, SessionDep
 from app.errors import FieldValidationError
-from app.models import User
+from app.models import Commentary, User
 from app.schemas import (
     AccessTokenResponse,
     DeleteAccountRequest,
     DetailResponse,
+    GenerateCommentaryResponse,
     RegisterRequest,
     TokenObtainRequest,
     TokenPairResponse,
@@ -17,6 +18,7 @@ from app.schemas import (
     UpdateClaudeApiKeyRequest,
     UpdateEmailRequest,
     UpdatePasswordRequest,
+    UserCommentaryHistory,
     UserPublic,
     UserSettingsSchema,
 )
@@ -185,3 +187,27 @@ def delete_account(
     session.delete(user)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/user/commentary-history/", response_model=UserCommentaryHistory)
+def get_commentary_history(user: CurrentUser, session: SessionDep) -> UserCommentaryHistory:
+    commentaries = session.exec(
+        select(Commentary)
+        .where(Commentary.user_id == user.id)
+        .order_by(Commentary.created_at.desc())
+    ).all()
+
+    return UserCommentaryHistory(
+        commentaries=[
+            GenerateCommentaryResponse(
+                board_size=commentary.board_size,
+                sgf_file_name=commentary.sgf_file_name,
+                language=commentary.language,
+                moves=commentary.moves,
+                initial_stones=commentary.initial_stones,
+                comments=commentary.comments,
+                annotated_sgf_content=commentary.annotated_sgf_content,
+            )
+            for commentary in commentaries
+        ]
+    )
