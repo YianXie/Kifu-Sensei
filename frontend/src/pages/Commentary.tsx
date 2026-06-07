@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 
 import CloudUploadOutlinedIcon from "@mui/icons-material/CloudUploadOutlined";
@@ -34,6 +34,8 @@ export default function Commentary() {
     usePageTitle("Commentary");
 
     const navigate = useNavigate();
+    const location = useLocation();
+    const locationState = location.state;
     const { userSettings } = useAuth();
     const hasClaudeApiKey = userSettings?.has_claude_api_key ?? false;
     const defaultConfig = readCommentaryConfig(userSettings?.preferences);
@@ -68,6 +70,19 @@ export default function Commentary() {
     const initialStones = (result?.initial_stones ?? []) as GameMove[];
     const boardSize = result?.board_size ?? 19;
     const [currentMoveIndex, setCurrentMoveIndex] = useState(0);
+
+    useEffect(() => {
+        if (locationState) {
+            setResult(locationState.commentary);
+        }
+    }, [locationState]);
+
+    useEffect(() => {
+        if (result) {
+            const firstCommentTurn = result.comments[0]?.turn ?? 0;
+            setCurrentMoveIndex(firstCommentTurn);
+        }
+    }, [result]);
 
     function handleFile(uploadedFile: File | undefined) {
         if (!uploadedFile || !isSgfFile(uploadedFile)) {
@@ -140,8 +155,6 @@ export default function Commentary() {
                 }
             );
             setResult(data);
-            const firstCommentTurn = data.comments[0]?.turn ?? 0;
-            setCurrentMoveIndex(firstCommentTurn);
         } catch (err) {
             console.error("Error generating commentary:", err);
             toast.error("Error generating commentary");
