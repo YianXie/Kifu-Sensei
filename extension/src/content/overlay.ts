@@ -185,16 +185,6 @@ export function updateButtonAuthState(authState: AuthState): void {
     btn.innerHTML = isReady
         ? `<span data-ks-icon style="color:#2A6B4F">✔</span> Kifu-Sensei`
         : `<span data-ks-icon style="color:#2A6B4F;font-size:10px">●</span> Get AI Commentary`;
-
-    // Re-attach hover listeners since innerHTML replacement loses them
-    btn.addEventListener("mouseenter", () => {
-        btn.style.background = "#EAF4EF";
-        btn.style.borderColor = "#2A6B4F";
-    });
-    btn.addEventListener("mouseleave", () => {
-        btn.style.background = "#FFFFFF";
-        btn.style.borderColor = "#E8E8E8";
-    });
 }
 
 /**
