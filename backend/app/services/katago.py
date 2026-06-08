@@ -2,6 +2,7 @@ import copy
 import logging
 import string
 from collections import Counter
+from datetime import datetime
 from typing import Any, Literal
 
 import httpx
@@ -15,9 +16,25 @@ from app.crypto import decrypt_secret
 from app.deps import CurrentUser
 from app.models import User
 
-logger = logging.getLogger(__name__)
+_http_client = None
 
-_http_client: httpx.Client | None = None
+logger = logging.getLogger("katago-service-logger")
+logger.setLevel(logging.DEBUG)  # Set lowest threshold level
+
+c_handler = logging.StreamHandler()  # Console handler
+f_handler = logging.FileHandler("logs/katago_service.log")  # File handler
+
+c_handler.setLevel(logging.INFO)  # Show only INFO and above on console
+f_handler.setLevel(logging.DEBUG)  # Save all logs (including DEBUG) to file
+
+c_format = logging.Formatter("%(name)s - %(levelname)s - %(message)s")
+f_format = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+
+c_handler.setFormatter(c_format)
+f_handler.setFormatter(f_format)
+
+logger.addHandler(c_handler)
+logger.addHandler(f_handler)
 
 
 # KataGo column labels skip the letter "I": A-H, then J-T for a 19x19 board.
@@ -262,8 +279,8 @@ def _black_winrate_pct(detail: dict[str, Any]) -> float:
     return round(winrate * 100, 1)
 
 
-def _black_score_lead(detail: dict[str, Any]) -> float:
-    """Return the root score lead from Black's perspective (positive = Black ahead)."""
+def _score_lead(detail: dict[str, Any]) -> float:
+    """Return the root score lead (positive = Black ahead)."""
     lead = detail["rootInfo"]["scoreLead"]
     return round(lead, 1)
 
@@ -535,24 +552,26 @@ def _generate_user_prompt(
     prompt += "---\n\n"
 
     prev_winrate = _black_winrate_pct(prev_detail)
-    prev_score_lead = _black_score_lead(prev_detail)
+    if color == "White":
+        prev_winrate = 100 - prev_winrate
+    prev_score_lead = _score_lead(prev_detail)
     winrate = _black_winrate_pct(detail)
-    score_lead = _black_score_lead(detail)
-    winrate_change = round(winrate - prev_winrate, 1)
-    score_change = round(score_lead - prev_score_lead, 1)
+    if color == "White":
+        winrate = 100 - winrate
+    score_lead = _score_lead(detail)
 
-    prompt += "[KATAGO ANALYSIS DATA]\n\n"
+    prompt += "[KATAGO ANALYSIS DATA]\n"
+    prompt += "NOTE: A positive score lead means Black is ahead, while a negative score lead means White is ahead.\n\n"
     prompt += f"Before {color}'s move (position after move {turn_number - 1}):\n"
-    prompt += f"  Black winrate:    {prev_winrate}%\n"
+    prompt += f"  {color} winrate:    {prev_winrate:.1f}%\n"
     prompt += (
         f"  Score lead:       {prev_score_lead:+.1f} pts "
         f"({'Black' if prev_score_lead >= 0 else 'White'} ahead)\n\n"
     )
     prompt += f"After {color} played {last_move_label} (position after move {turn_number}):\n"
-    prompt += f"  Black winrate:    {winrate}%   [CHANGE: {winrate_change:+.1f}%]\n"
-    prompt += f"  Score lead:       {score_lead:+.1f} pts [CHANGE: {score_change:+.1f} pts]\n\n"
+    prompt += f"  {color} winrate:    {winrate:+1f}%   [CHANGE: {winrate - prev_winrate:+.1f}%]\n"
+    prompt += f"  Score lead:       {score_lead:+.1f} pts [CHANGE: {score_lead - prev_score_lead:+.1f} pts]\n\n"
 
-    prev_player = prev_detail["rootInfo"]["currentPlayer"]
     played_info = next(
         (info for info in prev_detail["moveInfos"] if info["move"] == last_move), None
     )
@@ -567,18 +586,16 @@ def _generate_user_prompt(
     else:
         prompt += "  This move was not among KataGo's analyzed candidate moves.\n\n"
 
-    suggestion_info = prev_detail["moveInfos"][0]
-    suggestion_winrate = suggestion_info["winrate"]
-    suggestion_lead = suggestion_info["scoreLead"]
-    if prev_player == "W":
-        suggestion_winrate = 1 - suggestion_winrate
-        suggestion_lead = -suggestion_lead
-    suggestion_winrate = round(suggestion_winrate * 100, 1)
-    suggestion_lead = round(suggestion_lead, 1)
-    suggestion_pv = suggestion_info.get("pv", [])
-    prompt += f"KataGo's top suggestion — {top_suggestion}:\n"
-    prompt += f"  Black winrate after {top_suggestion}:    {suggestion_winrate}%\n"
-    prompt += f"  Score lead after {top_suggestion}: {suggestion_lead:+.1f} pts\n"
+    top_suggestion_info = prev_detail["moveInfos"][0]
+    top_suggestion_lead = top_suggestion_info["scoreLead"]
+    top_suggestion_winrate = top_suggestion_info["winrate"] * 100
+    if color == "White":
+        top_suggestion_winrate = 100 - top_suggestion_winrate
+    prompt += f"KataGo's top suggestion for {color} — {top_suggestion}:\n"
+    prompt += f"  {color} winrate after {top_suggestion}:    {top_suggestion_winrate:.1f}%\n"
+    prompt += f"  Score lead after {top_suggestion}: {top_suggestion_lead:+.1f} pts\n"
+
+    suggestion_pv = top_suggestion_info.get("pv", [])
     if suggestion_pv:
         prompt += f"  Principal variation: {' → '.join(suggestion_pv)} ...\n"
         pv_regions = _describe_pv_path(suggestion_pv, board_size)
@@ -626,9 +643,6 @@ def _generate_user_prompt(
         "stick to what the data shows (winrate gain, score gain, where the PV runs).\n\n"
     )
 
-    prompt += "Example commentary in English:\n"
-    prompt += "With move 52, the game was still anyone's to win — Black held a slim +2.8 point lead and a 54% win probability. Black's choice of D6, however, was a significant misstep: KataGo ranked it only 9th among legal moves, and it handed back the lead entirely, swinging the score by over 3 points in a single move. The suggested C5 would have kept Black comfortably ahead (+4.1 points, 57.8% win probability); the principal variation running through D5, C6, and B5 suggests it was aimed at consolidating the left side, where White's stones at B9, C8, and D7 were building influence — though pinning down the exact tactical reason requires deeper reading than the data alone can confirm.\n"
-
     return prompt
 
 
@@ -663,7 +677,6 @@ def generate_commentary_with_claude(
         message = client.messages.create(
             model=model,
             max_tokens=max_token,
-            cache_control={"type": "ephemeral"},
             system=system_prompt,
             messages=[
                 {
@@ -780,17 +793,17 @@ def generate_commentary(
 
     prompts: list[str] = []
     for i in range(len(detailed_results)):
-        prompts.append(
-            _generate_user_prompt(
-                detailed_results[i],
-                detailed_prev_results[i],
-                board_size=board_size,
-                komi=komi,
-                rules=rules,
-                initial_stones=initial_stones,
-                moves=moves,
-            )
+        prompt = _generate_user_prompt(
+            detailed_results[i],
+            detailed_prev_results[i],
+            board_size=board_size,
+            komi=komi,
+            rules=rules,
+            initial_stones=initial_stones,
+            moves=moves,
         )
+        prompts.append(prompt)
+        logger.info("User prompt for move %d:\n%s\n", detailed_results[i]["turnNumber"], prompt)
 
     comment_texts = generate_commentary_with_claude(
         user,
