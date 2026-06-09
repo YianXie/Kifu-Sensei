@@ -38,7 +38,7 @@ const STORAGE_KEYS: (keyof ExtensionStorage)[] = [
 /** Backend endpoint for token refresh. Defined here to avoid a circular
  *  dependency between auth.ts and api.ts (api.ts calls auth.ts for tokens;
  *  auth.ts must not import api.ts back). */
-const TOKEN_REFRESH_URL = `${import.meta.env.VITE_API_URL ?? "https://kifu-sensei.ai"}/auth/token/refresh/`;
+const TOKEN_REFRESH_URL = `${import.meta.env.VITE_API_URL ?? "https://api.kifu-sensei.ai"}/auth/token/refresh/`;
 
 // ---------------------------------------------------------------------------
 // Storage read / write

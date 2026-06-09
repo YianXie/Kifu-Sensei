@@ -43,7 +43,8 @@ import {
  * at a local backend (e.g. http://localhost:8000). The production default
  * matches the deployed backend behind Cloudflare.
  */
-const BACKEND_BASE = import.meta.env.VITE_API_URL ?? "https://kifu-sensei.ai";
+const BACKEND_BASE =
+    import.meta.env.VITE_API_URL ?? "https://api.kifu-sensei.ai";
 
 /** OGS REST API base URL, used only for fetching game SGFs. */
 const OGS_API_BASE = "https://online-go.com/api/v1";
