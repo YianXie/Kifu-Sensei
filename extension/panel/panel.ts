@@ -14,14 +14,14 @@ import type {
     GenerateCommentaryResponse,
     CommentaryItem,
     ExtensionMessage,
-} from "../shared/types";
-import { AuthStates } from "../shared/types";
-import { deriveAuthState } from "../shared/auth";
+} from "../src/shared/types";
+import { AuthStates } from "../src/shared/types";
+import { deriveAuthState } from "../src/shared/auth";
 import {
     fetchOgsSgf,
     generateCommentary,
     saveClaudeApiKey,
-} from "../shared/api";
+} from "../src/shared/api";
 
 // ---------------------------------------------------------------------------
 // State

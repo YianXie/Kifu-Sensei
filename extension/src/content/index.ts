@@ -5,7 +5,7 @@
  * file Chrome executes when the user lands on online-go.com/game/*.
  *
  * Responsibilities:
- *   1. Patch the History API so we can detect SPA navigations (OGS is a
+ *   1. Patch the History API so we can detect SPA navigation (OGS is a
  *      React app that changes routes without full page reloads).
  *   2. On every navigation to a game page, run the injection guard:
  *        a. Parse the game ID from the URL.
@@ -19,6 +19,7 @@
  * OGS API calls (that's ogs-bridge.ts). It wires them together.
  */
 
+// import "../styles/overlay.css";
 import { getGameIdFromUrl, fetchGameData, isSafeToInject } from "./ogs-bridge";
 import {
     injectEntryButton,

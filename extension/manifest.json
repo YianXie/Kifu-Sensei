@@ -18,28 +18,36 @@
             "matches": ["https://online-go.com/game/*"],
             "js": ["dist/content/index.js"],
             "css": ["dist/styles/overlay.css"],
-            "run_at": "document_idle"
+            "run_at": "document_idle",
+            "type": "module"
         }
     ],
 
     "side_panel": {
-        "default_path": "panel/panel.html"
+        "default_path": "dist/panel/panel.html"
     },
+
+    "web_accessible_resources": [
+        {
+            "resources": ["dist/chunks/*"],
+            "matches": ["https://online-go.com/*"]
+        }
+    ],
 
     "action": {
         "default_title": "Kifu-Sensei",
         "default_icon": {
-            "16": "icons/icon-16.png",
-            "32": "icons/icon-32.png",
-            "48": "icons/icon-48.png",
-            "128": "icons/icon-128.png"
+            "16": "dist/icons/icon-16.png",
+            "32": "dist/icons/icon-32.png",
+            "48": "dist/icons/icon-48.png",
+            "128": "dist/icons/icon-128.png"
         }
     },
 
     "icons": {
-        "16": "icons/icon-16.png",
-        "32": "icons/icon-32.png",
-        "48": "icons/icon-48.png",
-        "128": "icons/icon-128.png"
+        "16": "dist/icons/icon-16.png",
+        "32": "dist/icons/icon-32.png",
+        "48": "dist/icons/icon-48.png",
+        "128": "dist/icons/icon-128.png"
     }
 }
