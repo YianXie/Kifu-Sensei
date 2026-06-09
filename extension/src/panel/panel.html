@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Kifu-Sensei</title>
+        <link rel="stylesheet" href="panel.css" />
+    </head>
+    <body>
+        <div id="panel">
+            <!-- ── Header (always visible) ──────────────────────────────── -->
+            <header class="panel-header">
+                <div class="header-brand">
+                    <img
+                        src="../icons/icon-32.png"
+                        alt=""
+                        class="header-logo"
+                    />
+                    <span class="header-title">Kifu-Sensei</span>
+                </div>
+                <button id="btn-close" class="btn-icon" title="Close panel">
+                    ✕
+                </button>
+            </header>
+
+            <!-- ── DEMO SCREEN (unauthenticated) ────────────────────────── -->
+            <div id="screen-demo" class="screen hidden">
+                <div class="screen-body">
+                    <div>
+                        <p class="screen-label">Preview</p>
+                        <p class="screen-heading">
+                            See what commentary looks like:
+                        </p>
+                    </div>
+                    <!-- Hardcoded demo card -->
+                    <div class="card card--mistake">
+                        <div class="card-header">
+                            <span class="card-move">Move 31</span>
+                            <div class="card-badges">
+                                <span class="badge badge--black">B</span>
+                                <span class="badge badge--mistake">−12%</span>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <p class="card-text">
+                                "This push abandoned the corner too early.
+                                White's R16 immediately threatened the weak
+                                group on the left, forcing a heavy defensive
+                                response."
+                            </p>
+                        </div>
+                    </div>
+                    <!-- Trial banner -->
+                    <div class="trial-banner">
+                        <span aria-hidden="true">✨</span>
+                        <span>2 free games included — no card required</span>
+                    </div>
+                    <button id="btn-register" class="btn btn--primary">
+                        Create free account
+                    </button>
+                    <p class="sub-action">
+                        Already a member?
+                        <button id="btn-sign-in" class="btn-link">
+                            Sign in
+                        </button>
+                    </p>
+                </div>
+            </div>
+
+            <!-- ── API KEY SCREEN ────────────────────────────────────────── -->
+            <div id="screen-api-key" class="screen hidden">
+                <div class="screen-body">
+                    <h2 class="apikey-heading">
+                        Add your Claude API key<br />to continue
+                    </h2>
+                    <div class="info-box">
+                        Kifu-Sensei uses Claude AI to explain your moves. You
+                        bring your own key —
+                        <strong>each game costs ~$0.03</strong>.
+                    </div>
+                    <a
+                        id="link-get-key"
+                        href="https://console.anthropic.com/settings/keys"
+                        target="_blank"
+                        rel="noreferrer"
+                        class="btn btn--primary btn--as-anchor"
+                    >
+                        Get your API key →
+                        <span class="btn-sub">(Opens Anthropic console)</span>
+                    </a>
+                    <div class="accordion">
+                        <button id="accordion-toggle" class="accordion-trigger">
+                            <span>▾ What is an API key?</span>
+                            <span
+                                id="accordion-chevron"
+                                class="accordion-chevron"
+                                >▲</span
+                            >
+                        </button>
+                        <div id="accordion-body" class="accordion-body hidden">
+                            An API key is like a password that lets apps use
+                            Claude on your behalf. You keep full control and can
+                            revoke it at any time from Anthropic's console.
+                        </div>
+                    </div>
+                    <div class="divider"></div>
+                    <div class="field-group">
+                        <label class="field-label" for="input-api-key"
+                            >Paste your key</label
+                        >
+                        <input
+                            id="input-api-key"
+                            type="password"
+                            placeholder="sk-ant-api03-…"
+                            class="field-input field-input--mono"
+                            autocomplete="off"
+                            spellcheck="false"
+                        />
+                        <p id="key-valid-hint" class="field-hint hidden">
+                            ✔ Key format looks valid
+                        </p>
+                    </div>
+                    <button id="btn-save-key" class="btn btn--primary" disabled>
+                        Save &amp; Generate
+                    </button>
+                    <p id="apikey-error" class="error-inline hidden"></p>
+                </div>
+            </div>
+
+            <!-- ── GENERATING SCREEN ─────────────────────────────────────── -->
+            <div id="screen-generating" class="screen hidden">
+                <div class="screen-body">
+                    <div>
+                        <p class="screen-heading">Analysing your game…</p>
+                        <p id="gen-subtitle" class="gen-subtitle">
+                            Move 0 of 20 key moves
+                        </p>
+                    </div>
+                    <div class="progress-track">
+                        <div
+                            id="progress-fill"
+                            class="progress-fill"
+                            style="width: 0%"
+                        ></div>
+                    </div>
+                    <div class="gen-steps">
+                        <div class="gen-step">
+                            <span class="gen-step-icon gen-step-icon--done"
+                                >✔</span
+                            >
+                            <span class="gen-step-label"
+                                >Finding key moments</span
+                            >
+                        </div>
+                        <div class="gen-step">
+                            <span
+                                id="gen-spin-icon"
+                                class="gen-step-icon gen-step-icon--spin"
+                                >◷</span
+                            >
+                            <div>
+                                <span class="gen-step-label"
+                                    >Generating commentary…</span
+                                >
+                                <span
+                                    id="gen-current"
+                                    class="gen-step-sub"
+                                ></span>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- First result preview — shown after ~30% progress -->
+                    <div id="gen-first-result" class="hidden">
+                        <div class="divider"></div>
+                        <div class="gen-first-result-inner">
+                            <p class="section-label">First result</p>
+                            <div class="card card--blunder card--partial">
+                                <div class="card-header">
+                                    <span class="card-move">Move 9</span>
+                                    <div class="card-badges">
+                                        <span class="badge badge--black"
+                                            >B</span
+                                        >
+                                        <span class="badge badge--blunder"
+                                            >−18%</span
+                                        >
+                                    </div>
+                                </div>
+                                <div class="card-body card-body--fade">
+                                    <p class="card-text">
+                                        "Extending at Q10 looks natural but
+                                        leaves a significant weakness at the
+                                        bottom. White immediately…
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── COMMENTARY SCREEN ─────────────────────────────────────── -->
+            <div id="screen-commentary" class="screen hidden">
+                <div class="commentary-toolbar">
+                    <span id="commentary-count" class="commentary-count"></span>
+                    <button id="btn-regenerate" class="btn-outline">
+                        ↻ Regenerate
+                    </button>
+                </div>
+                <div class="divider"></div>
+                <div id="commentary-list" class="commentary-list"></div>
+                <div class="divider"></div>
+                <footer class="commentary-footer">
+                    <p id="commentary-age" class="footer-age"></p>
+                    <p class="footer-disclaimer">
+                        Kifu-Sensei analysis — values may differ slightly from
+                        OGS's review.
+                    </p>
+                </footer>
+            </div>
+
+            <!-- ── ERROR SCREEN ───────────────────────────────────────────── -->
+            <div id="screen-error" class="screen hidden">
+                <div class="screen-body screen-body--centered">
+                    <span class="error-icon">⚠</span>
+                    <p id="error-msg" class="error-text"></p>
+                    <button id="btn-retry" class="btn btn--primary">
+                        Try Again
+                    </button>
+                </div>
+            </div>
+
+            <!-- ── WAITING SCREEN (ready, no game loaded) ────────────────── -->
+            <div id="screen-waiting" class="screen hidden">
+                <div class="screen-body screen-body--centered">
+                    <span class="waiting-icon">♟</span>
+                    <p class="waiting-text">
+                        Open a finished game on OGS to get AI commentary.
+                    </p>
+                </div>
+            </div>
+        </div>
+        <script type="module" src="./panel.ts"></script>
+    </body>
+</html>
