@@ -4,7 +4,7 @@
     "version": "0.1.0",
     "description": "An automated LLM-based Go game commentary generator",
 
-    "permissions": ["storage", "sidePanel", "activeTab"],
+    "permissions": ["storage", "sidePanel", "activeTab", "tabs", "scripting"],
 
     "host_permissions": ["https://online-go.com/*", "https://kifu-sensei.ai/*"],
 
