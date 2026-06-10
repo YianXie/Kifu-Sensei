@@ -31,6 +31,7 @@ function emitContentCss() {
 
 export default defineConfig({
     plugins: [emitContentCss()],
+    base: "",
 
     build: {
         outDir: "dist",
@@ -40,6 +41,7 @@ export default defineConfig({
         rollupOptions: {
             input: {
                 panel: resolve(__dirname, "panel/panel.html"),
+                popup: resolve(__dirname, "popup/popup.html"),
                 "content/index": resolve(__dirname, "src/content/index.ts"),
                 "background/service-worker": resolve(
                     __dirname,
