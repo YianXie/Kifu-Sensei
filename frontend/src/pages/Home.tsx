@@ -6,16 +6,118 @@ import {
     Button,
     Card,
     CardContent,
+    Chip,
     Container,
     Divider,
     Link,
     Stack,
     Typography,
 } from "@mui/material";
+import { styled, keyframes } from "@mui/material/styles";
+
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import TuneIcon from "@mui/icons-material/Tune";
+import CodeIcon from "@mui/icons-material/Code";
+import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
+import EastIcon from "@mui/icons-material/East";
 
 import Demo from "@/components/home/Demo";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
+
+// ── Subtle pulse for the CTA badge ──────────────────────────────────────────
+const fadeUp = keyframes`
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+`;
+
+const HeroStack = styled(Stack)(({ theme }) => ({
+    animation: `${fadeUp} 0.5s ease both`,
+    [theme.breakpoints.down("lg")]: {
+        textAlign: "center",
+        alignItems: "center",
+    },
+}));
+
+const GridLine = styled(Box)(({ theme }) => ({
+    position: "absolute",
+    inset: 0,
+    backgroundImage: `
+        linear-gradient(${theme.palette.divider} 1px, transparent 1px),
+        linear-gradient(90deg, ${theme.palette.divider} 1px, transparent 1px)
+    `,
+    backgroundSize: "48px 48px",
+    opacity: 0.35,
+    pointerEvents: "none",
+    zIndex: 0,
+}));
+
+const FeatureCard = styled(Card)(({ theme }) => ({
+    flex: 1,
+    minWidth: 240,
+    borderRadius: 16,
+    transition: "box-shadow 0.2s, transform 0.2s",
+    "&:hover": {
+        transform: "translateY(-3px)",
+        boxShadow: theme.shadows[4],
+    },
+}));
+
+const IconBadge = styled(Box)(({ theme }) => ({
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    marginBottom: theme.spacing(2),
+    backgroundColor: theme.palette.action.hover,
+}));
+
+const features = [
+    {
+        icon: <AutoAwesomeIcon fontSize="small" />,
+        title: "Natural language commentary",
+        body: (
+            <>
+                Kifu-Sensei combines KataGo's numeric analysis with human-readable
+                explanations powered by Claude. Instead of raw win-rate charts,
+                you get a clear explanation of{" "}
+                <em>why</em> a move was a mistake and what better alternatives exist.
+            </>
+        ),
+    },
+    {
+        icon: <TuneIcon fontSize="small" />,
+        title: "Fully customizable output",
+        body: (
+            <>
+                Adjust the number of comments, choose your Claude model, set a
+                token budget, and add custom instructions — all from the commentary
+                page. Tailor the depth and style to match your level and budget.
+            </>
+        ),
+    },
+    {
+        icon: <CodeIcon fontSize="small" />,
+        title: "Open-source & affordable",
+        body: (
+            <>
+                The frontend and website backend are fully{" "}
+                <Link
+                    href="https://github.com/YianXie/Kifu-Sensei"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    underline="hover"
+                >
+                    open-source on GitHub
+                </Link>
+                . With prompt-caching, a 20-move commentary costs well under $0.10
+                — you only pay for your own Claude API key.
+            </>
+        ),
+    },
+];
 
 export default function Home() {
     usePageTitle("Home");
@@ -25,186 +127,243 @@ export default function Home() {
     const featuresRef = useRef<HTMLElement>(null);
 
     const handleLearnMore = () => {
-        if (featuresRef.current) {
-            featuresRef.current.scrollIntoView({
-                behavior: "smooth",
-                block: "center",
-                inline: "nearest",
-            });
-        }
+        featuresRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+        });
     };
 
     return (
-        <Container maxWidth="xl" sx={{ pb: 4 }}>
-            {/* Hero */}
+        <Box>
+            {/* ── Hero ─────────────────────────────────────────────────────── */}
             <Box
-                sx={(theme) => ({
-                    display: "flex",
-                    flexDirection: "row",
-                    gap: 2,
-                    [theme.breakpoints.down("lg")]: {
-                        flexDirection: "column",
-                        alignItems: "center",
-                        gap: 4,
-                    },
-                })}
+                sx={{
+                    position: "relative",
+                    overflow: "hidden",
+                    pt: { xs: 6, md: 8 },
+                    pb: { xs: 6, md: 8 },
+                }}
             >
-                <Stack
-                    spacing={2}
-                    sx={(theme) => ({
-                        width: "100%",
-                        maxWidth: 600,
-                        [theme.breakpoints.down("lg")]: {
-                            textAlign: "center",
-                            alignItems: "center",
-                        },
-                    })}
-                >
-                    <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                        Understand your mistakes in languages, not just numbers
-                    </Typography>
-                    <Typography
-                        variant="body1"
-                        sx={{
-                            fontWeight: 500,
-                            color: (theme) => theme.palette.text.secondary,
-                        }}
-                    >
-                        Upload an SGF file and get KataGo-backed analysis with
-                        Claude-generated commentary for every significant move.
-                    </Typography>
+                <GridLine />
+                <Container maxWidth="xl" sx={{ position: "relative", zIndex: 1 }}>
                     <Box
                         sx={(theme) => ({
                             display: "flex",
                             flexDirection: "row",
-                            gap: 2,
-                            pt: 2,
-                            [theme.breakpoints.down("md")]: {
+                            alignItems: "center",
+                            gap: { xs: 4, lg: 8 },
+                            [theme.breakpoints.down("lg")]: {
                                 flexDirection: "column",
-                                alignItems: "center",
                             },
                         })}
                     >
-                        {isAuthenticated ? (
-                            <Button
-                                variant="contained"
-                                sx={{ width: "fit-content" }}
-                                onClick={() => navigate("/commentary")}
-                            >
-                                Generate commentary
-                            </Button>
-                        ) : (
-                            <Button
-                                variant="contained"
-                                sx={{ width: "fit-content" }}
-                                onClick={() => navigate("/login")}
-                            >
-                                Get started
-                            </Button>
-                        )}
-                        <Button
-                            variant="outlined"
-                            sx={{ width: "fit-content" }}
-                            onClick={handleLearnMore}
+                        {/* Left: copy */}
+                        <HeroStack
+                            spacing={3}
+                            sx={{
+                                width: "100%",
+                                maxWidth: { xs: "100%", lg: 560 },
+                                flexShrink: 0,
+                            }}
                         >
-                            Learn more
-                        </Button>
-                    </Box>
-                </Stack>
+                            <Chip
+                                label="KataGo · Claude · SGF"
+                                size="small"
+                                variant="outlined"
+                                sx={{ width: "fit-content", fontWeight: 500, letterSpacing: 0.5 }}
+                            />
 
-                <Box sx={{ width: "100%", maxWidth: 800 }}>
-                    <Demo boardCanvasSize={600} />
-                </Box>
-            </Box>
-
-            <Divider flexItem sx={{ my: 4 }} />
-
-            {/* Learn more section */}
-            <Box ref={featuresRef}>
-                <Typography
-                    variant="h5"
-                    sx={{ fontWeight: 700, textAlign: "center" }}
-                >
-                    Features
-                </Typography>
-                <Stack direction="row" spacing={4} sx={{ mt: 4 }}>
-                    <Card variant="outlined" sx={{ flex: 1 }}>
-                        <CardContent>
-                            <Typography variant="h6">
-                                Natural language explanation
-                            </Typography>
-                            <Typography sx={{ mt: 1 }}>
-                                Kifu-Sensei is the world's first attempt in
-                                utilizing LLMs to generate comments for go. It
-                                combines numbers — which is what most platforms
-                                offer and only offer — with natural, human
-                                understandable languages. By using its
-                                customized KataGo two-pass policy, we prioritize
-                                analyzing bad moves, providing you with feedback
-                                on your and your opponent's mistakes.
-                            </Typography>
-                        </CardContent>
-                    </Card>
-                    <Card variant="outlined" sx={{ flex: 1 }}>
-                        <CardContent>
-                            <Typography variant="h6">
-                                Customizable output
-                            </Typography>
-                            <Typography sx={{ mt: 1 }}>
-                                You can easily modify the number of commentary,
-                                Claude model, max token, and custom instructions
-                                in the commentary page. As a result, you get a
-                                more personalized output based on your needs and
-                                budgets.
-                            </Typography>
-                        </CardContent>
-                    </Card>
-                    <Card variant="outlined" sx={{ flex: 1 }}>
-                        <CardContent>
-                            <Typography variant="h6">
-                                Cheap and open-source
-                            </Typography>
-                            <Typography sx={{ mt: 1 }}>
-                                Kifu-Sensei is almost entirely open-source, with
-                                only the backend code on AWS remains private.
-                                All source code of the website, both frontend
-                                and backend, can be found on the{" "}
-                                <Link
-                                    href="https://github.com/YianXie/Kifu-Sensei"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
+                            <Typography
+                                component="h1"
+                                sx={{
+                                    fontWeight: 800,
+                                    fontSize: { xs: "2rem", sm: "2.5rem", md: "3rem" },
+                                    lineHeight: 1.15,
+                                    letterSpacing: "-0.02em",
+                                }}
+                            >
+                                Understand your mistakes{" "}
+                                <Box
+                                    component="span"
+                                    sx={{ color: "primary.main" }}
                                 >
-                                    official GitHub repository
-                                </Link>
-                                . That way, the only thing you have to pay for
-                                is your Claude API key. With prompt-caching, a
-                                20-move commentary costs well less than $0.10.
+                                    in words, not just numbers
+                                </Box>
                             </Typography>
-                        </CardContent>
-                    </Card>
-                </Stack>
+
+                            <Typography
+                                variant="body1"
+                                sx={{
+                                    color: "text.secondary",
+                                    fontSize: { xs: "1rem", md: "1.1rem" },
+                                    lineHeight: 1.7,
+                                    maxWidth: 480,
+                                }}
+                            >
+                                Upload an SGF file and receive KataGo-backed analysis
+                                paired with Claude-generated commentary for every
+                                significant move.
+                            </Typography>
+
+                            <Stack
+                                direction={{ xs: "column", sm: "row" }}
+                                spacing={2}
+                                sx={{ pt: 1 }}
+                                alignItems={{ xs: "stretch", lg: "flex-start" }}
+                            >
+                                {isAuthenticated ? (
+                                    <Button
+                                        variant="contained"
+                                        size="large"
+                                        endIcon={<EastIcon />}
+                                        onClick={() => navigate("/commentary")}
+                                        sx={{ borderRadius: 2, fontWeight: 600 }}
+                                    >
+                                        Generate commentary
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        variant="contained"
+                                        size="large"
+                                        endIcon={<EastIcon />}
+                                        onClick={() => navigate("/login")}
+                                        sx={{ borderRadius: 2, fontWeight: 600 }}
+                                    >
+                                        Get started — it's free
+                                    </Button>
+                                )}
+                                <Button
+                                    variant="outlined"
+                                    size="large"
+                                    endIcon={<ArrowDownwardIcon />}
+                                    onClick={handleLearnMore}
+                                    sx={{ borderRadius: 2 }}
+                                >
+                                    See features
+                                </Button>
+                            </Stack>
+                        </HeroStack>
+
+                        {/* Right: demo board */}
+                        <Box
+                            sx={{
+                                width: "100%",
+                                maxWidth: { xs: 480, lg: 720 },
+                                borderRadius: 4,
+                                overflow: "hidden",
+                                border: "1px solid",
+                                borderColor: "divider",
+                                boxShadow: (theme) => theme.shadows[6],
+                                flexShrink: 1,
+                                mx: "auto",
+                            }}
+                        >
+                            <Demo boardCanvasSize={600} />
+                        </Box>
+                    </Box>
+                </Container>
             </Box>
 
-            <Divider flexItem sx={{ my: 4 }} />
-
+            {/* ── Features ─────────────────────────────────────────────────── */}
             <Box
+                component="section"
+                ref={featuresRef}
                 sx={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
+                    bgcolor: "background.default",
+                    borderTop: "1px solid",
+                    borderColor: "divider",
+                    py: { xs: 8, md: 10 },
                 }}
             >
-                <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                    Ready to generate commentary?
-                </Typography>
-                <Button
-                    variant="contained"
-                    onClick={() => navigate("/commentary")}
-                    sx={{ mt: 4, width: "fit-content" }}
-                >
-                    Get started
-                </Button>
+                <Container maxWidth="lg">
+                    <Stack spacing={1} alignItems="center" sx={{ mb: 6 }}>
+                        <Typography
+                            variant="overline"
+                            sx={{ color: "primary.main", letterSpacing: 2, fontWeight: 700 }}
+                        >
+                            Features
+                        </Typography>
+                        <Typography
+                            variant="h4"
+                            sx={{ fontWeight: 800, textAlign: "center" }}
+                        >
+                            Everything you need to improve
+                        </Typography>
+                        <Typography
+                            variant="body1"
+                            sx={{ color: "text.secondary", textAlign: "center", maxWidth: 480 }}
+                        >
+                            A focused toolkit designed around the one thing most Go
+                            analysis tools skip — plain language feedback.
+                        </Typography>
+                    </Stack>
+
+                    <Stack
+                        direction={{ xs: "column", md: "row" }}
+                        spacing={3}
+                        flexWrap="wrap"
+                        useFlexGap
+                    >
+                        {features.map(({ icon, title, body }) => (
+                            <FeatureCard key={title} variant="outlined">
+                                <CardContent sx={{ p: 3 }}>
+                                    <IconBadge>{icon}</IconBadge>
+                                    <Typography
+                                        variant="h6"
+                                        sx={{ fontWeight: 700, mb: 1 }}
+                                    >
+                                        {title}
+                                    </Typography>
+                                    <Typography
+                                        variant="body2"
+                                        sx={{ color: "text.secondary", lineHeight: 1.75 }}
+                                    >
+                                        {body}
+                                    </Typography>
+                                </CardContent>
+                            </FeatureCard>
+                        ))}
+                    </Stack>
+                </Container>
             </Box>
-        </Container>
+
+            {/* ── CTA banner ───────────────────────────────────────────────── */}
+            <Box
+                sx={{
+                    borderTop: "1px solid",
+                    borderColor: "divider",
+                    py: { xs: 8, md: 10 },
+                    textAlign: "center",
+                }}
+            >
+                <Container maxWidth="sm">
+                    <Typography variant="overline" sx={{ color: "primary.main", letterSpacing: 2, fontWeight: 700 }}>
+                        Ready?
+                    </Typography>
+                    <Typography
+                        variant="h4"
+                        sx={{ fontWeight: 800, mt: 1, mb: 2 }}
+                    >
+                        Start analyzing your games today
+                    </Typography>
+                    <Typography
+                        variant="body1"
+                        sx={{ color: "text.secondary", mb: 4 }}
+                    >
+                        A 20-move commentary costs less than $0.10. Upload your
+                        first SGF and see the difference.
+                    </Typography>
+                    <Button
+                        variant="contained"
+                        size="large"
+                        endIcon={<EastIcon />}
+                        onClick={() => navigate(isAuthenticated ? "/commentary" : "/login")}
+                        sx={{ borderRadius: 2, fontWeight: 600, px: 4 }}
+                    >
+                        {isAuthenticated ? "Generate commentary" : "Create a free account"}
+                    </Button>
+                </Container>
+            </Box>
+        </Box>
     );
 }
