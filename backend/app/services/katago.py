@@ -1,5 +1,6 @@
 import copy
 import logging
+import os
 import string
 from collections import Counter
 from typing import Any, Literal
@@ -16,25 +17,27 @@ from app.deps import CurrentUser
 from app.models import User
 
 _http_client = None
+log_path = "logs/katago_service.log"
 
 logger = logging.getLogger("katago-service-logger")
 logger.setLevel(logging.DEBUG)  # Set lowest threshold level
 
-c_handler = logging.StreamHandler()  # Console handler
-f_handler = logging.FileHandler("logs/katago_service.log")  # File handler
-
-c_handler.setLevel(logging.INFO)  # Show only INFO and above on console
-f_handler.setLevel(logging.DEBUG)  # Save all logs (including DEBUG) to file
-
 c_format = logging.Formatter("%(name)s - %(levelname)s - %(message)s")
 f_format = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
+c_handler = logging.StreamHandler()  # Console handler
+c_handler.setLevel(logging.INFO)  # Show only INFO and above on console
 c_handler.setFormatter(c_format)
-f_handler.setFormatter(f_format)
-
 logger.addHandler(c_handler)
-logger.addHandler(f_handler)
 
+try:
+    os.makedirs("logs", exist_ok=True)
+    f_handler = logging.FileHandler(log_path)
+    f_handler.setLevel(logging.DEBUG)
+    f_handler.setFormatter(f_format)
+    logger.addHandler(f_handler)
+except OSError as e:
+    logger.warning("Could not set up file logging (%s); console only.", e)
 
 # KataGo column labels skip the letter "I": A-H, then J-T for a 19x19 board.
 _KATAGO_COLUMNS = "ABCDEFGHJKLMNOPQRSTUVWXYZ"
