@@ -7,22 +7,35 @@ export default function CommentPanel({
     moves,
     currentMoveIndex,
     currentComment,
+    panelHeight,
 }: {
     boardCanvasSize: number;
     moves: GameMove[];
     currentMoveIndex: number;
     currentComment: string;
+    panelHeight?: number;
 }) {
     return (
-        <Box>
+        <Box
+            sx={{
+                display: "flex",
+                flexDirection: "column",
+                minHeight: 0,
+                width: { xs: "100%", md: "auto" },
+                height: {
+                    md: panelHeight ? `${panelHeight}px` : undefined,
+                },
+            }}
+        >
             <Paper
                 variant="outlined"
                 sx={{
                     flex: 1,
                     minWidth: { md: 280 },
                     width: { xs: "100%", md: boardCanvasSize / 3 },
-                    minHeight: { xs: 200, md: boardCanvasSize },
-                    maxHeight: { xs: 350, md: boardCanvasSize },
+                    minHeight: { xs: 200, md: "unset" },
+                    maxHeight: { xs: 350, md: "none" },
+                    height: { md: panelHeight ? "100%" : undefined },
                     p: 2,
                     display: "flex",
                     flexDirection: "column",

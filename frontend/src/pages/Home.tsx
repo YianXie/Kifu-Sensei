@@ -1,6 +1,11 @@
 import { useRef } from "react";
 import { useNavigate } from "react-router-dom";
 
+import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import CodeIcon from "@mui/icons-material/Code";
+import EastIcon from "@mui/icons-material/East";
+import TuneIcon from "@mui/icons-material/Tune";
 import {
     Box,
     Button,
@@ -8,18 +13,11 @@ import {
     CardContent,
     Chip,
     Container,
-    Divider,
     Link,
     Stack,
     Typography,
 } from "@mui/material";
-import { styled, keyframes } from "@mui/material/styles";
-
-import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
-import TuneIcon from "@mui/icons-material/Tune";
-import CodeIcon from "@mui/icons-material/Code";
-import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
-import EastIcon from "@mui/icons-material/East";
+import { keyframes, styled } from "@mui/material/styles";
 
 import Demo from "@/components/home/Demo";
 import { useAuth } from "@/contexts/AuthContext";
@@ -80,10 +78,10 @@ const features = [
         title: "Natural language commentary",
         body: (
             <>
-                Kifu-Sensei combines KataGo's numeric analysis with human-readable
-                explanations powered by Claude. Instead of raw win-rate charts,
-                you get a clear explanation of{" "}
-                <em>why</em> a move was a mistake and what better alternatives exist.
+                Kifu-Sensei combines KataGo's numeric analysis with
+                human-readable explanations powered by Claude. Instead of raw
+                win-rate charts, you get a clear explanation of <em>why</em> a
+                move was a mistake and what better alternatives exist.
             </>
         ),
     },
@@ -93,8 +91,9 @@ const features = [
         body: (
             <>
                 Adjust the number of comments, choose your Claude model, set a
-                token budget, and add custom instructions — all from the commentary
-                page. Tailor the depth and style to match your level and budget.
+                token budget, and add custom instructions — all from the
+                commentary page. Tailor the depth and style to match your level
+                and budget.
             </>
         ),
     },
@@ -112,8 +111,8 @@ const features = [
                 >
                     open-source on GitHub
                 </Link>
-                . With prompt-caching, a 20-move commentary costs well under $0.10
-                — you only pay for your own Claude API key.
+                . With prompt-caching, a 20-move commentary costs well under
+                $0.10 — you only pay for your own Claude API key.
             </>
         ),
     },
@@ -145,7 +144,10 @@ export default function Home() {
                 }}
             >
                 <GridLine />
-                <Container maxWidth="xl" sx={{ position: "relative", zIndex: 1 }}>
+                <Container
+                    maxWidth="xl"
+                    sx={{ position: "relative", zIndex: 1 }}
+                >
                     <Box
                         sx={(theme) => ({
                             display: "flex",
@@ -170,14 +172,22 @@ export default function Home() {
                                 label="KataGo · Claude · SGF"
                                 size="small"
                                 variant="outlined"
-                                sx={{ width: "fit-content", fontWeight: 500, letterSpacing: 0.5 }}
+                                sx={{
+                                    width: "fit-content",
+                                    fontWeight: 500,
+                                    letterSpacing: 0.5,
+                                }}
                             />
 
                             <Typography
                                 component="h1"
                                 sx={{
                                     fontWeight: 800,
-                                    fontSize: { xs: "2rem", sm: "2.5rem", md: "3rem" },
+                                    fontSize: {
+                                        xs: "2rem",
+                                        sm: "2.5rem",
+                                        md: "3rem",
+                                    },
                                     lineHeight: 1.15,
                                     letterSpacing: "-0.02em",
                                 }}
@@ -200,16 +210,21 @@ export default function Home() {
                                     maxWidth: 480,
                                 }}
                             >
-                                Upload an SGF file and receive KataGo-backed analysis
-                                paired with Claude-generated commentary for every
-                                significant move.
+                                Upload an SGF file and receive KataGo-backed
+                                analysis paired with Claude-generated commentary
+                                for every significant move.
                             </Typography>
 
                             <Stack
                                 direction={{ xs: "column", sm: "row" }}
                                 spacing={2}
-                                sx={{ pt: 1 }}
-                                alignItems={{ xs: "stretch", lg: "flex-start" }}
+                                sx={{
+                                    pt: 1,
+                                    alignItems: {
+                                        xs: "stretch",
+                                        lg: "flex-start",
+                                    },
+                                }}
                             >
                                 {isAuthenticated ? (
                                     <Button
@@ -217,7 +232,10 @@ export default function Home() {
                                         size="large"
                                         endIcon={<EastIcon />}
                                         onClick={() => navigate("/commentary")}
-                                        sx={{ borderRadius: 2, fontWeight: 600 }}
+                                        sx={{
+                                            borderRadius: 2,
+                                            fontWeight: 600,
+                                        }}
                                     >
                                         Generate commentary
                                     </Button>
@@ -227,7 +245,10 @@ export default function Home() {
                                         size="large"
                                         endIcon={<EastIcon />}
                                         onClick={() => navigate("/login")}
-                                        sx={{ borderRadius: 2, fontWeight: 600 }}
+                                        sx={{
+                                            borderRadius: 2,
+                                            fontWeight: 600,
+                                        }}
                                     >
                                         Get started — it's free
                                     </Button>
@@ -248,12 +269,8 @@ export default function Home() {
                         <Box
                             sx={{
                                 width: "100%",
-                                maxWidth: { xs: 480, lg: 720 },
-                                borderRadius: 4,
+                                borderRadius: 2,
                                 overflow: "hidden",
-                                border: "1px solid",
-                                borderColor: "divider",
-                                boxShadow: (theme) => theme.shadows[6],
                                 flexShrink: 1,
                                 mx: "auto",
                             }}
@@ -276,10 +293,14 @@ export default function Home() {
                 }}
             >
                 <Container maxWidth="lg">
-                    <Stack spacing={1} alignItems="center" sx={{ mb: 6 }}>
+                    <Stack spacing={1} sx={{ mb: 6, alignItems: "center" }}>
                         <Typography
                             variant="overline"
-                            sx={{ color: "primary.main", letterSpacing: 2, fontWeight: 700 }}
+                            sx={{
+                                color: "primary.main",
+                                letterSpacing: 2,
+                                fontWeight: 700,
+                            }}
                         >
                             Features
                         </Typography>
@@ -291,17 +312,21 @@ export default function Home() {
                         </Typography>
                         <Typography
                             variant="body1"
-                            sx={{ color: "text.secondary", textAlign: "center", maxWidth: 480 }}
+                            sx={{
+                                color: "text.secondary",
+                                textAlign: "center",
+                                maxWidth: 480,
+                            }}
                         >
-                            A focused toolkit designed around the one thing most Go
-                            analysis tools skip — plain language feedback.
+                            A focused toolkit designed around the one thing most
+                            Go analysis tools skip — plain language feedback.
                         </Typography>
                     </Stack>
 
                     <Stack
                         direction={{ xs: "column", md: "row" }}
                         spacing={3}
-                        flexWrap="wrap"
+                        sx={{ flexWrap: "wrap" }}
                         useFlexGap
                     >
                         {features.map(({ icon, title, body }) => (
@@ -316,7 +341,10 @@ export default function Home() {
                                     </Typography>
                                     <Typography
                                         variant="body2"
-                                        sx={{ color: "text.secondary", lineHeight: 1.75 }}
+                                        sx={{
+                                            color: "text.secondary",
+                                            lineHeight: 1.75,
+                                        }}
                                     >
                                         {body}
                                     </Typography>
@@ -337,7 +365,14 @@ export default function Home() {
                 }}
             >
                 <Container maxWidth="sm">
-                    <Typography variant="overline" sx={{ color: "primary.main", letterSpacing: 2, fontWeight: 700 }}>
+                    <Typography
+                        variant="overline"
+                        sx={{
+                            color: "primary.main",
+                            letterSpacing: 2,
+                            fontWeight: 700,
+                        }}
+                    >
                         Ready?
                     </Typography>
                     <Typography
@@ -357,10 +392,14 @@ export default function Home() {
                         variant="contained"
                         size="large"
                         endIcon={<EastIcon />}
-                        onClick={() => navigate(isAuthenticated ? "/commentary" : "/login")}
+                        onClick={() =>
+                            navigate(isAuthenticated ? "/commentary" : "/login")
+                        }
                         sx={{ borderRadius: 2, fontWeight: 600, px: 4 }}
                     >
-                        {isAuthenticated ? "Generate commentary" : "Create a free account"}
+                        {isAuthenticated
+                            ? "Generate commentary"
+                            : "Create a free account"}
                     </Button>
                 </Container>
             </Box>

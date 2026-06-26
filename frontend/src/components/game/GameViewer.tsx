@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+
 import { Box } from "@mui/material";
 
 import { DEFAULT_BOARD_CANVAS_SIZE } from "@/constants/game/goBoard";
@@ -44,6 +46,20 @@ export default function GameViewer({
         if (next) setCurrentMoveIndex(next);
     }
 
+    const boardColumnRef = useRef<HTMLDivElement>(null);
+    const [boardColumnHeight, setBoardColumnHeight] = useState<number>();
+
+    useEffect(() => {
+        const element = boardColumnRef.current;
+        if (!element) return;
+
+        const observer = new ResizeObserver(([entry]) => {
+            setBoardColumnHeight(entry.contentRect.height);
+        });
+        observer.observe(element);
+        return () => observer.disconnect();
+    }, []);
+
     return (
         <Box
             sx={{
@@ -54,7 +70,14 @@ export default function GameViewer({
                 width: "100%",
             }}
         >
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+            <Box
+                ref={boardColumnRef}
+                sx={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 1,
+                }}
+            >
                 <GoBoard
                     boardSize={boardSize}
                     boardCanvasSize={boardCanvasSize}
@@ -89,6 +112,7 @@ export default function GameViewer({
                 moves={moves}
                 currentMoveIndex={currentMoveIndex}
                 currentComment={currentComment}
+                panelHeight={boardColumnHeight}
             />
         </Box>
     );
