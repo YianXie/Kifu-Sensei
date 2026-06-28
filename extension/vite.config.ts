@@ -41,11 +41,9 @@ export default defineConfig({
         rollupOptions: {
             input: {
                 panel: resolve(__dirname, "panel/panel.html"),
-                "content/index": resolve(__dirname, "src/content/index.ts"),
-                "background/service-worker": resolve(
-                    __dirname,
-                    "src/background/service-worker.ts"
-                ),
+                inject: resolve(__dirname, "src/inject.ts"),
+                content: resolve(__dirname, "src/content.ts"),
+                background: resolve(__dirname, "src/background.ts"),
             },
 
             output: {

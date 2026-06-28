@@ -19,6 +19,7 @@ import Register from "@/pages/Register";
 import Settings from "@/pages/Settings";
 import SetupApiKey from "@/pages/SetupApiKey";
 
+import ExtensionReady from "./pages/ExtensionReady";
 import History from "./pages/History";
 import Logout from "./pages/Logout";
 
@@ -76,6 +77,10 @@ function ThemedApp() {
                             element={<SetupApiKey />}
                         />
                         <Route path="/logout" element={<Logout />} />
+                        <Route
+                            path="/extension-ready"
+                            element={<ExtensionReady />}
+                        />
                     </Route>
 
                     <Route path="*" element={<NotFound />} />

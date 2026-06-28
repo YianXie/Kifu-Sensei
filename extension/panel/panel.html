@@ -8,6 +8,21 @@
     </head>
     <body>
         <div id="panel">
+            <!-- ── Header (always visible) ──────────────────────────────── -->
+            <header class="panel-header">
+                <div class="header-brand">
+                    <img
+                        src="../icons/icon-32.png"
+                        alt=""
+                        class="header-logo"
+                    />
+                    <span class="header-title">Kifu-Sensei</span>
+                </div>
+                <button id="btn-close" class="btn-icon" title="Close panel">
+                    ✕
+                </button>
+            </header>
+
             <!-- ── DEMO SCREEN (unauthenticated) ────────────────────────── -->
             <div id="screen-demo" class="screen">
                 <div class="screen-body">
@@ -35,16 +50,22 @@
                             </p>
                         </div>
                     </div>
-                    <!-- Trial banner -->
-                    <button id="btn-register" class="btn btn--primary">
-                        Create free account
-                    </button>
-                    <p class="sub-action">
-                        Already a member?
-                        <button id="btn-sign-in" class="btn-link">
-                            Sign in
-                        </button>
+                    <!-- Slogan -->
+                    <p class="slogan">
+                        Understand your mistakes in words, not just numbers.
                     </p>
+                    <!-- CTA buttons -->
+                    <div class="cta-button">
+                        <button id="btn-register" class="btn btn--primary">
+                            Create free account
+                        </button>
+                        <p class="sub-action">
+                            Already a member?
+                            <button id="btn-login" class="btn-link">
+                                Sign in
+                            </button>
+                        </p>
+                    </div>
                 </div>
             </div>
 

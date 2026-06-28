@@ -9,14 +9,18 @@
     "host_permissions": ["https://online-go.com/*", "https://kifu-sensei.ai/*"],
 
     "background": {
-        "service_worker": "dist/background/service-worker.js",
+        "service_worker": "dist/background.js",
         "type": "module"
     },
 
     "content_scripts": [
         {
-            "matches": ["https://online-go.com/game/*"],
-            "js": ["dist/content/index.js"],
+            "matches": [
+                "http://localhost:5173/*",
+                "https://kifu-sensei.ai/*",
+                "https://online-go.com/game/*"
+            ],
+            "js": ["dist/content.js"],
             "css": ["dist/styles/overlay.css"],
             "run_at": "document_idle",
             "type": "module"
@@ -29,8 +33,12 @@
 
     "web_accessible_resources": [
         {
-            "resources": ["dist/chunks/*"],
-            "matches": ["https://online-go.com/*"]
+            "matches": [
+                "http://localhost:5173/*",
+                "https://kifu-sensei.ai/*",
+                "https://online-go.com/*"
+            ],
+            "resources": ["dist/inject.js"]
         }
     ],
 

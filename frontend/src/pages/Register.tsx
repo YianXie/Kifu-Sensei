@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "react-toastify";
 
 import {
@@ -22,15 +22,17 @@ export default function Register() {
 
     const { login, isAuthenticated } = useAuth();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const source = searchParams.get("source");
 
-    // Only bounce visitors who were *already* logged in when they arrived; the
-    // registration flow itself logs the user in and routes them to API-key setup.
-    const wasAuthenticatedOnMount = useRef(isAuthenticated);
     useEffect(() => {
-        if (wasAuthenticatedOnMount.current) {
-            navigate("/", { replace: true });
+        if (!source || source !== "extension") {
+            if (isAuthenticated) {
+                navigate("/");
+                toast.warn("You are already logged in!");
+            }
         }
-    }, [navigate]);
+    });
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -57,7 +59,10 @@ export default function Register() {
             // Log the new user in so they can immediately set up their API key.
             await login(normalizedEmail, password);
             toast.success("Account created!");
-            navigate("/setup-api-key", { replace: true });
+            navigate(
+                source === "extension" ? "/extension-ready" : "/setup-api-key",
+                { replace: true }
+            );
         } catch (err) {
             setError(getErrorMessage(err, "Registration failed."));
         } finally {
@@ -66,7 +71,7 @@ export default function Register() {
     }
 
     return (
-        <Container maxWidth="xs">
+        <Container maxWidth="sm">
             <Box
                 sx={{
                     display: "flex",
@@ -80,7 +85,7 @@ export default function Register() {
                     variant="h4"
                     sx={{ fontWeight: 700, textAlign: "center" }}
                 >
-                    Create Account
+                    Create an Account
                 </Typography>
 
                 {error && <Alert severity="error">{error}</Alert>}

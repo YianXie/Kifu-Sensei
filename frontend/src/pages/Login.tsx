@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "react-toastify";
 
 import {
@@ -13,20 +13,27 @@ import {
 
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { useRedirectIfAuthenticated } from "@/hooks/useRedirectIfAuthenticated";
 import { getErrorMessage } from "@/utils/errorFormatting";
 
 export default function Login() {
-    usePageTitle("Log In");
-    useRedirectIfAuthenticated();
+    usePageTitle("Login");
 
-    const { login } = useAuth();
+    const { isAuthenticated, login } = useAuth();
     const navigate = useNavigate();
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const [searchParams] = useSearchParams();
+    const isForExtension = searchParams.get("source") === "extension";
+
+    useEffect(() => {
+        if (!isForExtension && isAuthenticated) {
+            navigate("/");
+            toast.warn("You are already logged in");
+        }
+    }, [isAuthenticated, navigate, isForExtension]);
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
@@ -35,7 +42,9 @@ export default function Login() {
         try {
             await login(email, password);
             toast.success("Welcome back!");
-            navigate("/");
+            navigate(isForExtension ? "/extension-ready" : "/", {
+                replace: true,
+            });
         } catch (err) {
             setError(
                 getErrorMessage(err, "Login failed. Check your credentials.")
@@ -46,7 +55,7 @@ export default function Login() {
     }
 
     return (
-        <Container maxWidth="xs">
+        <Container maxWidth="sm">
             <Box
                 sx={{
                     display: "flex",
@@ -60,7 +69,7 @@ export default function Login() {
                     variant="h4"
                     sx={{ fontWeight: 700, textAlign: "center" }}
                 >
-                    Log In
+                    Log In to Kifu-Sensei {isForExtension && "Extension"}
                 </Typography>
 
                 {error && <Alert severity="error">{error}</Alert>}

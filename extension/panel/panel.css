@@ -70,6 +70,53 @@ p {
     min-height: 100vh;
 }
 
+/* ── Header ──────────────────────────────────────────────────────── */
+.panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 11px 14px 10px;
+    border-bottom: 1px solid var(--ks-light);
+    background: var(--ks-white);
+    flex-shrink: 0;
+}
+
+.header-brand {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.header-logo {
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+}
+
+.header-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ks-black);
+    letter-spacing: -0.01em;
+}
+
+.btn-icon {
+    background: none;
+    border: none;
+    color: var(--ks-mid);
+    font-size: 18px;
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    transition: background 0.1s;
+}
+.btn-icon:hover {
+    background: #f3f4f6;
+    color: var(--ks-dark);
+}
+
 /* ── Screen system ───────────────────────────────────────────────── */
 .screen {
     flex: 1;
@@ -431,6 +478,24 @@ p {
     font-size: 12px;
     color: var(--ks-blunder);
     text-align: center;
+}
+
+/* Demo screen */
+#screen-demo .screen-body {
+    flex: 1;
+}
+
+#screen-demo .cta-button {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: auto;
+}
+
+#screen-demo .slogan {
+    text-align: center;
+    font-weight: 500;
+    margin-top: 8px;
 }
 
 /* ── API Key screen ──────────────────────────────────────────────── */
