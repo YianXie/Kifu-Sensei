@@ -40,7 +40,7 @@
 
 html,
 body {
-    width: 320px;
+    width: 100%;
     min-height: 100vh;
     font-family: var(--font-body);
     font-size: 14px;
@@ -68,53 +68,6 @@ p {
     display: flex;
     flex-direction: column;
     min-height: 100vh;
-}
-
-/* ── Header ──────────────────────────────────────────────────────── */
-.panel-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 11px 14px 10px;
-    border-bottom: 1px solid var(--ks-light);
-    background: var(--ks-white);
-    flex-shrink: 0;
-}
-
-.header-brand {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-}
-
-.header-logo {
-    width: 22px;
-    height: 22px;
-    border-radius: 4px;
-}
-
-.header-title {
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--ks-black);
-    letter-spacing: -0.01em;
-}
-
-.btn-icon {
-    background: none;
-    border: none;
-    color: var(--ks-mid);
-    font-size: 18px;
-    line-height: 1;
-    padding: 2px 4px;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    transition: background 0.1s;
-}
-.btn-icon:hover {
-    background: #f3f4f6;
-    color: var(--ks-dark);
 }
 
 /* ── Screen system ───────────────────────────────────────────────── */
@@ -298,20 +251,6 @@ p {
     height: 36px;
     background: linear-gradient(to bottom, transparent, var(--ks-blunder-bg));
     pointer-events: none;
-}
-
-/* ── Trial banner ────────────────────────────────────────────────── */
-.trial-banner {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: var(--ks-accent-light);
-    border: 1px solid var(--ks-accent-border);
-    border-radius: 6px;
-    padding: 8px 11px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--ks-accent);
 }
 
 /* ── Buttons ─────────────────────────────────────────────────────── */
