@@ -1,0 +1,29 @@
+{
+    "pkg": "website-template-frontend",
+    "globalName": "KifuSensei",
+    "projectId": "3bed1327-b1ef-404d-adc8-e8d0d8cd7f9a",
+    "shape": "package",
+    "entry": "./.design-sync/ds-entry.tsx",
+    "srcDir": "src",
+    "tsconfig": ".design-sync/tsconfig.dssync.json",
+    "componentSrcMap": {
+        "GoBoard": "src/components/game/GoBoard.tsx",
+        "Controls": "src/components/game/Controls.tsx",
+        "CommentPanel": "src/components/game/CommentPanel.tsx",
+        "HistoryCard": "src/components/history/HistoryCard.tsx",
+        "MiniBoardThumb": "src/components/history/MiniBoardThumb.tsx",
+        "CommentaryConfig": "src/components/commentary/CommentaryConfig.tsx"
+    },
+    "dtsPropsFor": {
+        "GoBoard": "/** Number of lines per side (e.g. 9, 13, 19). */\n  boardSize: number;\n  /** Canvas render size in px. Defaults to DEFAULT_BOARD_CANVAS_SIZE. */\n  boardCanvasSize?: number;\n  /** Ordered moves: each is [color \"B\" | \"W\", [row, col]] or [color, null] for a pass. */\n  moves: [string, [number, number] | null][];\n  /** Handicap / pre-placed stones, same tuple shape as moves. */\n  initialStones?: [string, [number, number] | null][];\n  /** Map of move index → commentary text, keyed by 0-based move number. */\n  comments: Record<number, string>;\n  /** 0-based index of the move currently shown on the board. */\n  currentMoveIndex: number;\n  /** Advance/rewind by a signed delta (e.g. +1, -1, +5). */\n  onMoveChange: (amount: number) => void;",
+        "Controls": "/** Total number of moves in the game (upper navigation bound). */\n  maxMove: number;\n  /** 0-based index of the current move. */\n  currentMoveIndex: number;\n  /** Navigate by a signed delta (±1, ±5, or jump to either end). */\n  onMoveChange: (amount: number) => void;\n  /** Jump to the previous commented move. */\n  onJumpToPreviousComment?: () => void;\n  /** Jump to the next commented move. */\n  onJumpToNextComment?: () => void;\n  /** Whether an earlier commented move exists (enables the jump-back button). */\n  hasPreviousCommentMove?: boolean;\n  /** Whether a later commented move exists (enables the jump-forward button). */\n  hasNextCommentMove?: boolean;\n  /** MUI `SxProps<Theme>` overrides for the container Paper. */\n  sx?: Record<string, unknown> | Record<string, unknown>[];",
+        "CommentPanel": "/** Board canvas size in px (used to align the panel width). */\n  boardCanvasSize: number;\n  /** Ordered moves: [color \"B\" | \"W\", [row, col] | null]. */\n  moves: [string, [number, number] | null][];\n  /** 0-based index of the current move. */\n  currentMoveIndex: number;\n  /** Commentary text for the current move (\"\" when the move has none). */\n  currentComment: string;\n  /** Optional fixed panel height in px. */\n  panelHeight?: number;",
+        "HistoryCard": "/** A completed commentary result rendered as a summary card. */\n  commentary: {\n    board_size: number;\n    sgf_file_name: string;\n    language: \"english\" | \"chinese (simplified)\" | \"japanese\" | \"korean\";\n    moves: [string, [number, number] | null][];\n    initial_stones: [string, [number, number] | null][];\n    comments: { turn: number; comment: string }[];\n    annotated_sgf_content: string;\n  };\n  /** Called when the user opens this game (e.g. to view full commentary). */\n  onOpen: (commentary: HistoryCardProps[\"commentary\"]) => void;",
+        "MiniBoardThumb": "/** Number of lines per side. */\n  boardSize: number;\n  /** Ordered moves: [color \"B\" | \"W\", [row, col] | null]. */\n  moves: [string, [number, number] | null][];\n  /** Handicap / pre-placed stones, same tuple shape as moves. */\n  initialStones?: [string, [number, number] | null][];\n  /** Thumbnail size in px (default 88). */\n  size?: number;",
+        "CommentaryConfig": "/** Selected Claude model id. */\n  model: \"claude-opus-4-8\" | \"claude-sonnet-4-6\" | \"claude-haiku-4-5\";\n  setModel: (value: CommentaryConfigProps[\"model\"]) => void;\n  /** Commentary output language. */\n  language: \"english\" | \"chinese (simplified)\" | \"japanese\" | \"korean\";\n  setLanguage: (value: CommentaryConfigProps[\"language\"]) => void;\n  /** Number of moves to annotate (1–100). */\n  numComments: number;\n  setNumComments: (value: number) => void;\n  /** Max tokens per commentary generation call (256–8192). */\n  maxToken: number;\n  setMaxToken: (value: number) => void;\n  /** Extra freeform instruction appended to the commentary prompt. */\n  customInstruction: string;\n  setCustomInstruction: (value: string) => void;"
+    },
+    "overrides": {
+        "CommentaryConfig": { "cardMode": "column" }
+    },
+    "readmeHeader": ".design-sync/conventions.md"
+}
