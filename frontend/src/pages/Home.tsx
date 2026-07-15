@@ -68,7 +68,8 @@ const IconBadge = styled(Box)(({ theme }) => ({
     width: 44,
     height: 44,
     borderRadius: 12,
-    marginBottom: theme.spacing(2),
+    flexShrink: 0,
+    color: theme.palette.text.primary,
     backgroundColor: theme.palette.action.hover,
 }));
 
@@ -331,14 +332,23 @@ export default function Home() {
                     >
                         {features.map(({ icon, title, body }) => (
                             <FeatureCard key={title} variant="outlined">
-                                <CardContent sx={{ p: 3 }}>
-                                    <IconBadge>{icon}</IconBadge>
-                                    <Typography
-                                        variant="h6"
-                                        sx={{ fontWeight: 700, mb: 1 }}
+                                <CardContent sx={{ p: 3.5 }}>
+                                    <Stack
+                                        direction="row"
+                                        spacing={1.75}
+                                        sx={{ alignItems: "center", mb: 2 }}
                                     >
-                                        {title}
-                                    </Typography>
+                                        <IconBadge>{icon}</IconBadge>
+                                        <Typography
+                                            variant="h6"
+                                            sx={{
+                                                fontWeight: 700,
+                                                lineHeight: 1.25,
+                                            }}
+                                        >
+                                            {title}
+                                        </Typography>
+                                    </Stack>
                                     <Typography
                                         variant="body2"
                                         sx={{
