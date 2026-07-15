@@ -498,6 +498,124 @@ p {
     margin-top: 8px;
 }
 
+/* ── Welcome screen ──────────────────────────────────────────────── */
+.welcome-body {
+    flex: 1;
+    gap: 18px;
+}
+
+.welcome-hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 6px;
+    padding-top: 8px;
+}
+
+.welcome-check {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--ks-accent-light);
+    border: 1px solid var(--ks-accent-border);
+    color: var(--ks-accent);
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    animation: ks-pop 0.35s ease-out;
+}
+
+.welcome-eyebrow {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ks-accent);
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+}
+
+.welcome-heading {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--ks-black);
+    letter-spacing: -0.01em;
+}
+
+.welcome-email {
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--ks-mid);
+    background: #f3f4f6;
+    padding: 3px 9px;
+    border-radius: 999px;
+    margin-top: 2px;
+}
+
+.welcome-lead {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--ks-dark);
+    text-align: center;
+}
+
+.welcome-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    list-style: none;
+    background: var(--ks-accent-light);
+    border: 1px solid var(--ks-accent-border);
+    border-radius: 8px;
+    padding: 14px 14px;
+}
+
+.welcome-steps li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--ks-dark);
+}
+
+.welcome-step-num {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--ks-accent);
+    color: var(--ks-white);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.welcome-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: auto;
+}
+
+@keyframes ks-pop {
+    0% {
+        transform: scale(0.5);
+        opacity: 0;
+    }
+    70% {
+        transform: scale(1.08);
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
 /* ── API Key screen ──────────────────────────────────────────────── */
 .apikey-heading {
     font-size: 15px;

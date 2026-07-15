@@ -1,36 +1,10 @@
 import { defineConfig } from "vite";
 import { fileURLToPath } from "url";
 import { resolve } from "path";
-import { readFileSync } from "fs";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
-/**
- * Vite plugin that copies overlay.css directly into dist/styles/.
- *
- * We can't rely on importing the CSS from the content script entry point
- * because Vite 8 (Rolldown) drops CSS imported from non-HTML entries rather
- * than extracting it to a file. Using emitFile() with type: 'asset' bypasses
- * that pipeline and writes the file at the exact path the manifest expects.
- */
-function emitContentCss() {
-    return {
-        name: "emit-content-css",
-        generateBundle() {
-            this.emitFile({
-                type: "asset",
-                fileName: "styles/overlay.css",
-                source: readFileSync(
-                    resolve(__dirname, "src/styles/overlay.css"),
-                    "utf-8"
-                ),
-            });
-        },
-    };
-}
-
 export default defineConfig({
-    plugins: [emitContentCss()],
     base: "",
 
     build: {

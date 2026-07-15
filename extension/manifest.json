@@ -6,7 +6,12 @@
 
     "permissions": ["storage", "sidePanel", "activeTab", "tabs", "scripting"],
 
-    "host_permissions": ["https://online-go.com/*", "https://kifu-sensei.ai/*"],
+    "host_permissions": [
+        "http://localhost:5173/*",
+        "http://localhost:8000/*",
+        "https://online-go.com/*",
+        "https://kifu-sensei.ai/*"
+    ],
 
     "background": {
         "service_worker": "dist/background.js",
@@ -21,7 +26,6 @@
                 "https://online-go.com/game/*"
             ],
             "js": ["dist/content.js"],
-            "css": ["dist/styles/overlay.css"],
             "run_at": "document_idle",
             "type": "module"
         }

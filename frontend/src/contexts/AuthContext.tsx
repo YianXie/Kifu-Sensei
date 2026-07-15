@@ -45,6 +45,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const logout = useCallback(() => {
         localStorage.removeItem("access_token");
         localStorage.removeItem("refresh_token");
+        // Revoke the extension handoff too, so logging out of the website
+        // doesn't leave a stale session the extension can silently pick up.
+        localStorage.removeItem("extension_auth");
         setAccessToken(null);
         setRefreshToken(null);
         setUser(null);
