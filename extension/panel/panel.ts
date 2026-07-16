@@ -8,9 +8,11 @@ const STORAGE_KEY = "extension_auth";
 // again from the website's localStorage. Keep in sync with content.ts.
 const REVOKED_KEY = "revoked_refresh_token";
 // Frontend origins where the website may hold a stale extension_auth entry.
+// Wildcarded because production serves the app from www — the bare apex only
+// redirects there — and `*.` also covers the apex itself.
 const FRONTEND_MATCHES = [
     "http://localhost:5173/*",
-    "https://kifu-sensei.ai/*",
+    "https://*.kifu-sensei.ai/*",
 ];
 
 // Every top-level screen id, so we can flip to exactly one at a time.

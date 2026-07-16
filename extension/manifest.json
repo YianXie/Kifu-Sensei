@@ -10,7 +10,7 @@
         "http://localhost:5173/*",
         "http://localhost:8000/*",
         "https://online-go.com/*",
-        "https://kifu-sensei.ai/*"
+        "https://*.kifu-sensei.ai/*"
     ],
 
     "background": {
@@ -22,7 +22,7 @@
         {
             "matches": [
                 "http://localhost:5173/*",
-                "https://kifu-sensei.ai/*",
+                "https://*.kifu-sensei.ai/*",
                 "https://online-go.com/game/*"
             ],
             "js": ["dist/content.js"],
@@ -38,7 +38,7 @@
         {
             "matches": [
                 "http://localhost:5173/*",
-                "https://kifu-sensei.ai/*",
+                "https://*.kifu-sensei.ai/*",
                 "https://online-go.com/*"
             ],
             "resources": ["dist/inject.js"]
