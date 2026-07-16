@@ -26,8 +26,7 @@
                 "https://online-go.com/game/*"
             ],
             "js": ["dist/content.js"],
-            "run_at": "document_idle",
-            "type": "module"
+            "run_at": "document_idle"
         }
     ],
 

@@ -13,10 +13,11 @@ export default defineConfig({
         modulePreload: { polyfill: false },
 
         rollupOptions: {
+            // content.ts is built separately by vite.content.config.ts as a
+            // classic IIFE — Chrome content scripts cannot use ES modules.
             input: {
                 panel: resolve(__dirname, "panel/panel.html"),
                 inject: resolve(__dirname, "src/inject.ts"),
-                content: resolve(__dirname, "src/content.ts"),
                 background: resolve(__dirname, "src/background.ts"),
             },
 
