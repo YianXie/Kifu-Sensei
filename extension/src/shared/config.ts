@@ -5,4 +5,5 @@ export const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 export const ENDPOINTS = {
     tokenRefresh: `${API_URL}/auth/token/refresh/`,
     userSettings: `${API_URL}/auth/user/settings/`,
+    claudeApiKey: `${API_URL}/auth/user/claude-api-key/`,
 } as const;

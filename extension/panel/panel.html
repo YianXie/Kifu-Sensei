@@ -169,11 +169,31 @@
                         <p id="key-valid-hint" class="field-hint hidden">
                             ✔ Key format looks valid
                         </p>
+                        <p class="field-note">
+                            Your key is encrypted before it's stored and is
+                            never shared.
+                        </p>
                     </div>
                     <button id="btn-save-key" class="btn btn--primary" disabled>
-                        Save &amp; Generate
+                        Save &amp; Continue
                     </button>
                     <p id="apikey-error" class="error-inline hidden"></p>
+                </div>
+            </div>
+
+            <!-- ── KEY SAVED SCREEN (shown right after saving a key) ─────── -->
+            <div id="screen-key-saved" class="screen hidden">
+                <div class="screen-body screen-body--centered">
+                    <span class="welcome-check welcome-check--lg">✓</span>
+                    <h2 class="saved-heading">You're in!</h2>
+                    <p class="saved-lead">
+                        Your API key is saved. Open a finished game on
+                        online-go.com and Kifu-Sensei will turn the key moments
+                        into plain-language commentary.
+                    </p>
+                    <button id="btn-saved-open-ogs" class="btn btn--primary">
+                        Browse games on OGS →
+                    </button>
                 </div>
             </div>
 
