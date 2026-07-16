@@ -26,3 +26,8 @@ export interface TokenResponse {
     refresh: string;
     user: AuthUser;
 }
+
+export interface TokenRefreshResponse {
+    access: string;
+    refresh: string;
+}

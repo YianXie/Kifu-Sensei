@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "react-toastify";
 
@@ -7,6 +7,11 @@ import {
     Box,
     Button,
     Container,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogContentText,
+    DialogTitle,
     TextField,
     Typography,
 } from "@mui/material";
@@ -18,15 +23,23 @@ import { getErrorMessage } from "@/utils/errorFormatting";
 export default function Login() {
     usePageTitle("Login");
 
-    const { isAuthenticated, login } = useAuth();
+    const { isAuthenticated, isLoading, user, login } = useAuth();
     const navigate = useNavigate();
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const [continueOpen, setContinueOpen] = useState(false);
     const [searchParams] = useSearchParams();
     const isForExtension = searchParams.get("source") === "extension";
+
+    // Whether the one-click prompt has already had its say this visit. Once it
+    // has, it must never reopen: logging in with another account flips
+    // isAuthenticated back to true, which would otherwise re-trigger the prompt
+    // on the way out.
+    const promptSettled = useRef(false);
+    const confirmRef = useRef<HTMLButtonElement>(null);
 
     useEffect(() => {
         if (!isForExtension && isAuthenticated) {
@@ -34,6 +47,19 @@ export default function Login() {
             toast.warn("You are already logged in");
         }
     }, [isAuthenticated, navigate, isForExtension]);
+
+    // Extension sign-in with a live website session: offer to reuse it instead
+    // of making the user retype credentials. Waits for hydration to settle so
+    // the form never flashes before the prompt.
+    useEffect(() => {
+        if (!isForExtension || isLoading || promptSettled.current) {
+            return;
+        }
+        promptSettled.current = true;
+        if (isAuthenticated) {
+            setContinueOpen(true);
+        }
+    }, [isForExtension, isLoading, isAuthenticated]);
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
@@ -123,6 +149,52 @@ export default function Login() {
                     </Link>
                 </Typography>
             </Box>
+
+            {/* Dismissing this — "No", Escape, or a click outside — falls
+                through to the form behind it, so a misclick costs nothing. */}
+            <Dialog
+                open={continueOpen}
+                onClose={() => setContinueOpen(false)}
+                fullWidth
+                maxWidth="xs"
+                // autoFocus on the button loses the race against the dialog's
+                // focus trap, which lands focus on the paper instead. Focusing
+                // once the transition has settled is what actually sticks, so
+                // Enter confirms the highlighted action.
+                slotProps={{
+                    transition: {
+                        onEntered: () => confirmRef.current?.focus(),
+                    },
+                }}
+            >
+                <DialogTitle>Use your current account?</DialogTitle>
+                <DialogContent>
+                    <DialogContentText>
+                        You&apos;re already signed in
+                        {user?.email ? ` as ${user.email}` : ""}. Connect the
+                        extension to this account, or sign in with a different
+                        one.
+                    </DialogContentText>
+                </DialogContent>
+                <DialogActions>
+                    <Button
+                        type="button"
+                        onClick={() => setContinueOpen(false)}
+                    >
+                        No, use another account
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="contained"
+                        ref={confirmRef}
+                        onClick={() =>
+                            navigate("/extension-ready", { replace: true })
+                        }
+                    >
+                        Yes, continue
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </Container>
     );
 }
