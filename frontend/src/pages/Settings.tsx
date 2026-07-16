@@ -13,6 +13,7 @@ import {
     Divider,
     MenuItem,
     Select,
+    Stack,
     Tab,
     Tabs,
     TextField,
@@ -81,6 +82,11 @@ export default function Settings() {
     const [apiKey, setApiKey] = useState("");
     const [apiKeyError, setApiKeyError] = useState<string | null>(null);
     const [apiKeyLoading, setApiKeyLoading] = useState(false);
+    const [deleteApiKeyDialogOpen, setDeleteApiKeyDialogOpen] = useState(false);
+    const [deleteApiKeyError, setDeleteApiKeyError] = useState<string | null>(
+        null
+    );
+    const [deleteApiKeyLoading, setDeleteApiKeyLoading] = useState(false);
     const hasClaudeApiKey = userSettings?.has_claude_api_key ?? false;
 
     useEffect(() => {
@@ -165,6 +171,31 @@ export default function Settings() {
         setApiKeyDialogOpen(false);
         setApiKey("");
         setApiKeyError(null);
+    }
+
+    async function handleDeleteApiKey() {
+        setDeleteApiKeyError(null);
+        setDeleteApiKeyLoading(true);
+        try {
+            const { data } = await api.delete<UserSettings>(
+                ENDPOINTS.claudeApiKey
+            );
+            updateUserSettings(data);
+            toast.success("Claude API key deleted.");
+            setDeleteApiKeyDialogOpen(false);
+        } catch (err) {
+            setDeleteApiKeyError(
+                getErrorMessage(err, "Failed to delete API key.")
+            );
+        } finally {
+            setDeleteApiKeyLoading(false);
+        }
+    }
+
+    function closeDeleteApiKeyDialog() {
+        if (deleteApiKeyLoading) return;
+        setDeleteApiKeyDialogOpen(false);
+        setDeleteApiKeyError(null);
     }
 
     async function handleUpdateEmail(e: React.FormEvent) {
@@ -471,14 +502,25 @@ export default function Settings() {
                             ? "A Claude API key is set. You can update it with a new key at any time."
                             : "No Claude API key is set yet. Add one to start generating commentary."}
                     </Typography>
-                    <Button
-                        variant="outlined"
-                        onClick={() => setApiKeyDialogOpen(true)}
-                    >
-                        {hasClaudeApiKey
-                            ? "Update Claude API Key"
-                            : "Add Claude API Key"}
-                    </Button>
+                    <Stack direction="row" spacing={2}>
+                        <Button
+                            variant="outlined"
+                            onClick={() => setApiKeyDialogOpen(true)}
+                        >
+                            {hasClaudeApiKey
+                                ? "Update Claude API Key"
+                                : "Add Claude API Key"}
+                        </Button>
+                        {hasClaudeApiKey && (
+                            <Button
+                                variant="contained"
+                                color="error"
+                                onClick={() => setDeleteApiKeyDialogOpen(true)}
+                            >
+                                Delete Claude API Key
+                            </Button>
+                        )}
+                    </Stack>
                 </Box>
             )}
 
@@ -533,6 +575,41 @@ export default function Settings() {
                         </Button>
                     </DialogActions>
                 </Box>
+            </Dialog>
+
+            <Dialog
+                open={deleteApiKeyDialogOpen}
+                onClose={closeDeleteApiKeyDialog}
+                fullWidth
+                maxWidth="sm"
+            >
+                <DialogTitle>Delete Claude API Key?</DialogTitle>
+                <DialogContent>
+                    <DialogContentText sx={{ mb: 2 }}>
+                        Do you really want to delete your Claude API key? You
+                        won&apos;t be able to generate commentary until you add
+                        a new one.
+                    </DialogContentText>
+                    {deleteApiKeyError && (
+                        <Alert severity="error">{deleteApiKeyError}</Alert>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button
+                        variant="contained"
+                        onClick={closeDeleteApiKeyDialog}
+                        disabled={deleteApiKeyLoading}
+                    >
+                        No
+                    </Button>
+                    <Button
+                        color="error"
+                        onClick={handleDeleteApiKey}
+                        disabled={deleteApiKeyLoading}
+                    >
+                        {deleteApiKeyLoading ? "Deleting…" : "Yes"}
+                    </Button>
+                </DialogActions>
             </Dialog>
         </Box>
     );
