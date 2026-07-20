@@ -1,7 +1,6 @@
-import { ENDPOINTS } from "../src/shared/config";
+import { ENDPOINTS, FRONTEND_URL } from "../src/shared/config";
 import type { ExtensionAuthObject } from "../src/shared/types";
 
-const FRONTEND_URL = import.meta.env.VITE_FRONTEND_URL;
 const OGS_GAMES_URL = "https://online-go.com/observe-games/";
 const STORAGE_KEY = "extension_auth";
 // Marker read by the content script so a signed-out session isn't picked up
