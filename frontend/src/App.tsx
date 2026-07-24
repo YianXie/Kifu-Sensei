@@ -15,6 +15,7 @@ import Commentary from "@/pages/Commentary";
 import Home from "@/pages/Home";
 import Login from "@/pages/Login";
 import NotFound from "@/pages/NotFoundPage";
+import Privacy from "@/pages/Privacy";
 import Register from "@/pages/Register";
 import Settings from "@/pages/Settings";
 import SetupApiKey from "@/pages/SetupApiKey";
@@ -67,6 +68,7 @@ function ThemedApp() {
                     <Route path="/" element={<Home />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/register" element={<Register />} />
+                    <Route path="/privacy" element={<Privacy />} />
 
                     <Route element={<ProtectedRoute />}>
                         <Route path="/commentary" element={<Commentary />} />
