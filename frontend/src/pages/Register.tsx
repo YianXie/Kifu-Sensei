@@ -148,6 +148,19 @@ export default function Register() {
                         Log In
                     </Link>
                 </Typography>
+
+                <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ textAlign: "center" }}
+                >
+                    <Link
+                        to="/privacy"
+                        style={{ color: "inherit", fontWeight: 600 }}
+                    >
+                        Privacy Policy
+                    </Link>
+                </Typography>
             </Box>
         </Container>
     );
