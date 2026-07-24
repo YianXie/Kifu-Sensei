@@ -94,12 +94,12 @@ We do not use analytics, advertising, or third-party tracking of any kind.
 
 We share data only with the service providers we need to run the product:
 
-| Provider | What they receive | Why |
-| --- | --- | --- |
-| Anthropic (Claude API) | Board positions, engine statistics, and prompts derived from your games | To generate the commentary text |
-| Amazon Web Services, for your KataGo server | Board positions from your games | To run engine analysis |
-| Render | Application and database hosting; all stored data | Hosting |
-| Cloudflare | Network traffic, IP addresses | Routing, TLS, abuse protection |
+| Provider                                    | What they receive                                                       | Why                             |
+| ------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------- |
+| Anthropic (Claude API)                      | Board positions, engine statistics, and prompts derived from your games | To generate the commentary text |
+| Amazon Web Services, for your KataGo server | Board positions from your games                                         | To run engine analysis          |
+| Render                                      | Application and database hosting; all stored data                       | Hosting                         |
+| Cloudflare                                  | Network traffic, IP addresses                                           | Routing, TLS, abuse protection  |
 
 Board positions sent for analysis are game data. They do not include your email address or your account identity.
 
