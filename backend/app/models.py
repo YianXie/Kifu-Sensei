@@ -6,7 +6,7 @@ from sqlmodel import Field, SQLModel
 DEFAULT_USER_PREFERENCES: dict = {
     "theme": "system",
     "commentary_config": {
-        "model": "claude-haiku-4-5",
+        "model": "claude-sonnet-5",
         "language": "english",
         "num_comments": 20,
         "max_token": 1024,

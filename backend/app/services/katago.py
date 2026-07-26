@@ -99,7 +99,7 @@ _RULES_ALIASES: dict[str, str] = {
     "chinese-ogs": "chinese-ogs",
 }
 
-_CLAUDE_MODEL = "claude-haiku-4-5"
+_CLAUDE_MODEL = "claude-sonnet-5"
 _COMMENTARY_LANGUAGE = "english"
 _MAX_TOKENS = 1024
 
