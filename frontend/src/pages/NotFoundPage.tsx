@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 
 import GridOffRoundedIcon from "@mui/icons-material/GridOffRounded";
 import {

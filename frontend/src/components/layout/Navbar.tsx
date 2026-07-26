@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link as RouterLink, useNavigate } from "react-router-dom";
+import { Link as RouterLink, useNavigate } from "react-router";
 
 import { AccountCircle } from "@mui/icons-material";
 import CommentIcon from "@mui/icons-material/Comment";

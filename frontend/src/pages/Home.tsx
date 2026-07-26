@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 
 import ArrowDownwardIcon from "@mui/icons-material/ArrowDownward";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
