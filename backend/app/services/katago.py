@@ -298,6 +298,24 @@ def _prior_descriptor(prior: float) -> str:
     return "high — a natural-looking move to the neural net"
 
 
+def _mover_winrate_delta(detail: dict[str, Any], prev_detail: dict[str, Any]) -> float:
+    """Return the win-rate change in percentage points for the player who just moved.
+
+    Negative means the move lost win rate — this is the value clients render as the
+    ``-18%`` badge. It is computed from the *detailed* analysis pass so that it matches
+    the ``[CHANGE: ...]`` figure ``_generate_user_prompt`` puts in front of the model;
+    the coarser first-pass numbers used for move selection would let the badge and the
+    commentary text disagree.
+    """
+    color = _color_letter_to_word(detail["rootInfo"]["currentPlayer"])
+    winrate = _black_winrate_pct(detail)
+    prev_winrate = _black_winrate_pct(prev_detail)
+    if color == "White":
+        winrate = 100 - winrate
+        prev_winrate = 100 - prev_winrate
+    return round(winrate - prev_winrate, 1)
+
+
 def _describe_pv_path(pv: list[str], board_size: int) -> str:
     """Return the one or two board regions a principal variation runs through."""
     names = []
@@ -816,13 +834,20 @@ def generate_commentary(
         custom_instruction=custom_instruction,
     )
     frontend_moves, frontend_initial = _katago_moves_to_frontend(moves, initial_stones)
-    comments = [
-        {
-            "turn": detailed_results[i]["turnNumber"],
-            "comment": comment_texts[i],
-        }
-        for i in range(len(detailed_results))
-    ]
+    comments: list[dict[str, Any]] = []
+    for i, detail in enumerate(detailed_results):
+        turn = detail["turnNumber"]
+        comments.append(
+            {
+                "turn": turn,
+                "comment": comment_texts[i],
+                "winrate_delta": _mover_winrate_delta(detail, detailed_prev_results[i]),
+                # ``turn`` is 1-based over the SGF main sequence; ``moves`` is 0-based.
+                # Read from the move list rather than inferred from turn parity, which
+                # is wrong for handicap games — those open with White to play.
+                "color": moves[turn - 1][0],
+            }
+        )
     return {
         "board_size": board_size,
         "sgf_file_name": sgf_file_name,

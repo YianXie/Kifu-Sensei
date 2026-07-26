@@ -80,6 +80,19 @@ class GenerateCommentaryRequest(BaseModel):
 class CommentaryItemSchema(BaseModel):
     turn: int
     comment: str
+    # Win-rate change in percentage points from the perspective of the player who made
+    # the move; negative means the move lost win rate. Clients map this to a severity
+    # tier (blunder / mistake / notable) — thresholds are a display concern and are
+    # deliberately not fixed here, so they can be tuned without a schema change.
+    #
+    # Both fields are always populated on a freshly generated commentary. They are
+    # optional because ``/auth/user/commentary-history/`` replays rows saved before
+    # these fields existed through this same schema; making them required 500s that
+    # endpoint for every pre-existing row. ``None`` rather than ``0.0`` so a missing
+    # value can't be mistaken for a genuinely neutral move. Clients can still recover
+    # ``color`` from ``moves[turn - 1][0]``, which old rows do have.
+    winrate_delta: float | None = None
+    color: Literal["B", "W"] | None = None
 
 
 class GenerateCommentaryResponse(BaseModel):

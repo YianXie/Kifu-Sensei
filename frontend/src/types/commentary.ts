@@ -82,6 +82,14 @@ export function readCommentaryConfig(
 export type CommentaryItem = {
     turn: number;
     comment: string;
+    /**
+     * Win-rate change in percentage points from the mover's perspective; negative
+     * means the move lost win rate. Optional because commentaries saved before this
+     * field existed are replayed from the database without it.
+     */
+    winrate_delta?: number;
+    /** Colour of the player who made this move. Optional for the same reason. */
+    color?: "B" | "W";
 };
 
 export type CommentaryResponse = {
