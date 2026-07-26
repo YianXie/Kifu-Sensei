@@ -49,6 +49,10 @@ class Commentary(SQLModel, table=True):
     board_size: int = Field(default=19)
     sgf_file_name: str = Field(default="")
     language: str = Field(default="english")
+    # Nullable: rows saved before these columns existed keep NULL rather than a
+    # fabricated model name or a zeroed token count that would read as real data.
+    model: str | None = Field(default=None)
+    usage: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
     moves: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     initial_stones: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     comments: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False))

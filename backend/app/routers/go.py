@@ -40,6 +40,8 @@ def commentary(
                 board_size=commentary["board_size"],
                 sgf_file_name=commentary["sgf_file_name"],
                 language=commentary["language"],
+                model=commentary["model"],
+                usage=commentary["usage"],
                 moves=commentary["moves"],
                 initial_stones=commentary["initial_stones"],
                 comments=commentary["comments"],

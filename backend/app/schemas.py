@@ -95,10 +95,28 @@ class CommentaryItemSchema(BaseModel):
     color: Literal["B", "W"] | None = None
 
 
+class CommentaryUsageSchema(BaseModel):
+    """Anthropic token usage summed across the per-move commentary calls.
+
+    The cache counters stay at zero today: the pipeline sends no ``cache_control`` and
+    the system prompt is far below the minimum cacheable prefix. They are reported so
+    enabling prompt caching later needs no schema change.
+    """
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_input_tokens: int = 0
+    cache_creation_input_tokens: int = 0
+
+
 class GenerateCommentaryResponse(BaseModel):
     board_size: int
     sgf_file_name: str
     language: Literal["english", "chinese (simplified)", "japanese", "korean"]
+    # Optional for the same reason as CommentaryItemSchema's added fields: the history
+    # endpoint replays rows saved before these columns existed through this schema.
+    model: str | None = None
+    usage: CommentaryUsageSchema | None = None
     moves: list[list]
     initial_stones: list[list]
     comments: list[CommentaryItemSchema]

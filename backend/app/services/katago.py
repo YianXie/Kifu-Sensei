@@ -589,7 +589,7 @@ def _generate_user_prompt(
         f"({'Black' if prev_score_lead >= 0 else 'White'} ahead)\n\n"
     )
     prompt += f"After {color} played {last_move_label} (position after move {turn_number}):\n"
-    prompt += f"  {color} winrate:    {winrate:+1f}%   [CHANGE: {winrate - prev_winrate:+.1f}%]\n"
+    prompt += f"  {color} winrate:    {winrate:+.1f}%   [CHANGE: {winrate - prev_winrate:+.1f}%]\n"
     prompt += f"  Score lead:       {score_lead:+.1f} pts [CHANGE: {score_lead - prev_score_lead:+.1f} pts]\n\n"
 
     played_info = next(
@@ -666,6 +666,31 @@ def _generate_user_prompt(
     return prompt
 
 
+def _empty_usage() -> dict[str, int]:
+    """Return a zeroed token-usage accumulator."""
+    return {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+    }
+
+
+def _accumulate_usage(totals: dict[str, int], usage: Any) -> None:
+    """Add one Anthropic response's token counts into ``totals``.
+
+    The cache counters are ``None`` unless prompt caching is in play. The pipeline does
+    not use it — the system prompt is far below the minimum cacheable prefix, so a
+    ``cache_control`` marker would silently never cache — but they are summed anyway so
+    turning caching on later needs no change here. ``getattr`` guards against SDK
+    versions that omit the attributes entirely.
+    """
+    totals["input_tokens"] += getattr(usage, "input_tokens", 0) or 0
+    totals["output_tokens"] += getattr(usage, "output_tokens", 0) or 0
+    totals["cache_read_input_tokens"] += getattr(usage, "cache_read_input_tokens", 0) or 0
+    totals["cache_creation_input_tokens"] += getattr(usage, "cache_creation_input_tokens", 0) or 0
+
+
 def generate_commentary_with_claude(
     user: User,
     prompts: list[str],
@@ -674,7 +699,7 @@ def generate_commentary_with_claude(
     language: str = _COMMENTARY_LANGUAGE,
     max_token: int = _MAX_TOKENS,
     custom_instruction: str = "",
-) -> list[str]:
+) -> tuple[list[str], dict[str, int]]:
     """Example: decrypt the user's Claude API key and call the Anthropic API.
 
     The key is only decrypted in memory, here, at the moment it is used — it is never
@@ -693,6 +718,7 @@ def generate_commentary_with_claude(
         custom_instruction=custom_instruction, language=language
     )
     comments: list[str] = []
+    usage = _empty_usage()
     for user_prompt in prompts:
         message = client.messages.create(
             model=model,
@@ -707,8 +733,9 @@ def generate_commentary_with_claude(
         )
         text = "".join(block.text for block in message.content if block.type == "text")
         comments.append(text)
+        _accumulate_usage(usage, message.usage)
 
-    return comments
+    return comments, usage
 
 
 def _katago_moves_to_frontend(
@@ -825,7 +852,7 @@ def generate_commentary(
         prompts.append(prompt)
         logger.info("User prompt for move %d:\n%s\n", detailed_results[i]["turnNumber"], prompt)
 
-    comment_texts = generate_commentary_with_claude(
+    comment_texts, usage = generate_commentary_with_claude(
         user,
         prompts,
         model=model,
@@ -852,6 +879,8 @@ def generate_commentary(
         "board_size": board_size,
         "sgf_file_name": sgf_file_name,
         "language": language,
+        "model": model,
+        "usage": usage,
         "moves": frontend_moves,
         "initial_stones": frontend_initial,
         "comments": comments,

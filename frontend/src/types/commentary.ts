@@ -92,10 +92,24 @@ export type CommentaryItem = {
     color?: "B" | "W";
 };
 
+export type CommentaryUsage = {
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_input_tokens: number;
+    cache_creation_input_tokens: number;
+};
+
 export type CommentaryResponse = {
     board_size: number;
     sgf_file_name: string;
     language: CommentaryLanguage;
+    /**
+     * Claude model that produced the commentary, and the tokens it consumed.
+     * Optional because commentaries saved before these fields existed are replayed
+     * from the database without them.
+     */
+    model?: ClaudeModel | null;
+    usage?: CommentaryUsage | null;
     moves: GameMove[];
     initial_stones: GameMove[];
     comments: CommentaryItem[];
