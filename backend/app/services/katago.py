@@ -3,6 +3,7 @@ import logging
 import os
 import string
 from collections import Counter
+from collections.abc import Callable
 from typing import Any, Literal
 
 import httpx
@@ -99,6 +100,10 @@ _RULES_ALIASES: dict[str, str] = {
     # Chinese OGS variant
     "chinese-ogs": "chinese-ogs",
 }
+
+# Called as ``on_progress(done, total)`` after each comment is written, so a caller can
+# publish real progress. Must not raise — see the guard in the job runner.
+ProgressCallback = Callable[[int, int], None]
 
 _CLAUDE_MODEL = "claude-sonnet-5"
 _COMMENTARY_LANGUAGE = "english"
@@ -706,6 +711,7 @@ def generate_commentary_with_claude(
     language: str = _COMMENTARY_LANGUAGE,
     max_token: int = _MAX_TOKENS,
     custom_instruction: str = "",
+    on_progress: ProgressCallback | None = None,
 ) -> tuple[list[str], dict[str, int]]:
     """Example: decrypt the user's Claude API key and call the Anthropic API.
 
@@ -726,6 +732,10 @@ def generate_commentary_with_claude(
     )
     comments: list[str] = []
     usage = _empty_usage()
+    # Publish the total before the first call so a poller can show "0 of N" rather than
+    # "0 of 0" for the length of the first request.
+    if on_progress is not None:
+        on_progress(0, len(prompts))
     for user_prompt in prompts:
         message = client.messages.create(
             model=model,
@@ -741,6 +751,8 @@ def generate_commentary_with_claude(
         text = "".join(block.text for block in message.content if block.type == "text")
         comments.append(text)
         _accumulate_usage(usage, message.usage)
+        if on_progress is not None:
+            on_progress(len(comments), len(prompts))
 
     return comments, usage
 
@@ -798,6 +810,7 @@ def generate_commentary(
     num_comments: int = 20,
     max_token: int = _MAX_TOKENS,
     custom_instruction: str = "",
+    on_progress: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     """Run the two-pass KataGo analysis and return board data with commentary."""
     # Checked up front, not just at the Claude call below: the KataGo passes take
@@ -876,6 +889,7 @@ def generate_commentary(
         language=language,
         max_token=max_token,
         custom_instruction=custom_instruction,
+        on_progress=on_progress,
     )
     frontend_moves, frontend_initial = _katago_moves_to_frontend(moves, initial_stones)
     comments: list[dict[str, Any]] = []

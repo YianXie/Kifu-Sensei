@@ -145,3 +145,31 @@ class GenerateCommentaryResponse(BaseModel):
 
 class UserCommentaryHistory(BaseModel):
     commentaries: list[GenerateCommentaryResponse]
+
+
+CommentaryJobStatus = Literal["queued", "running", "succeeded", "failed"]
+
+
+class CommentaryJobCreatedResponse(BaseModel):
+    job_id: str
+    status: CommentaryJobStatus
+
+
+class CommentaryJobProgress(BaseModel):
+    """Comments written so far, out of the number actually selected for this game.
+
+    ``total`` is 0 until the KataGo passes finish and the move set is known — it is the
+    count of moves picked, which is ``min(num_comments, moves available)`` and so can be
+    lower than the requested ``num_comments`` on a short game.
+    """
+
+    done: int = 0
+    total: int = 0
+
+
+class CommentaryJobStatusResponse(BaseModel):
+    job_id: str
+    status: CommentaryJobStatus
+    progress: CommentaryJobProgress
+    result: GenerateCommentaryResponse | None = None
+    error: CommentaryErrorResponse | None = None

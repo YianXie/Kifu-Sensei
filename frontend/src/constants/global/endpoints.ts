@@ -12,4 +12,10 @@ export const ENDPOINTS = {
     deleteAccount: `${API_URL}/auth/user/delete/`,
     health: `${API_URL}/api/health/`,
     commentary: `${API_URL}/api/commentary/`,
+    // Async variant of `commentary`. The web app uses the synchronous endpoint; these
+    // exist for clients that cannot hold a multi-minute request open — notably the
+    // browser extension, whose service worker is killed after a 30-second fetch.
+    commentaryJobs: `${API_URL}/api/commentary/jobs/`,
+    commentaryJob: (jobId: string) =>
+        `${API_URL}/api/commentary/jobs/${jobId}/`,
 } as const;
