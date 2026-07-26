@@ -1,9 +1,0 @@
-{
-    "compilerOptions": {
-        "baseUrl": ".",
-        "paths": {
-            "@/assets/sounds/placeStoneSoundInstance": ["./stubs/placeStoneSoundInstance.ts"],
-            "@/*": ["../src/*"]
-        }
-    }
-}
