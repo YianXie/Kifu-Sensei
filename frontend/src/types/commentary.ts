@@ -6,6 +6,20 @@ export type ClaudeModel =
     | "claude-sonnet-5"
     | "claude-haiku-4-5";
 
+/**
+ * Machine-readable failure codes from `POST /api/commentary/`. Mirrors the `code`
+ * literal on the backend's `CommentaryErrorResponse` — branch on this rather than on
+ * `detail`, which is prose and may be reworded.
+ */
+export type CommentaryErrorCode =
+    | "no_api_key"
+    | "invalid_sgf"
+    | "upstream_rate_limited"
+    | "upstream_auth_failed"
+    | "upstream_error"
+    | "katago_unavailable"
+    | "internal_error";
+
 export type CommentaryLanguage =
     | "english"
     | "chinese (simplified)"

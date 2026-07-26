@@ -65,6 +65,26 @@ class DetailResponse(BaseModel):
     detail: str
 
 
+class CommentaryErrorResponse(BaseModel):
+    """Error body for ``POST /api/commentary/``.
+
+    ``code`` is the stable, machine-readable discriminator — clients branch on it
+    rather than on ``detail``, which is prose and may be reworded.
+    """
+
+    detail: str
+    code: Literal[
+        "no_api_key",
+        "invalid_sgf",
+        "upstream_rate_limited",
+        "upstream_auth_failed",
+        "upstream_error",
+        "katago_unavailable",
+        "internal_error",
+    ]
+    retry_after: int | None = None
+
+
 class GenerateCommentaryRequest(BaseModel):
     sgf_content: str = Field(min_length=1)
     sgf_file_name: str = Field(min_length=5)

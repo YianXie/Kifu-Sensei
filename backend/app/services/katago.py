@@ -14,6 +14,7 @@ from sgfmill.boards import Board
 from app.config import settings
 from app.crypto import decrypt_secret
 from app.deps import CurrentUser
+from app.errors import InvalidSgfError, MissingApiKeyError
 from app.models import User
 
 _http_client = None
@@ -437,7 +438,13 @@ def _generate_ownership_summary(
 def sgf_to_winrate_request(sgf_content: str) -> dict[str, Any]:
     """Parse an SGF string into a KataGo analysis-engine request payload."""
     payload = sgf_content.encode("utf-8") if isinstance(sgf_content, str) else sgf_content
-    game = sgf.Sgf_game.from_bytes(payload)
+    try:
+        game = sgf.Sgf_game.from_bytes(payload)
+    except ValueError as exc:
+        # Raised as a typed error here rather than pattern-matched on ValueError in the
+        # router: coordinate helpers elsewhere in this module raise ValueError too, and
+        # those are bugs, not malformed input.
+        raise InvalidSgfError(f"Could not parse the SGF file: {exc}") from exc
 
     board_size = game.get_size()
     root = game.get_root()
@@ -707,7 +714,7 @@ def generate_commentary_with_claude(
     that was stored via the ``PUT /auth/user/claude-api-key/`` endpoint.
     """
     if not user.has_claude_api_key or not user.claude_api:
-        raise ValueError("This user has not configured a Claude API key.")
+        raise MissingApiKeyError("This account has no Claude API key configured.")
 
     # Decrypt the stored ciphertext back into the usable API key.
     claude_api_key = decrypt_secret(user.claude_api)
@@ -769,7 +776,10 @@ def _inject_comments_into_sgf(sgf_content: str, comments: list[dict[str, Any]]) 
     payload = sgf_content.encode("utf-8") if isinstance(sgf_content, str) else sgf_content
     # Force a UTF-8 presenter so SGF comments from the LLM can include
     # punctuation like em dashes without latin-1 serialization failures.
-    game = sgf.Sgf_game.from_bytes(payload, override_encoding="utf-8")
+    try:
+        game = sgf.Sgf_game.from_bytes(payload, override_encoding="utf-8")
+    except ValueError as exc:
+        raise InvalidSgfError(f"Could not re-parse the SGF file: {exc}") from exc
     for idx, node in enumerate(game.get_main_sequence()):
         if idx == 0:
             continue  # root node is not a move
@@ -790,6 +800,13 @@ def generate_commentary(
     custom_instruction: str = "",
 ) -> dict[str, Any]:
     """Run the two-pass KataGo analysis and return board data with commentary."""
+    # Checked up front, not just at the Claude call below: the KataGo passes take
+    # minutes, and there is no point spending them for a user who cannot be billed for
+    # the commentary at the end. generate_commentary_with_claude re-checks, since it is
+    # callable on its own.
+    if not user.has_claude_api_key or not user.claude_api:
+        raise MissingApiKeyError("This account has no Claude API key configured.")
+
     client = get_http_client()
 
     winrate_request = sgf_to_winrate_request(sgf_content)
