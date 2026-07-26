@@ -1,8 +1,9 @@
 import type { GameMove } from "@/types/game";
 
 export type ClaudeModel =
-    | "claude-opus-4-8"
-    | "claude-sonnet-4-6"
+    | "claude-fable-5-0"
+    | "claude-opus-5-0"
+    | "claude-sonnet-5-0"
     | "claude-haiku-4-5";
 
 export type CommentaryLanguage =
@@ -20,7 +21,7 @@ export type CommentaryConfigValues = {
 };
 
 export const DEFAULT_COMMENTARY_CONFIG: CommentaryConfigValues = {
-    model: "claude-haiku-4-5",
+    model: "claude-sonnet-5-0",
     language: "english",
     num_comments: 20,
     max_token: 1024,
@@ -28,8 +29,9 @@ export const DEFAULT_COMMENTARY_CONFIG: CommentaryConfigValues = {
 };
 
 const CLAUDE_MODELS: ClaudeModel[] = [
-    "claude-opus-4-8",
-    "claude-sonnet-4-6",
+    "claude-fable-5-0",
+    "claude-opus-5-0",
+    "claude-sonnet-5-0",
     "claude-haiku-4-5",
 ];
 

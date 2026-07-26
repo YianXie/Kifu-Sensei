@@ -54,14 +54,14 @@ LLM cost per game review is well under $0.10 with prompt caching. You supply you
 
 ## Tech Stack
 
-| Layer              | Technology                                                                   |
-| ------------------ | ---------------------------------------------------------------------------- |
-| Analysis engine    | KataGo (self-hosted HTTP API)                                                |
-| Commentary         | Claude (`claude-haiku-4-5` by default; Sonnet/Opus selectable) via Anthropic |
-| Backend            | FastAPI, SQLModel, SQLite/PostgreSQL, JWT auth, Fernet encryption, SQLAdmin  |
-| Frontend           | React 18, TypeScript, Vite, MUI, `@sabaki/go-board`                          |
-| Extension          | Manifest V3, TypeScript, Vite (no UI framework)                              |
-| Package management | `uv` (backend), `npm` (frontend & extension)                                 |
+| Layer              | Technology                                                                         |
+| ------------------ | ---------------------------------------------------------------------------------- |
+| Analysis engine    | KataGo (self-hosted HTTP API)                                                      |
+| Commentary         | Claude (`claude-sonnet-5-0` by default; Fable/Opus/Haiku selectable) via Anthropic |
+| Backend            | FastAPI, SQLModel, SQLite/PostgreSQL, JWT auth, Fernet encryption, SQLAdmin        |
+| Frontend           | React 18, TypeScript, Vite, MUI, `@sabaki/go-board`                                |
+| Extension          | Manifest V3, TypeScript, Vite (no UI framework)                                    |
+| Package management | `uv` (backend), `npm` (frontend & extension)                                       |
 
 ---
 
