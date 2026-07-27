@@ -705,8 +705,11 @@ def test_relationships_never_outrank_a_group_in_atari() -> None:
     . . X . . . . . .
     . . . . . . . . .
     """
-    # Black's corner stone is in atari; Black answers with a tobi in the far corner.
-    findings = run_detectors(_ctx(board_from_ascii(diagram), Point(1, 4)))
+    # White has just ataried Black's corner stone; Black answers with a tobi in the
+    # far corner instead.
+    findings = run_detectors(
+        _ctx(board_from_ascii(diagram), Point(1, 4), previous_move=Point(8, 7))
+    )
     concepts = [finding.concept for finding in findings]
     assert "stone_relationship" in concepts
     assert concepts[0] == "atari_ignored"

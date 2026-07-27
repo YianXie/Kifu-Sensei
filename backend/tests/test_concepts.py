@@ -455,6 +455,10 @@ def _atari_ignored_position() -> Board:
     )
 
 
+#: The white move that created the atari, one point to the left of Black's stone.
+_ATARI_SOURCE = Point(8, 7)
+
+
 def test_atari_ignored_fires_when_the_endangered_chain_is_far_away() -> None:
     """The whole board must be scanned, not just the neighbourhood of the move.
 
@@ -464,19 +468,52 @@ def test_atari_ignored_fires_when_the_endangered_chain_is_far_away() -> None:
     board = _atari_ignored_position()
     assert len(board.liberties(board.chain_at(Point(8, 8)))) == 1
 
-    finding = detect_atari_ignored(_ctx(board, Point(0, 0)))
+    finding = detect_atari_ignored(_ctx(board, Point(0, 0), previous_move=_ATARI_SOURCE))
     assert finding is not None
     assert finding.points == (Point(8, 8),)
     assert finding.salience is Salience.CRITICAL
 
 
+def test_atari_ignored_reports_each_atari_once_not_once_per_move() -> None:
+    """The redundancy fix: an abandoned group stays in atari until it is captured.
+
+    Reporting it every move afterwards re-issues one lesson dozens of times at
+    critical salience — measured at 51% of moves in a real game, from only 19 actual
+    groups. The atari counts as news only on the move that answers it.
+    """
+    board = _atari_ignored_position()
+    # The opponent played somewhere else entirely, so this atari is not new.
+    stale = _ctx(board, Point(0, 0), previous_move=Point(0, 4))
+    assert detect_atari_ignored(stale) is None
+
+
+def test_atari_ignored_needs_a_previous_move_to_tell_fresh_from_stale() -> None:
+    """No way to distinguish the two without it, so it stays silent rather than
+    guess — the same rule the KataGo-derived detectors follow."""
+    board = _atari_ignored_position()
+    assert detect_atari_ignored(_ctx(board, Point(0, 0))) is None
+
+
+def test_atari_ignored_is_silent_when_the_opponent_passed() -> None:
+    """A pass cannot have created an atari."""
+    board = _atari_ignored_position()
+    assert detect_atari_ignored(_ctx(board, Point(0, 0), previous_move=PASS)) is None
+
+
+def test_atari_ignored_names_the_move_that_created_the_atari() -> None:
+    board = _atari_ignored_position()
+    finding = detect_atari_ignored(_ctx(board, Point(0, 0), previous_move=_ATARI_SOURCE))
+    assert finding is not None
+    assert "H9" in finding.detail  # the white stone at Point(8, 7)
+
+
 def test_atari_ignored_is_silent_when_nothing_was_in_atari() -> None:
-    assert detect_atari_ignored(_ctx(Board(9), Point(4, 4))) is None
+    assert detect_atari_ignored(_ctx(Board(9), Point(4, 4), previous_move=Point(4, 5))) is None
 
 
 def test_atari_ignored_is_silent_when_the_move_connects_to_the_chain() -> None:
     board = _atari_ignored_position()
-    context = _ctx(board, Point(7, 8))
+    context = _ctx(board, Point(7, 8), previous_move=_ATARI_SOURCE)
     assert detect_atari_ignored(context) is None
     assert context.result.liberty_count == 2
 
@@ -493,14 +530,16 @@ def test_atari_ignored_is_silent_when_the_move_captures_the_surrounder() -> None
     )
     assert len(board.liberties(board.chain_at(Point(4, 4)))) == 1
 
-    context = _ctx(board, Point(4, 2))
+    context = _ctx(board, Point(4, 2), previous_move=Point(4, 3))
     assert detect_capture(context) is not None
     assert detect_atari_ignored(context) is None
 
 
 def test_atari_ignored_fires_on_a_pass() -> None:
-    """Passing while a group is in atari is the same lesson."""
-    finding = detect_atari_ignored(_ctx(_atari_ignored_position(), PASS))
+    """Passing while a group was just put in atari is the same lesson."""
+    finding = detect_atari_ignored(
+        _ctx(_atari_ignored_position(), PASS, previous_move=_ATARI_SOURCE)
+    )
     assert finding is not None
     assert finding.points == (Point(8, 8),)
 
@@ -517,7 +556,7 @@ def test_atari_ignored_only_looks_at_friendly_chains() -> None:
         """
     )
     assert len(board.liberties(board.chain_at(Point(4, 4)))) == 1
-    assert detect_atari_ignored(_ctx(board, Point(0, 0))) is None
+    assert detect_atari_ignored(_ctx(board, Point(0, 0), previous_move=Point(4, 3))) is None
 
 
 # ── Capture ───────────────────────────────────────────────────────────────────

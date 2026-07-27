@@ -715,15 +715,38 @@ def detect_atari_ignored(context: DetectorContext) -> Finding | None:
 
     A move that joins the endangered chain has addressed it — badly, if the merged
     chain is still on one liberty, but that is what ``self_atari`` reports.
+
+    **Only a fresh atari counts.** An abandoned group stays in atari until it is
+    captured, so reporting every friendly chain sitting at one liberty re-issues the
+    same lesson on every subsequent move — measured at 51% of moves in a real game,
+    123 firings across 19 groups, at critical salience, crowding out news that had
+    actually just happened.
+
+    The filter needs no extra state. A chain's liberties fall only when the opponent
+    plays on one of them, so the move that created the atari must be orthogonally
+    adjacent to the chain; and had the chain *already* been at one liberty, a move
+    adjacent to it would have taken its last liberty and captured it outright. So the
+    opponent's previous move being adjacent to the chain is both necessary and
+    sufficient for the atari to be new, and each atari is reported exactly once.
+
+    Without a ``previous_move`` there is no way to tell a fresh atari from a standing
+    one, and the detector stays silent rather than guess.
     """
+    previous = context.previous_move
+    if not isinstance(previous, Point):
+        return None
+
     before, after = context.board_before, context.board_after
     friendly = context.color
     played = context.point
+    freshly_hit = set(before.neighbors(previous))
 
     ignored: list[Chain] = []
     for chain in before.chains():
         if chain.color is not friendly or len(before.liberties(chain)) != 1:
             continue
+        if chain.points.isdisjoint(freshly_hit):
+            continue  # the opponent played elsewhere, so this atari is old news
         anchor = min(chain.points)
         if after.get(anchor) is not friendly:
             continue
@@ -741,13 +764,13 @@ def detect_atari_ignored(context: DetectorContext) -> Finding | None:
     word = _word(friendly)
     if len(ignored) == 1:
         detail = (
-            f"the {word} chain at {_names(stones, size)} was in atari before this move "
-            "and is still in atari"
+            f"the {word} chain at {_names(stones, size)} was put in atari by the previous "
+            f"move at {_name(previous, size)} and is still in atari"
         )
     else:
         detail = (
-            f"{len(ignored)} {word} chains were in atari before this move and still are "
-            f"({_names(stones, size)})"
+            f"{len(ignored)} {word} chains were put in atari by the previous move at "
+            f"{_name(previous, size)} and are still in atari ({_names(stones, size)})"
         )
     return Finding(
         concept="atari_ignored",
