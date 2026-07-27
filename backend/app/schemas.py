@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class RegisterRequest(BaseModel):
@@ -23,8 +23,10 @@ class UserPublic(BaseModel):
     preferences: dict
     has_claude_api_key: bool = False
 
-    class Config:
-        form_attributes = True
+    # ``from_attributes`` lets this be built straight from a ``User`` ORM instance.
+    # It was previously spelled ``form_attributes`` inside a class-based ``Config``,
+    # so it silently did nothing and emitted a Pydantic V2 deprecation warning.
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TokenPairResponse(BaseModel):
@@ -88,9 +90,9 @@ class CommentaryErrorResponse(BaseModel):
 class GenerateCommentaryRequest(BaseModel):
     sgf_content: str = Field(min_length=1)
     sgf_file_name: str = Field(min_length=5)
-    model: Literal[
-        "claude-fable-5", "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"
-    ] = "claude-sonnet-5"
+    model: Literal["claude-fable-5", "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"] = (
+        "claude-sonnet-5"
+    )
     language: Literal["english", "chinese (simplified)", "japanese", "korean"] = "english"
     num_comments: int = Field(default=20, ge=1, le=100)
     max_token: int = Field(default=1024, ge=256, le=8192)

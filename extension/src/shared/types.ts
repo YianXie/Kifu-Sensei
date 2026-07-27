@@ -61,10 +61,7 @@ export type CommentaryErrorCode =
  * happen before or instead of a response.
  */
 export type ClientErrorCode =
-    | "session_expired"
-    | "network"
-    | "timeout"
-    | "sgf_unavailable";
+    "session_expired" | "network" | "timeout" | "sgf_unavailable";
 
 /** Every code the panel's error screen must be able to explain. */
 export type PanelErrorCode = CommentaryErrorCode | ClientErrorCode;

@@ -143,7 +143,47 @@ admin credentials are still their insecure dev defaults, and always requires
 ## Testing, linting, migrations
 
 ```bash
-uv run pytest path/to/test_file.py::test_name -v   # run a single test
-uv run ruff check . && uv run isort --check .       # lint (part of `make ci`)
+uv run pytest                                       # the whole suite
+uv run pytest tests/test_katago_helpers.py -v       # one file
+uv run pytest tests/test_crypto.py::test_roundtrip_returns_the_original_plaintext -v
+uv run ruff check . && uv run ruff format --check . && uv run isort --check-only .
 uv run alembic upgrade head                         # apply migrations
 ```
+
+All of the above except migrations run in CI (`make ci` from the repo root).
+
+### How the test suite is wired
+
+Tests live in `tests/`, one file per module under test.
+
+| File                       | Covers                                                                   |
+| -------------------------- | ------------------------------------------------------------------------ |
+| `test_config.py`           | Settings loading, CORS origins, the production start-up guards           |
+| `test_crypto.py`           | Fernet round-trip, key isolation, tamper rejection                       |
+| `test_security.py`         | Password hashing, JWT minting, and every way a token can be rejected     |
+| `test_deps.py`             | Authentication of protected routes                                       |
+| `test_errors.py`           | The exception handlers and the status/`code` mapping                     |
+| `test_auth_router.py`      | `/auth/*` — registration, tokens, settings, API key, account management  |
+| `test_go_router.py`        | `/api/*` — commentary, error classification, the async job lifecycle     |
+| `test_katago_helpers.py`   | The pure helpers in `services/katago.py`, above all coordinate conversion |
+| `test_katago_pipeline.py`  | `generate_commentary` end to end, with both upstreams faked              |
+
+**No test touches a real service.** KataGo is served by `respx` and Anthropic by a stub
+class that replaces `app.services.katago.Anthropic`, so the suite needs neither an
+analysis server nor a Claude API key.
+
+`conftest.py` sets the environment — including `API_ENDPOINT` and a temp-file
+`DATABASE_URL` — at import time, before anything under `app` is imported: `app.config`
+builds its `Settings` at module scope and raises when `API_ENDPOINT` is unset, and
+`app.database` builds its engine from `DATABASE_URL` the moment it is imported. Real
+environment variables take precedence over `backend/.env`, so a local `.env` cannot
+change a test result.
+
+Fixtures worth knowing:
+
+- `_fresh_database` (autouse) — drops and recreates every table around each test.
+- `hashed_test_password` (session-scoped) — bcrypt is deliberately slow, so the shared
+  test password is hashed once for the whole run.
+- `make_user` / `user` — insert a user straight into the database.
+- `auth_headers` — a bearer header minted directly, skipping a bcrypt verify per test.
+- `client` — a `TestClient` over the real app.

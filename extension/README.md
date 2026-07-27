@@ -35,6 +35,44 @@ points at the built `dist/` files).
 npm run dev   # vite watch — rebuilds dist/ on change (reload the extension in Chrome to pick up changes)
 ```
 
+### Check, lint, test
+
+```bash
+npm run typecheck     # tsc, without a build
+npm run lint          # eslint
+npm run test          # vitest, once
+npm run test:watch    # vitest, watching
+npm run format        # prettier --write
+npm run format:check  # prettier --check (this is what CI runs)
+```
+
+All of these run in CI, in the `extension` job of `.github/workflows/ci.yml`, and
+locally via `make ci` or `make lint-extension` / `make test-extension` from the repo
+root.
+
+## Tests
+
+Vitest on jsdom, configured in `vitest.config.ts` (standalone rather than merged with
+`vite.config.ts`, which is one of four build entry points and carries `rollupOptions`
+that mean nothing here). Test files are colocated: `src/shared/ogs.test.ts` next to
+`src/shared/ogs.ts`.
+
+`src/test/setup.ts` installs an in-memory `chrome.storage` fake on `globalThis.chrome`
+before each test. Every method is a `vi.fn`, so a test can both assert on writes and
+read back what was written; `_dump()` inspects an area directly. Read the fake back with
+`fakeChrome()` — `chrome-types` already declares the global as the real API, so
+reaching the spies requires a cast.
+
+Covered today:
+
+| File                     | Covers                                                                       |
+| ------------------------ | ---------------------------------------------------------------------------- |
+| `shared/ogs.test.ts`     | Game-URL parsing and both live-game guards (`phase` check, SGF 403)           |
+| `shared/api.test.ts`     | `authedFetch` refresh-on-401, offline vs. dead session, error normalisation   |
+| `shared/commentary.test.ts` | Config validation and clamping, severity tiers, handicap-safe move colours |
+| `shared/config.test.ts`  | Endpoint derivation and job-id escaping                                      |
+| `shared/auth.test.ts`    | Reading the website's handoff entry out of `localStorage`                     |
+
 ### Environment variables
 
 Config is derived from env vars at build time (Vite inlines `import.meta.env.*`):
@@ -232,8 +270,6 @@ real logic.
   backend's `PUT /auth/user/claude-api-key/`. The panel currently routes to the web app.
 - **History** — browse past reviews from the panel (the backend already exposes them).
 - **Firefox / cross-browser** support once the flow stabilizes.
-- **Lint in CI** — the extension is outside `make ci`, which covers only `backend/` and
-  `frontend/src`. It has no ESLint or Prettier config of its own.
 - **Generated API types** — `src/shared/commentary.ts` is a third hand-maintained copy
   of the model and language lists (the others are the backend `Literal`s and
   `frontend/src/types/commentary.ts`). Generating them from the OpenAPI schema would

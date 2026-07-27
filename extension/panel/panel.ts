@@ -6,20 +6,15 @@ import {
     readErrorResponse,
     setCurrentAuth,
 } from "../src/shared/api";
-import { ENDPOINTS, FRONTEND_URL } from "../src/shared/config";
-import {
-    AUTH_STORAGE_KEY,
-    CONFIG_STORAGE_KEY,
-    JOB_SESSION_KEY,
-    OGS_GAMES_URL,
-    REVOKED_AUTH_KEY,
-} from "../src/shared/constants";
 import {
     CLAUDE_MODELS,
     CLAUDE_MODEL_LABELS,
     COMMENTARY_LANGUAGES,
     COMMENTARY_LANGUAGE_LABELS,
     CUSTOM_INSTRUCTION_MAX,
+    type ClaudeModel,
+    type CommentaryConfig,
+    type CommentaryLanguage,
     DEFAULT_COMMENTARY_CONFIG,
     MAX_TOKEN_MAX,
     MAX_TOKEN_MIN,
@@ -30,12 +25,17 @@ import {
     formatDelta,
     readCommentaryConfig,
     severityForDelta,
-    type ClaudeModel,
-    type CommentaryConfig,
-    type CommentaryLanguage,
 } from "../src/shared/commentary";
-import { readJob, type StoredJob } from "../src/shared/jobs";
-import { checkOgsGame, type OgsGameCheck } from "../src/shared/ogs";
+import { ENDPOINTS, FRONTEND_URL } from "../src/shared/config";
+import {
+    AUTH_STORAGE_KEY,
+    CONFIG_STORAGE_KEY,
+    JOB_SESSION_KEY,
+    OGS_GAMES_URL,
+    REVOKED_AUTH_KEY,
+} from "../src/shared/constants";
+import { type StoredJob, readJob } from "../src/shared/jobs";
+import { type OgsGameCheck, checkOgsGame } from "../src/shared/ogs";
 import type {
     CommentaryItem,
     CommentaryResponse,

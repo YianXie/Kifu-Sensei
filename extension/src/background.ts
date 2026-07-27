@@ -1,10 +1,9 @@
 // Service worker. Owns commentary runs so they outlive the side panel, and keeps
 // polling across its own restarts.
-
 import {
-    clampCommentaryConfig,
-    DEFAULT_COMMENTARY_CONFIG,
     type CommentaryConfig,
+    DEFAULT_COMMENTARY_CONFIG,
+    clampCommentaryConfig,
 } from "./shared/commentary";
 import { FRONTEND_URL } from "./shared/config";
 import { CONFIG_STORAGE_KEY } from "./shared/constants";
@@ -107,8 +106,7 @@ async function handleMessage(message: PanelMessage): Promise<MessageResult> {
             // panel last saved, falling back to the shared defaults.
             const stored = await chrome.storage.local.get(CONFIG_STORAGE_KEY);
             const saved = stored[CONFIG_STORAGE_KEY] as
-                | CommentaryConfig
-                | undefined;
+                CommentaryConfig | undefined;
             const config = clampCommentaryConfig(
                 saved ?? DEFAULT_COMMENTARY_CONFIG
             );

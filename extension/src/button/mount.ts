@@ -4,8 +4,7 @@
 // often does not exist yet at `document_idle`, and moving between games changes the URL
 // with no page load at all. So the button is (re)mounted from an observer rather than
 // once at startup.
-
-import { checkOgsGame, type OgsGameCheck } from "../shared/ogs";
+import { type OgsGameCheck, checkOgsGame } from "../shared/ogs";
 
 /**
  * Where the button goes, best first.

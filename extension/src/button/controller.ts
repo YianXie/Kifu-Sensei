@@ -6,16 +6,15 @@
 // the service worker to do anything privileged.
 //
 // Reading OGS's own API *is* fine from here: the content script is same-origin with it.
-
 import {
     AUTH_STORAGE_KEY,
     JOB_STATUS_KEY,
     OGS_ORIGIN,
 } from "../shared/constants";
 import type { PublicJobStatus } from "../shared/jobs";
-import { checkOgsGame, type OgsGameCheck } from "../shared/ogs";
-import { createOgsButton, type ButtonKind } from "./ogs-button";
+import { type OgsGameCheck, checkOgsGame } from "../shared/ogs";
 import { findMountPoint, watchForMount } from "./mount";
+import { type ButtonKind, createOgsButton } from "./ogs-button";
 
 let game: OgsGameCheck = { state: "no-game" };
 let button: ReturnType<typeof createOgsButton> | null = null;

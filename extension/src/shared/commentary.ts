@@ -7,7 +7,6 @@
 // generator from the OpenAPI schema would remove the duplication; until then, the
 // backend rejects anything out of step with a 400, so drift fails loudly rather than
 // silently sending an unsupported model.
-
 import type { GameMove } from "./types";
 
 /**

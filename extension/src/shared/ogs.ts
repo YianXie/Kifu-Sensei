@@ -3,7 +3,6 @@
 // Both calls here must be made from an extension context (the side panel or the
 // service worker), never a content script — see the note in `api.ts`. `online-go.com`
 // is in `host_permissions`, so extension pages reach it without CORS.
-
 import { ENDPOINTS } from "./config";
 import { OGS_ORIGIN } from "./constants";
 import type { OgsGameSummary } from "./types";

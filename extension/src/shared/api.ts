@@ -8,7 +8,6 @@
 // and the backend's CORS allowlist covers only the frontend origins — a request from
 // `https://online-go.com` would be blocked. Extension pages bypass CORS for hosts in
 // `host_permissions`, which already covers the API.
-
 import { ENDPOINTS } from "./config";
 import { AUTH_STORAGE_KEY } from "./constants";
 import type {

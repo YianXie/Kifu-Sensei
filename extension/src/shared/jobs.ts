@@ -8,9 +8,8 @@
 // mid-run is restarted by an alarm and picks up from the stored job id.
 //
 // Runs here, never in the panel: the panel document dies the moment it is closed.
-
 import { authedFetch, readErrorResponse } from "./api";
-import { clampCommentaryConfig, type CommentaryConfig } from "./commentary";
+import { type CommentaryConfig, clampCommentaryConfig } from "./commentary";
 import { ENDPOINTS } from "./config";
 import { JOB_SESSION_KEY, JOB_STATUS_KEY } from "./constants";
 import { fetchOgsSgf } from "./ogs";

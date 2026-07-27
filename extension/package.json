@@ -1,19 +1,33 @@
 {
-  "name": "extension",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build && vite build --config vite.content.config.ts && vite build --config vite.inject.config.ts",
-    "build:dev": "tsc && vite build --mode development && vite build --config vite.content.config.ts --mode development && vite build --config vite.inject.config.ts --mode development",
-    "preview": "vite preview"
-  },
-  "devDependencies": {
-    "typescript": "~6.0.2",
-    "vite": "^8.0.12"
-  },
-  "dependencies": {
-    "chrome-types": "^0.1.429"
-  }
+    "name": "extension",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "tsc && vite build && vite build --config vite.content.config.ts && vite build --config vite.inject.config.ts",
+        "build:dev": "tsc && vite build --mode development && vite build --config vite.content.config.ts --mode development && vite build --config vite.inject.config.ts --mode development",
+        "preview": "vite preview",
+        "typecheck": "tsc",
+        "lint": "eslint .",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "format": "prettier --write 'src/**/*.ts' 'panel/**/*.{ts,css}' '*.{ts,js,json}'",
+        "format:check": "prettier --check 'src/**/*.ts' 'panel/**/*.{ts,css}' '*.{ts,js,json}'"
+    },
+    "devDependencies": {
+        "@eslint/js": "^10.0.1",
+        "@trivago/prettier-plugin-sort-imports": "^4.3.0",
+        "eslint": "^10.8.0",
+        "globals": "^15.15.0",
+        "jsdom": "^29.1.1",
+        "prettier": "^3.9.6",
+        "typescript": "~6.0.2",
+        "typescript-eslint": "^8.65.0",
+        "vite": "^8.0.12",
+        "vitest": "^4.1.10"
+    },
+    "dependencies": {
+        "chrome-types": "^0.1.429"
+    }
 }

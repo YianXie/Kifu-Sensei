@@ -1,125 +1,113 @@
 #!/bin/bash
+#
+# Runs the same checks as .github/workflows/ci.yml, in the same order.
+#
+# Keep the two in step: a check added here without being added to the workflow
+# does not gate anything, and one added there without being added here is only
+# discovered after a push.
 
-# Local CI script to run the same checks as GitHub Actions
-set -e
+set -uo pipefail
 
-echo "🚀 Running local CI checks..."
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO_ROOT"
 
-# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+BLUE='\033[0;34m'
+DIM='\033[2m'
+NC='\033[0m'
 
-# Function to print colored output
-print_status() {
-    echo -e "${GREEN}✓${NC} $1"
+FAILURES=()
+SKIPPED=()
+
+section() {
+    echo ""
+    echo -e "${BLUE}━━ $1 ${NC}"
 }
 
-print_error() {
-    echo -e "${RED}✗${NC} $1"
+# run <label> <working-dir> <command...>
+#
+# Records a failure and carries on rather than aborting, so one run reports
+# every problem instead of only the first.
+run() {
+    local label="$1" directory="$2"
+    shift 2
+    echo -e "\n${DIM}\$ (${directory}) $*${NC}"
+    if (cd "$directory" && "$@"); then
+        echo -e "${GREEN}✓${NC} ${label}"
+    else
+        echo -e "${RED}✗${NC} ${label}"
+        FAILURES+=("$label")
+    fi
 }
 
-print_warning() {
+skip() {
     echo -e "${YELLOW}⚠${NC} $1"
+    SKIPPED+=("$1")
 }
 
-# Backend checks
-echo -e "\n${YELLOW}Backend Checks${NC}"
-echo "=================="
+echo "🚀 Running local CI checks..."
 
-# Install backend dev dependencies
-echo "Installing backend dependencies..."
-cd backend
-uv sync --dev
+# ── Backend ───────────────────────────────────────────────────────────────────
+section "Backend"
 
-# Run Ruff formatting check
-echo "Checking code formatting with Ruff..."
-if uv run ruff check .; then
-    print_status "Ruff formatting check passed"
+run "backend: install"      backend uv sync --dev --frozen
+run "backend: ruff lint"    backend uv run ruff check .
+run "backend: ruff format"  backend uv run ruff format --check .
+run "backend: isort"        backend uv run isort --check-only --diff .
+run "backend: pytest"       backend uv run pytest
+
+# ── Frontend ──────────────────────────────────────────────────────────────────
+section "Frontend"
+
+run "frontend: install"     frontend npm ci
+run "frontend: eslint"      frontend npm run lint
+run "frontend: prettier"    frontend npm run format:check
+run "frontend: vitest"      frontend npm test
+run "frontend: build"       frontend npm run build
+
+# ── Extension ─────────────────────────────────────────────────────────────────
+section "Extension"
+
+run "extension: install"    extension npm ci
+run "extension: eslint"     extension npm run lint
+run "extension: prettier"   extension npm run format:check
+run "extension: vitest"     extension npm test
+run "extension: build"      extension npm run build
+
+# ── Security ──────────────────────────────────────────────────────────────────
+section "Security"
+
+run "security: pip-audit"   backend uv run pip-audit --ignore-vuln CVE-2026-3219
+run "security: bandit"      backend uv run bandit -c pyproject.toml -r .
+run "security: npm audit (frontend)"  frontend  npm audit --audit-level=moderate
+run "security: npm audit (extension)" extension npm audit --audit-level=moderate
+
+if command -v gitleaks >/dev/null 2>&1; then
+    # `git` rather than `dir`: scanning the working tree would flag the
+    # developer's own untracked backend/.env, which is not in the repository.
+    run "security: gitleaks" . gitleaks git . --no-banner --redact --verbose
 else
-    print_error "Ruff formatting check failed. Run 'ruff format .' to fix."
-    exit 1
+    skip "security: gitleaks not installed — CI will still run it (brew install gitleaks)"
 fi
 
-# Run isort import sorting check
-echo "Checking import sorting with isort..."
-if uv run isort --check-only --diff .; then
-    print_status "isort import sorting check passed"
-else
-    print_error "isort import sorting check failed. Run 'isort .' to fix."
-    exit 1
+# ── Summary ───────────────────────────────────────────────────────────────────
+echo ""
+for note in "${SKIPPED[@]:-}"; do
+    [ -n "$note" ] && echo -e "${YELLOW}⚠ skipped:${NC} $note"
+done
+
+if [ ${#FAILURES[@]} -eq 0 ]; then
+    echo -e "${GREEN}🎉 All CI checks passed!${NC}"
+    echo "Your code is ready to be pushed to the repository."
+    exit 0
 fi
 
-# Run pip audit (security checks)
-echo "Running pip audit..."
-if uv run pip-audit; then
-    print_status "pip audit passed"
-else
-    print_error "pip audit found issues"
-    exit 1;
-fi
-
-echo "Running bandit security check..."
-if uv run bandit -c pyproject.toml -r .; then
-    print_status "Bandit security check passed"
-else
-    print_error "Bandit security check found issues"
-    exit 1;
-fi
-
-# Frontend checks
-echo -e "\n${YELLOW}Frontend Checks${NC}"
-echo "=================="
-
-cd ../frontend
-
-# Install frontend dependencies
-echo "Installing frontend dependencies..."
-if npm ci; then
-    print_status "Frontend dependencies installed"
-else
-    print_error "Failed to install frontend dependencies"
-    exit 1
-fi
-
-# Run ESLint
-echo "Running ESLint..."
-if npm run lint; then
-    print_status "ESLint passed"
-else
-    print_error "ESLint failed"
-    exit 1
-fi
-
-# Check Prettier formatting
-echo "Checking Prettier formatting..."
-if npx prettier --check "src/**/*.{ts,tsx,css,md}"; then
-    print_status "Prettier formatting check passed"
-else
-    print_error "Prettier formatting check failed. Run 'npx prettier --write \"src/**/*.{js,jsx,css,md}\"' to fix."
-    exit 1
-fi
-
-# Build frontend
-echo "Building frontend..."
-if npm run build; then
-    print_status "Frontend build passed"
-else
-    print_error "Frontend build failed"
-    exit 1
-fi
-
-# Run npm audit
-echo "Running npm audit..."
-if npm audit --audit-level=moderate; then
-    print_status "npm audit passed"
-else
-    print_warning "npm audit found issues"
-    exit 1
-fi
-
-cd ..
-
-echo -e "\n${GREEN}🎉 All CI checks passed!${NC}"
-echo "Your code is ready to be pushed to the repository."
+echo -e "${RED}${#FAILURES[@]} check(s) failed:${NC}"
+for failure in "${FAILURES[@]}"; do
+    echo -e "  ${RED}✗${NC} $failure"
+done
+echo ""
+echo "Formatting problems are usually fixed by: make format"
+exit 1

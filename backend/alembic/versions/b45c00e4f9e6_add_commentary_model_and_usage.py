@@ -28,9 +28,7 @@ def upgrade() -> None:
     # batch_alter_table so this also works on SQLite, which cannot ALTER a column in
     # place; it is a no-op wrapper on PostgreSQL.
     with op.batch_alter_table("commentaries", schema=None) as batch_op:
-        batch_op.add_column(
-            sa.Column("model", sqlmodel.sql.sqltypes.AutoString(), nullable=True)
-        )
+        batch_op.add_column(sa.Column("model", sqlmodel.sql.sqltypes.AutoString(), nullable=True))
         batch_op.add_column(sa.Column("usage", sa.JSON(), nullable=True))
 
 

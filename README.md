@@ -77,10 +77,11 @@ LLM cost per game review is well under $0.10 with prompt caching. You supply you
 ### Install
 
 ```bash
-make install   # installs backend (uv sync) and frontend (npm install)
+make install   # installs backend (uv sync --dev), frontend, and extension
 ```
 
-The extension is not part of `make` — build it separately (`cd extension && npm install`).
+To load the extension in Chrome you still need `cd extension && npm run build` — see
+[`extension/README.md`](./extension/README.md).
 
 ### Configure
 
@@ -103,12 +104,28 @@ make run-frontend  # Vite dev server on :5173
 
 Open `http://localhost:5173`, register an account, add your Claude API key under Settings, then upload an SGF.
 
-### Lint, format, and CI
+### Test, lint, format, and CI
 
 ```bash
-make format   # ruff + isort (backend), prettier (frontend)
-make ci       # full local CI: ruff, isort, pip-audit, bandit, eslint, prettier, tsc, npm audit
+make test     # pytest (backend), vitest (frontend, extension)
+make lint     # ruff + isort (backend), eslint + prettier (frontend, extension) — read-only
+make format   # rewrites files to satisfy the formatters
+make build    # tsc + vite build (frontend, extension)
+make security # pip-audit + bandit (backend), npm audit (frontend, extension)
+make ci       # everything above, in one run, the same as GitHub Actions
 ```
+
+Each target has `-backend`, `-frontend`, and `-extension` variants — `make test-backend`,
+`make lint-extension`, and so on.
+
+`make ci` runs `scripts/ci-local.sh`, which mirrors `.github/workflows/ci.yml`: per-component
+lint, format check, tests and build, plus a dependency audit and a gitleaks scan of the commit
+history. It runs every check even after one fails and prints a summary at the end. Install
+gitleaks (`brew install gitleaks`) to include the secret scan locally; without it the step is
+skipped with a warning and CI still runs it.
+
+No test contacts a real service. The backend suite serves KataGo through `respx` and stubs the
+Anthropic client, so `make test` needs neither an analysis server nor a Claude API key.
 
 ---
 

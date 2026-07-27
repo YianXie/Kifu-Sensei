@@ -24,12 +24,31 @@ cp .env.example .env     # set VITE_API_URL (defaults to http://localhost:8000)
 ## Scripts
 
 ```bash
-npm run dev       # Vite dev server on :5173
-npm run build     # tsc -b && vite build → dist/
-npm run preview   # preview a production build
-npm run lint      # eslint
-npm run format    # prettier --write src/**/*.{ts,tsx,css}
+npm run dev           # Vite dev server on :5173
+npm run build         # tsc -b && vite build → dist/
+npm run typecheck     # tsc -b, without the bundle
+npm run preview       # preview a production build
+npm run lint          # eslint
+npm run test          # vitest, once
+npm run test:watch    # vitest, watching
+npm run format        # prettier --write
+npm run format:check  # prettier --check (this is what CI runs)
 ```
+
+## Tests
+
+Vitest + React Testing Library on jsdom, configured in `vitest.config.ts` — kept
+separate from `vite.config.ts`, which it merges, so the production build config carries
+nothing test-only. Test files are colocated: `src/api.test.ts` next to `src/api.ts`.
+
+`src/test/setup.ts` registers the jest-dom matchers and shims two things jsdom does not
+implement: `window.matchMedia`, which MUI reads during render, and
+`HTMLMediaElement.play`, which the stone-placement sound calls.
+
+Covered today: the axios interceptors (`api.test.ts` — token attachment, refresh-on-401,
+the concurrent-request queue, the sign-out redirect), `AuthContext` hydration/login/logout,
+`ProtectedRoute`, the `Controls` component, and the pure helpers in `utils/` and
+`types/commentary.ts`.
 
 Only `VITE_API_URL` is read from the environment (see `src/constants/global/endpoints.ts`).
 It is the base URL of the backend API; every endpoint is derived from it.
@@ -209,3 +228,5 @@ a model or language on the backend, update `ClaudeModel` / `CommentaryLanguage` 
 - Style with `sx` and theme tokens; avoid hard-coded colors so dark mode keeps working.
 - Prettier + ESLint are enforced in CI (`make ci` from the repo root). Imports are
   auto-sorted by `@trivago/prettier-plugin-sort-imports`.
+- New logic that can be exercised without a running backend should come with a test.
+  Vitest, `tsc -b`, ESLint and Prettier all gate the `frontend` CI job.

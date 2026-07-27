@@ -27,6 +27,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.0",
+    "respx>=0.22",
     "ruff>=0.8",
     "isort>=5.13",
     "bandit>=1.8",
@@ -49,9 +50,19 @@ exclude_dirs = ["tests", ".venv"]
 skips = ["B101", "B105", "B601"]
 
 [tool.pytest.ini_options]
+# `pythonpath` puts the backend root on sys.path so `import app` works no matter
+# which directory pytest is invoked from.
+pythonpath = ["."]
+testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+addopts = "-ra --strict-markers --strict-config"
+filterwarnings = [
+    # Surface our own deprecations; third-party ones are out of our control and
+    # would otherwise make CI fail on an unrelated dependency bump.
+    "error::DeprecationWarning:app.*",
+]
 
 [tool.isort]
 profile = "black"

@@ -10,12 +10,16 @@ There are three top-level components: `backend/` (FastAPI), `frontend/` (React w
 
 ## Commands
 
+All three components — `backend/`, `frontend/`, `extension/` — are covered by `make`
+and by CI. Every `make` target has a `-backend`, `-frontend`, `-extension` variant.
+
 ### Install
 
 ```bash
-make install          # installs both backend and frontend
-make install-backend  # cd backend && uv sync
-make install-frontend # cd frontend && npm install
+make install            # all three components
+make install-backend    # cd backend && uv sync --dev
+make install-frontend   # cd frontend && npm install
+make install-extension  # cd extension && npm install
 ```
 
 ### Dev Servers
@@ -25,24 +29,71 @@ make run-backend   # uvicorn on :8000 with --reload
 make run-frontend  # vite dev on :5173
 ```
 
-### Format
+### Format, lint, test, build
 
 ```bash
-make format   # ruff + isort (backend), prettier (frontend)
+make format     # writes: ruff format + isort (backend), prettier (frontend, extension)
+make lint       # read-only: ruff check + ruff format --check + isort --check (backend), eslint + prettier --check (frontend, extension)
+make test       # pytest (backend), vitest (frontend, extension)
+make build      # tsc + vite build (frontend, extension)
+make security   # pip-audit + bandit (backend), npm audit (frontend, extension)
 ```
 
-### CI (lint + format check + security + build)
+### CI
 
 ```bash
-make ci   # runs ./scripts/ci-local.sh
+make ci   # runs ./scripts/ci-local.sh — the same checks as .github/workflows/ci.yml
 ```
 
-CI checks: ruff, isort, pip-audit, bandit (backend) — eslint, prettier, tsc build, npm audit (frontend).
+`.github/workflows/ci.yml` has five jobs, which run in parallel:
 
-### Run a single backend test
+| Job                | Checks                                                                  |
+| ------------------ | ----------------------------------------------------------------------- |
+| `backend`          | ruff check, ruff format --check, isort --check-only, pytest             |
+| `frontend`         | eslint, prettier --check, vitest, `tsc -b` + vite build                 |
+| `extension`        | eslint, prettier --check, vitest, `tsc` + all four vite builds          |
+| `secret-scan`      | gitleaks over the full commit history                                   |
+| `dependency-audit` | pip-audit, bandit, npm audit (frontend), npm audit (extension)          |
+
+`scripts/ci-local.sh` runs every check even after one fails, then prints a summary —
+so one run surfaces everything rather than only the first problem. It skips gitleaks
+with a warning when the binary is not installed (`brew install gitleaks`); CI always
+runs it.
+
+**Keep `ci-local.sh` and `ci.yml` in step.** A check in only one of them either gates
+nothing or is discovered only after a push.
+
+### Testing
+
+**Backend** — pytest, in `backend/tests/`. `conftest.py` sets the environment
+(including `API_ENDPOINT` and a temp-file `DATABASE_URL`) at import time, before
+anything under `app` is imported, because `app.config` builds its settings and
+`app.database` its engine at module scope. Real environment variables win over
+`backend/.env`, so a local `.env` cannot change a test result. Each test gets an
+empty database from the autouse `_fresh_database` fixture.
+
+Upstreams are never contacted: KataGo is served by `respx` and Anthropic by a stub
+class that replaces `app.services.katago.Anthropic`.
 
 ```bash
-cd backend && uv run pytest path/to/test_file.py::test_name -v
+cd backend && uv run pytest                                    # all
+cd backend && uv run pytest tests/test_katago_helpers.py -v    # one file
+cd backend && uv run pytest tests/test_auth_router.py::test_register_creates_a_user -v
+```
+
+**Frontend and extension** — Vitest + jsdom, configured in `vitest.config.ts` in each
+project (kept separate from `vite.config.ts` so the build configs carry nothing
+test-only). Tests are colocated as `*.test.ts` / `*.test.tsx`.
+
+- `frontend/src/test/setup.ts` — jest-dom matchers, `matchMedia` and
+  `HTMLMediaElement.play` shims that jsdom lacks.
+- `extension/src/test/setup.ts` — an in-memory `chrome.storage` fake, installed on
+  `globalThis.chrome` before each test. Read it back with `fakeChrome()` to get at the
+  spies; `chrome-types` already declares the global, so every access needs a cast.
+
+```bash
+cd frontend && npm test           # or npm run test:watch
+cd extension && npm test
 ```
 
 ## Backend Architecture (`backend/app/`)
@@ -81,12 +132,14 @@ Key files:
 
 ## Extension Architecture (`extension/`)
 
-**Stack:** Manifest V3 Chrome extension, TypeScript + Vite, no UI framework (plain DOM). Not part of `make` or `make ci` — build it separately.
+**Stack:** Manifest V3 Chrome extension, TypeScript + Vite, no UI framework (plain DOM). Covered by `make` and by CI, same as the other two components.
 
 ```bash
 cd extension && npm install
 npm run build   # tsc + vite → outputs to extension/dist/ (load unpacked in Chrome)
 npm run dev     # vite watch
+npm test        # vitest
+npm run lint    # eslint
 ```
 
 Vite has four entry points (`vite.config.ts`): `panel` (side panel HTML/TS), `background` (service worker), `content` (content script), `inject` (page-context script). The extension runs on `online-go.com/game/*` and the Kifu-Sensei frontend origins (see `manifest.json` `content_scripts` / `host_permissions`).
