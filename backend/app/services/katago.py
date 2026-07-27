@@ -447,6 +447,48 @@ def _generate_ownership_summary(
     return "\n".join(bullets)
 
 
+def _markable_point(katago_point: str | None) -> tuple[int, int] | None:
+    """The point to mark on the diagram, or ``None`` if there is nothing to mark.
+
+    A pass has no coordinates, and a coordinate the SGF got wrong should cost its
+    marker rather than the review — the same bargain :func:`_replay_for_display`
+    makes for the stones themselves.
+    """
+    if not katago_point or katago_point.lower() == "pass":
+        return None
+    try:
+        return _katago_point_to_sgfmill(katago_point)
+    except ValueError as exc:
+        logger.warning("Not marking %s on the board: %s", katago_point, exc)
+        return None
+
+
+def _replay_for_display(
+    board_size: int, initial_stones: list[list[str]], moves: list[list[str]]
+) -> SgfmillBoard:
+    """Replay the game onto an sgfmill board, for the ASCII diagram in the prompt.
+
+    A stone that will not go down is skipped rather than raised. sgfmill rejects a
+    play onto an occupied point, and a malformed SGF that got this far would
+    otherwise fail the whole review over one unusable stone — a commentary run with
+    one stone missing from one diagram is a far better outcome than no commentary.
+
+    Every skip is logged, which is how a genuinely broken game gets noticed rather
+    than quietly producing odd-looking boards. In practice this should stay silent:
+    a game whose moves KataGo refused never reaches prompt building at all.
+    """
+    board = SgfmillBoard(board_size)
+    for colour, katago_point in [*initial_stones, *moves]:
+        if katago_point.lower() == "pass":
+            continue
+        try:
+            row, col = _katago_point_to_sgfmill(katago_point)
+            board.play(row, col, colour.lower())
+        except (ValueError, IndexError) as exc:
+            logger.warning("Skipping %s %s while drawing the board: %s", colour, katago_point, exc)
+    return board
+
+
 def _katago_move_to_point(katago_point: str) -> Move:
     """Convert a KataGo move string to a board :class:`Move`, passes included."""
     if katago_point.lower() == "pass":
@@ -623,22 +665,10 @@ def _generate_user_prompt(
     moves_through_turn = moves[:turn_number]
     last_move = moves_through_turn[-1][1] if moves_through_turn else None
     last_move_label = last_move.upper() if last_move else "(none)"
-    last_move_sgfmill = (
-        _katago_point_to_sgfmill(last_move) if last_move and last_move != "pass" else None
-    )
+    last_move_sgfmill = _markable_point(last_move)
     top_suggestion = prev_detail["moveInfos"][0]["move"]
-    top_suggestion_sgfmill = (
-        _katago_point_to_sgfmill(top_suggestion) if top_suggestion != "pass" else None
-    )
-    board = SgfmillBoard(board_size)
-    for stone_color, katago_point in initial_stones:
-        row, col = _katago_point_to_sgfmill(katago_point)
-        board.play(row, col, stone_color.lower())
-    for move_color, katago_point in moves_through_turn:
-        if katago_point == "pass":
-            continue
-        row, col = _katago_point_to_sgfmill(katago_point)
-        board.play(row, col, move_color.lower())
+    top_suggestion_sgfmill = _markable_point(top_suggestion)
+    board = _replay_for_display(board_size, initial_stones, moves_through_turn)
     ascii_board = list(render_board(board))
     count = 0
     for i, char in enumerate(ascii_board):

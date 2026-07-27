@@ -7,6 +7,8 @@ ownership array uses. An off-by-one between any two of them silently produces
 commentary about the wrong part of the board, so each conversion is pinned here.
 """
 
+import logging
+
 import pytest
 from sgfmill import sgf
 
@@ -744,6 +746,68 @@ def test_an_unreplayable_history_costs_the_block_not_the_comment() -> None:
     assert "[BOARD POSITION" in prompt
     assert "[KATAGO ANALYSIS DATA]" in prompt
     assert "[YOUR TASK]" in prompt
+
+
+def _prompt_with_moves(moves: list[list[str]], *, turn: int = 2) -> str:
+    request = sgf_to_winrate_request(SGF)
+    return _generate_user_prompt(
+        {
+            "turnNumber": turn,
+            "rootInfo": {"winrate": 0.42, "scoreLead": -4.5, "currentPlayer": "B"},
+            "moveInfos": [],
+        },
+        {
+            "turnNumber": turn - 1,
+            "rootInfo": {"winrate": 0.50, "scoreLead": 0.5, "currentPlayer": "W"},
+            "moveInfos": [
+                {"move": "Q16", "order": 0, "prior": 0.25, "winrate": 0.55, "scoreLead": 2.0}
+            ],
+        },
+        board_size=request["boardXSize"],
+        komi=request["komi"],
+        rules=request["rules"],
+        initial_stones=[],
+        moves=moves,
+    )
+
+
+def test_two_moves_on_one_point_no_longer_fail_the_whole_comment() -> None:
+    """sgfmill refuses to play onto an occupied point, and that used to escape as a
+    ValueError from the middle of prompt building, losing the entire review over one
+    unusable stone."""
+    prompt = _prompt_with_moves([["B", "Q16"], ["W", "Q16"]])
+    assert "[BOARD POSITION" in prompt
+    assert "[KATAGO ANALYSIS DATA]" in prompt
+    assert "[YOUR TASK]" in prompt
+
+
+def test_a_skipped_stone_is_logged_rather_than_swallowed(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Silence here would just produce quietly wrong diagrams."""
+    with caplog.at_level(logging.WARNING, logger="katago-service-logger"):
+        _prompt_with_moves([["B", "Q16"], ["W", "Q16"]])
+    assert any("Skipping W Q16" in record.getMessage() for record in caplog.records)
+
+
+def test_a_malformed_coordinate_does_not_fail_the_comment() -> None:
+    """``I`` is not a column in Go notation, so this cannot be parsed at all."""
+    prompt = _prompt_with_moves([["B", "Q16"], ["W", "I5"]])
+    assert "[BOARD POSITION" in prompt
+    assert "[YOUR TASK]" in prompt
+
+
+def test_the_rest_of_the_board_still_renders_around_a_skipped_stone() -> None:
+    """Only the offending stone is lost; everything legal still lands."""
+    prompt = _prompt_with_moves([["B", "Q16"], ["W", "Q16"], ["B", "D4"]], turn=3)
+    # The section is a header, then a legend, then the grid itself.
+    grid = prompt.split("[BOARD POSITION")[1].split("\n\n")[1]
+    # Both black stones went down. D4 is the last move and Q16 is KataGo's top
+    # suggestion, so each renders as its marker rather than a plain "#".
+    assert grid.count("\u2605") == 1
+    assert grid.count("*") == 1
+    # White's duplicate never went down.
+    assert grid.count("o") == 0
 
 
 def test_the_features_block_survives_a_pass_in_the_history() -> None:
