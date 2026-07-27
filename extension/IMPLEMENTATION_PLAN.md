@@ -1,6 +1,8 @@
 # Finish the Kifu-Sensei Browser Extension — Implementation Plan
 
-> Status: approved, not yet started. Paths in this document are relative to `extension/`.
+> Status: Phase 0 through Phase 5 implemented. Each phase section records what was
+> built, where it diverged from the plan, and how it was verified. Paths in this
+> document are relative to `extension/`.
 
 ## Context
 
@@ -21,16 +23,16 @@ Phase 0 fixes all four in `backend/` + `frontend/`. Phases 1–5 build the exten
 
 ### Confirmed by investigation (not assumed)
 
-| Fact | How verified |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| SGF endpoint is `GET https://online-go.com/api/v1/games/{id}/sgf`, `application/x-go-sgf`, **no auth** for finished games | Fetched games `1234567` and `65097807` |
-| In-progress games return **HTTP 403** `"Sign in to download SGF of in-progress games"` | Probed live game `88869862` |
-| `GET /api/v1/games/{id}` returns `gamedata.phase` ∈ `"play"                                                                                                                                                               | "stone removal"                                | "finished"`and top-level`ended` (null while playing) | Same probes + `GobanEnginePhase` in `online-go/goban` |
-| OGS theme is `document.documentElement.dataset.theme` ∈ `light                                                                                                                                                            | dark                                           | accessible` (`system`resolves at runtime via`matchMedia`) | `applyTheme()` in OGS `src/main.tsx`; confirmed `<html data-theme="light">` on a live page |
-| No `<footer>` on the game page. Real tree: `.Game > .right-col > .PlayControls > [.game-action-buttons, .game-state, .annulled-indicator, .analyze-mode-buttons]`; `.game-action-buttons` is **empty** on a finished game | Read the live DOM |
-| OGS routes: `/game/:id`, `/game/view/:id`, `/game/:id/:move_number` (plus `/review/*`, `/demo/*` — not games) | OGS `src/routes.tsx` |
-| Handicap SGFs use `HA[4]` + `AB[...]` with **White moving first** | Fetched game `65097807` |
-| MV3 SW termination: 30 s idle, **30 s fetch-response cap**, 5 min single-request cap | Chrome extension service-worker lifecycle docs |
+| Fact                                                                                                                                                                                                                      | How verified                                                                               |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| SGF endpoint is `GET https://online-go.com/api/v1/games/{id}/sgf`, `application/x-go-sgf`, **no auth** for finished games                                                                                                 | Fetched games `1234567` and `65097807`                                                     |
+| In-progress games return **HTTP 403** `"Sign in to download SGF of in-progress games"`                                                                                                                                    | Probed live game `88869862`                                                                |
+| `GET /api/v1/games/{id}` returns a `gamedata.phase` of `play`, `stone removal`, or `finished`, plus a top-level `ended` (null while playing)                                                                              | Same probes, plus `GobanEnginePhase` in `online-go/goban`                                  |
+| OGS theme is `document.documentElement.dataset.theme`, one of `light`, `dark`, `accessible` (`system` is resolved at runtime via `matchMedia`)                                                                            | `applyTheme()` in OGS `src/main.tsx`; confirmed `<html data-theme="light">` on a live page |
+| No `<footer>` on the game page. Real tree: `.Game > .right-col > .PlayControls > [.game-action-buttons, .game-state, .annulled-indicator, .analyze-mode-buttons]`; `.game-action-buttons` is **empty** on a finished game | Read the live DOM                                                                          |
+| OGS routes: `/game/:id`, `/game/view/:id`, `/game/:id/:move_number` (plus `/review/*`, `/demo/*` — not games)                                                                                                             | OGS `src/routes.tsx`                                                                       |
+| Handicap SGFs use `HA[4]` + `AB[...]` with **White moving first**                                                                                                                                                         | Fetched game `65097807`                                                                    |
+| MV3 SW termination: 30 s idle, **30 s fetch-response cap**, 5 min single-request cap                                                                                                                                      | Chrome extension service-worker lifecycle docs                                             |
 
 ### Assumptions
 
@@ -206,10 +208,10 @@ Verified end to end through `TestClient` — 10 scenarios (including a 429 with 
 
 `POST /api/commentary/` stays synchronous so the web app is untouched. Two new endpoints:
 
-| Endpoint | Behaviour |
-| ------------------------------------ | ---------------------------------------------------------------------------- | ------------------------------------ | ------ |
-| `POST /api/commentary/jobs/` | Same `GenerateCommentaryRequest` body → **202** `{job_id, status: "queued"}` |
-| `GET /api/commentary/jobs/{job_id}/` | `{status, progress: {done, total}, result: GenerateCommentaryResponse        | null, error: CommentaryErrorResponse | null}` |
+| Endpoint                             | Behaviour                                                                                                                                                                            |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /api/commentary/jobs/`         | Same `GenerateCommentaryRequest` body → **202** `{job_id, status: "queued"}`                                                                                                         |
+| `GET /api/commentary/jobs/{job_id}/` | `{status, progress: {done, total}, result, error}` — `result` is a `GenerateCommentaryResponse` once succeeded, `error` a `CommentaryErrorResponse` once failed, each null otherwise |
 
 New `CommentaryJob` SQLModel table (fold into the 0.3 migration or add a second one):
 
@@ -258,15 +260,33 @@ Extract, do not duplicate, the refresh-on-401 logic. `refreshTokens` + `authedFe
 
 ### Phase 2 — Game detection and the live-game guard
 
+> **Implemented.** Two changes from the original plan — see the notes at the end of this section.
+
 - `src/shared/ogs.ts` — `parseGameId(url)` matching `/game/:id`, `/game/view/:id`, `/game/:id/:move`; explicitly rejects `/review/*` and `/demo/*`.
 - **Guard — two layers, both server truth, no DOM scraping:**
-  1. `GET /api/v1/games/{id}` → require `gamedata.phase === "finished"` **and** `ended !== null`. `"play"` and `"stone removal"` are both not-finished.
-  2. The SGF fetch itself 403s on in-progress games — a free backstop if OGS ever changes the metadata shape.
+    1. `GET /api/v1/games/{id}` → require `gamedata.phase === "finished"` **and** `ended !== null`. `"play"` and `"stone removal"` are both not-finished.
+    2. The SGF fetch itself 403s on in-progress games — a free backstop if OGS ever changes the metadata shape.
 - The panel renders `screen-waiting` unless both layers pass. Nothing else activates.
 - Failure modes handled explicitly: 404 (bad or private game id), 403 on SGF (live game, or analysis disabled — the API exposes `disable_analysis`), network error, malformed JSON.
-- **Manifest:** broaden `content_scripts.matches` from `https://online-go.com/game/`_ to `https://online-go.com/_`so SPA navigation into a game is observed; add`"alarms"`to`permissions`.
+- **Manifest:** broaden `content_scripts.matches` from `https://online-go.com/game/*` to `https://online-go.com/*` so SPA navigation into a game is observed; add `"alarms"` to `permissions`.
+
+#### Changes from the original plan
+
+1. **No manifest changes here — both were deferred to the phase that needs them.** The panel reads the active tab's URL through `chrome.tabs`, which the existing `tabs` permission already covers, so nothing about detection needs a broader content-script match. Broadening it now would inject `content.ts` (and its 500 ms `localStorage` poll) across all of online-go.com for no benefit until the Phase 5 button. `"alarms"` likewise belongs with the Phase 3 job poller. Adding a capability in the phase that uses it keeps each commit self-justifying.
+2. **SPA navigation is observed from the panel, not the content script.** `chrome.tabs.onUpdated` fires with `changeInfo.url` on OGS's client-side route changes, so the panel re-checks without any page-side involvement — which also means it works on tabs where the content script never ran. `chrome.tabs.onActivated` covers tab switches. A monotonic token discards a slow check that a newer one has superseded.
+
+Two details worth keeping:
+
+- **`waitingMessage` takes `Exclude<OgsGameCheck, { state: "ready" }>` and has no `default` branch.** Adding a state to `OgsGameCheck` without giving it wording is then a compile error rather than a silent fall-through to generic copy. Verified by temporarily adding a state and watching `tsc` fail.
+- **A missing `gamedata.phase` is treated as `unavailable`, not as finished.** If OGS ever stops sending it the panel goes inert and says so, rather than falling open on a game still in progress.
+
+Until Phase 3 adds `#screen-config`, a ready game lands on the welcome screen with its lead line replaced by "Game N has finished and is ready to review" — no dead buttons in the meantime.
+
+Verified against live OGS: 13 URL-parsing cases (including `/review/`, `/demo/`, `/game/:id/embed`, and a look-alike origin, all rejected); finished game `65097807` → `ready`; in-progress game `88869862` → `unfinished (phase=play)`; a nonexistent id → `unavailable/not-found`; and both SGF outcomes — the finished game downloads, the live one is refused with `{ok: false, reason: "unfinished"}`.
 
 ### Phase 3 — Config screen, generation, display, footer
+
+> **Implemented.** Notes and one carried-forward bug fix at the end of this section.
 
 **Config screen** — new `#screen-config` reusing `.field-group` / `.field-input` / `.btn--primary`. Defaults come from `GET /auth/user/settings/` → `preferences.commentary_config`, run through the Phase 1 validator, falling back to the same defaults the frontend uses. Client-side bounds validation before send; `num_comments` is additionally clamped to the game's move count.
 
@@ -291,11 +311,11 @@ panel  ◄── chrome.storage.onChanged ── (pure view; close/reopen loses 
 
 ```ts
 function colorForTurn(
-  moves: GameMove[],
-  turn: number,
-  fallback?: "B" | "W",
+    moves: GameMove[],
+    turn: number,
+    fallback?: "B" | "W"
 ): "B" | "W" {
-  return (moves[turn - 1]?.[0] as "B" | "W" | undefined) ?? fallback ?? "B";
+    return (moves[turn - 1]?.[0] as "B" | "W" | undefined) ?? fallback ?? "B";
 }
 ```
 
@@ -315,18 +335,93 @@ Derived from the `moves` array, never from turn parity — verified necessary: O
 | `fetch` rejects                                                              | "Could not reach Kifu-Sensei. Check your connection."                                      |
 | `AbortError` (deadline)                                                      | "This review took longer than 15 minutes and was stopped."                                 |
 
+#### Implementation notes
+
+- **`colorForTurn` lives in `src/shared/commentary.ts`, not the panel**, so the handicap rule is testable rather than only reviewable. Verified against the real move list of OGS game `65097807`: turn parity gives the wrong colour on **every** move of that game.
+- **The panel is a pure view over `chrome.storage.session`.** `startGeneration` paints the generating screen, sends one message, and then only ever reacts to storage changes. Nothing about a run lives in the panel document, which is what lets it be closed and reopened mid-run.
+- **A run for another game keeps going but does not take over the view.** The stored job carries its `gameId`; the storage listener ignores anything that is not the game currently on screen. There is one job slot, so starting a review for a different game abandons the previous one.
+- **`waitingMessage` now also excludes `no-game`.** That state routes to the welcome screen instead, because welcome carries the account email, the OGS link, and — importantly — the only route to sign-out. Routing it to the config path in an early draft made sign-out unreachable.
+- **Regenerate is wired now rather than left dead.** It cancels and re-runs with the config still in the form. Phase 4 replaces that with an explicit re-submit of the cached SGF, which skips the OGS round-trip.
+- **`"alarms"` added to the manifest here**, in the phase that uses it, per the deferral noted in Phase 2. The content-script match stays narrow until Phase 5.
+
+#### Honest progress
+
+`#gen-first-result`, the hardcoded "First result" card showing a fabricated `Move 9 / −18%`, is deleted. The bar is driven only by the job's real `progress`:
+
+- `total === 0` — KataGo is still selecting moves. There is nothing to measure, so the bar stays at 0% and the copy reads "Finding the key moments…". No invented motion.
+- `total > 0` — "Move N of M key moments", bar at `done / total`.
+
+The two existing `gen-step` rows map exactly onto those two phases, so the step icons are real state rather than decoration.
+
+#### Fixed here: a Phase 2 bug
+
+The waiting screen's paragraph was `class="waiting-text"` with no `id`, so the `getElementById("waiting-text")` added in Phase 2 always returned null and every contextual message ("this game is still in progress", "that game is private") silently fell back to the static default. Caught by a check that every `getElementById` target in `panel.ts` exists in `panel.html` — worth keeping as a habit, since nothing else flags it.
+
+#### Verified
+
+Job state machine driven against a scripted backend with `chrome.*` and `fetch` mocked: submit → poll → succeeded with progress carried through; a backend failure preserving `upstream_rate_limited` **and** `retry_after: 42`; a 401 surviving refresh becoming `session_expired`; a 403 on the SGF failing **before** any POST is made (so a live game cannot reach the backend even if the Phase 2 guard were bypassed); and the 15-minute deadline converting a run that never finishes into `timeout`.
+
+Plus 12 `colorForTurn` cases, and a check that all 39 DOM ids the panel references exist.
+
 ### Phase 4 — Regenerate and config persistence
+
+> **Implemented.** Config persistence landed early, in Phase 3; this phase is Regenerate plus one Phase 3 item that had been left unfinished.
 
 Persist the last-used `CommentaryConfig` to `chrome.storage.local` under a single global key (not per-game). `↻ Regenerate` re-runs with the same config and the same cached SGF text — no re-fetch from OGS, so a game that has since become unavailable still regenerates.
 
+#### Implementation notes
+
+- **`resubmitJob` is shared by Regenerate and the error screen's Try Again.** Both already have the game record in hand, so neither goes back to OGS. Retrying after an Anthropic rate limit costs one request, not a download plus a request.
+- **The fallback is explicit, not inferred.** The worker replies `{ok, resubmitted}`; `resubmitted: false` means there was no cached record — a first attempt that failed before the download — and only then does the panel start from scratch. Without that flag, a resubmit that itself failed (say a second 429) would be indistinguishable from "nothing cached" and would double-submit.
+- **Cancel and Back still discard the run**; only Regenerate and Try Again reuse it. Worth keeping straight, since all four sit on adjacent screens.
+- **No confirmation on Regenerate.** It spends real Anthropic tokens on a single click. Left as designed, but an inline confirm would be a reasonable follow-up.
+
+#### Completed here: the Phase 3 comment cap
+
+Phase 3 said `num_comments` would be "additionally clamped to the game's move count" but passed a hard-coded `0`, so the field always offered the full 1–100 and the hint never mentioned the game. `gamedata.moves` on the OGS detail endpoint is the move list — 239 entries for game `65097807`, with handicap stones in `initial_state` rather than `moves`, so its length is the true count. The field now caps at `min(100, moves)` and the hint reads "1–N (this game has N moves)".
+
+#### Verified
+
+Against a fake backend that counts OGS hits: a first run downloads the record once; Regenerate resubmits with **zero** further OGS requests, a new job id, the same game and config, and the previous result and error cleared; a resubmit that fails carries `upstream_rate_limited` with `retry_after: 7` through and _keeps_ the record for another attempt; and a run that failed before the record arrived stores no SGF, which is the signal the panel uses to start fresh.
+
 ### Phase 5 — Injected OGS button
 
-- **Mount:** first child of `.game-action-buttons` if present; else after `.game-state` inside `.PlayControls`; else append to `.right-col`. All three verified on a live finished game.
-- **SPA re-mount:** OGS is a single-page app and `.PlayControls` is React-rendered, so the node may not exist at `document_idle` and is replaced on navigation. Strategy: a `MutationObserver` on `document.body` (subtree) that re-mounts if the host is detached, plus a 500 ms `location.href` poller — the same idiom already used by [src/inject.ts](src/inject.ts). The Navigation API (`navigation.addEventListener("navigate")`) is deliberately **not** used: its behaviour from a content script's isolated world could not be confirmed, and polling is certain.
-- **CSS isolation:** the host is a `<div>` with `attachShadow({ mode: "open" })` and `:host { all: initial }`. OGS's own CSS (Nunito 16 px on `.PlayControls`) cannot pierce a shadow boundary except through inherited properties, which `all: initial` resets. Nothing else on the page is touched.
-- **Dark mode:** read `document.documentElement.dataset.theme` (`light | dark | accessible`) and mirror it onto the host, watched with a `MutationObserver` filtered to `data-theme`. **Not** `prefers-color-scheme` — OGS resolves its own `system` setting to a concrete value and writes it to that attribute.
-- **Styling (assumption A1):** derived from `panel.css` tokens — `--ks-accent` `#2a6b4f` fill, 6 px radius, 600 weight, `icon-32.png`. Four states: unauthenticated (opens the login tab), ready, generating (spinner + progress), done.
-- **Panel opening — the highest-risk item.** `chrome.sidePanel.open()` "may only be called in response to a user action", and the docs do not state whether a gesture propagates through `chrome.runtime.sendMessage` from a content script. Path: content-script click → `chrome.runtime.sendMessage` → background calls `chrome.sidePanel.open({ tabId })` **synchronously in the listener**, before any `await`. **Verify with a short spike before building the rest of Phase 5.** If it rejects, fall back to `chrome.sidePanel.setOptions({ tabId, enabled: true })` plus in-button copy directing the user to the toolbar icon — generation still starts, only the auto-open is lost.
+> **Implemented**, across [src/button/ogs-button.ts](src/button/ogs-button.ts) (the component), [src/button/mount.ts](src/button/mount.ts) (where it goes and how it stays there), and [src/button/controller.ts](src/button/controller.ts) (what it says and what a click does). [src/content.ts](src/content.ts) starts it, and only on `online-go.com` — on the frontend origins that script exists solely for the auth handoff.
+
+- **Mount:** first child of `.game-action-buttons` if present; else `.PlayControls`; else `.Game .right-col`.
+- **SPA re-mount:** a `MutationObserver` on `document.body` (subtree) re-mounts if the host is detached, plus a 500 ms `location.href` poller and a `popstate` listener — the same idiom already used by [src/inject.ts](src/inject.ts). The Navigation API (`navigation.addEventListener("navigate")`) is deliberately **not** used: its behaviour from a content script's isolated world could not be confirmed, and polling is certain.
+- **CSS isolation:** the host is a `<div>` with `attachShadow({ mode: "open" })` and `:host { all: initial }`. OGS's own CSS cannot pierce a shadow boundary except through inherited properties, which `all: initial` resets.
+- **Dark mode:** `document.documentElement.dataset.theme` (`light | dark | accessible`) mirrored onto the host as `data-ks-theme`, watched with a `MutationObserver` filtered to `data-theme`. **Not** `prefers-color-scheme` — OGS resolves its own `system` setting to a concrete value and writes it to that attribute.
+- **Styling (assumption A1):** derived from `panel.css` tokens — `#2a6b4f` fill (`#35845f` on dark/accessible), 6 px radius, 600 weight, `icon-32.png`. Five states: signed-out (opens the login tab), ready, running (spinner + `done/total`), done, and `hint` (below).
+- **No button at all on a live game.** `render()` destroys the button unless the Phase 2 guard returned `ready`, so an unfinished game gets no affordance rather than a disabled one.
+
+#### Resolved: the `sidePanel.open()` gesture question
+
+The plan flagged this as the highest-risk item and called for a spike. The answer turned out to be documented, in [Chromium issue 355266358](https://issues.chromium.org/issues/355266358): a gesture arriving via `chrome.runtime.sendMessage` is a **restricted** user gesture, and it is **discarded by the first `await`** in the listener. So the constraint is not "does a gesture propagate" (it does) but "do not await before spending it".
+
+Two consequences, both implemented:
+
+- In [src/background.ts](src/background.ts) the `open-side-panel` branch sits **above every `await`** in the `onMessage` listener and calls `chrome.sidePanel.open({ windowId })` synchronously, resolving `sendResponse` from the returned promise. A comment marks it so a later refactor doesn't quietly reorder it.
+- In `handleClick`, `open-side-panel` is sent **before** `start-from-button`, with nothing awaited in between.
+
+The fallback is kept regardless, since this rests on one tracked browser bug: if the worker replies `{ok: false}`, the button switches to the `hint` state ("Open the Kifu-Sensei icon") for six seconds — and **generation still starts**. Only the auto-open is lost.
+
+#### Verified on a live OGS game
+
+Against `online-go.com/game/65097807` with the real `createOgsButton` and `findMountPoint` injected into the page:
+
+- The mount chain resolves to `.game-action-buttons` (empty, as expected on a finished game). `.Game .right-col` was **absent** in the narrow layout — confirming the fallback ordering earns its keep.
+- **CSS isolation holds.** The container computes to `Nunito, sans-serif` / 16 px; the button inside the shadow root computes to the extension's own stack at 13 px, with `Nunito` nowhere in it.
+- **Theme mirroring works**, and only after the observer's callback runs — the first check read the attribute synchronously and appeared to fail, which was the test's bug, not the code's. `light` → `rgb(42,107,79)`, `dark` and `accessible` → `rgb(53,132,95)`, restoring correctly on the way back.
+- All five states render as intended: label, `disabled`, and the spinner-for-logo swap and its restoration.
+
+#### Found by that verification: stale hosts after an extension reload
+
+The teardown assertion failed because two hosts shared the fixed id `kifu-sensei-root`. That is a test artefact, but it describes something real: **reloading an unpacked extension re-injects the content script into already-open tabs**, and the previous script's button stays in the DOM with dead listeners — leaving the user two buttons, one of which does nothing. `mount()` now removes any `#kifu-sensei-root` that is not the current host. Confirmed on the page that `querySelectorAll` returns all duplicate-id nodes (`getElementById` returns only the first, and would have missed the strays).
+
+#### Not verifiable from here
+
+The `sidePanel.open()` call itself requires an unpacked extension in a real Chrome profile, which this environment cannot provide. The design above is evidence-based rather than guessed, and the `hint` fallback means the button is useful either way — but **the auto-open needs one manual confirmation**, listed in the checklist.
 
 ---
 
@@ -361,14 +456,21 @@ Persist the last-used `CommentaryConfig` to `chrome.storage.local` under a singl
 
 **Extension — new**
 
-| File                          | Rationale                                                           |
-| ----------------------------- | ------------------------------------------------------------------- |
-| `src/shared/api.ts`           | Single `authedFetch` + refresh-on-401, extracted from `panel.ts`    |
-| `src/shared/commentary.ts`    | Model/language lists, bounds, config validation, `severityForDelta` |
-| `src/shared/ogs.ts`           | Game-id parsing, metadata + SGF fetch, finished-game guard          |
-| `src/shared/jobs.ts`          | Job start/poll state machine over `chrome.storage.session`          |
-| `src/button/inject-button.ts` | Shadow-DOM OGS button, mount/re-mount, theme mirroring              |
-| `src/button/button.css.ts`    | Inlined shadow stylesheet built from `panel.css` tokens             |
+| File                       | Rationale                                                           |
+| -------------------------- | ------------------------------------------------------------------- |
+| `src/shared/api.ts`        | Single `authedFetch` + refresh-on-401, extracted from `panel.ts`    |
+| `src/shared/commentary.ts` | Model/language lists, bounds, config validation, `severityForDelta` |
+| `src/shared/ogs.ts`        | Game-id parsing, metadata + SGF fetch, finished-game guard          |
+| `src/shared/jobs.ts`       | Job start/poll state machine over `chrome.storage.session`          |
+| `src/shared/constants.ts`  | Storage keys and message names shared across all four contexts      |
+| `src/button/ogs-button.ts` | Shadow-DOM OGS button: states, inlined stylesheet, theme mirroring  |
+| `src/button/mount.ts`      | Mount-point chain and the SPA re-mount watcher                      |
+| `src/button/controller.ts` | Button state from storage; click → panel open + start               |
+| `vite.inject.config.ts`    | Builds `inject.js` as a self-contained IIFE (see below)             |
+
+The button is three files rather than the two the plan named (`inject-button.ts` + `button.css.ts`). Splitting by _concern_ — component, placement, behaviour — beat splitting the stylesheet out from the component it exclusively styles; the CSS is a single template literal inside `ogs-button.ts`, next to the DOM it applies to.
+
+`vite.inject.config.ts` was not in the plan. Once `inject.ts` imported the shared constants, Rollup hoisted them into a chunk and emitted `dist/inject.js` beginning with an `import` — which throws "Cannot use import statement outside a module", because `content.ts` injects it as a classic `<script>`. That would have silently broken the entire auth handoff. A third build pass emits it as an IIFE; `npm run build` asserts nothing regressed.
 
 **Extension — modified**
 
@@ -386,17 +488,18 @@ Persist the last-used `CommentaryConfig` to `chrome.storage.local` under a singl
 
 ## 5. Risks
 
-| Risk                                                                                                                               | Severity | Mitigation                                                                                                                                                                            |
-| ---------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sidePanel.open()` **gesture propagation** from content script → background is undocumented for this path                          | **High** | Spike it first, before the rest of Phase 5. Call it synchronously in the `onMessage` listener. Fallback: `setOptions({enabled: true})` + toolbar-icon prompt; generation still works. |
-| **Service-worker lifetime** — the 30 s fetch-response cap kills any long request in the worker                                     | **High** | Structurally avoided by Phase 0.5: every worker fetch is a short poll. `chrome.alarms` resurrects the worker; `chrome.storage.session` holds all state so nothing is lost on death.   |
-| **SPA mount** — `.PlayControls` is React-rendered, absent at `document_idle`, replaced on navigation                               | Medium   | `MutationObserver` + 500 ms `location.href` poll; three-level mount-point fallback; broadened `content_scripts.matches`.                                                              |
-| **OGS DOM drift** — class names are not a public API                                                                               | Medium   | Fallback chain ends at `.right-col`; if all fail, log once and skip injection. The panel path is fully functional without the button.                                                 |
-| **Long-request deadline (900 s)** may still be short for `num_comments=100` on a 300-move game                                     | Medium   | Deadline is a named constant; `AbortError` gets its own message telling the user to lower the comment count.                                                                          |
-| **Backend job runner is in-process** (`BackgroundTasks`) — a Render restart mid-job orphans the row                                | Medium   | Jobs stuck in `running` past the deadline are reported as `internal_error` by the poller. A real queue is the follow-up if this bites.                                                |
-| **Third copy of the model/language list** now lives in the extension                                                               | Low      | Header comment naming the backend `Literal` as source of truth and both mirror files; OpenAPI codegen noted as follow-up.                                                             |
-| **Extension is not linted by CI** — no ESLint/Prettier config, and `scripts/ci-local.sh` covers only `backend/` and `frontend/src` | Low      | Match existing style manually (4-space indent, double quotes, semicolons, `trailingComma: "es5"`). Adding the extension to `make ci` is an explicitly optional follow-up.             |
-| **Pre-existing:** `_extract_komi` substitutes 7.5 when komi is `0.0`, which is common in OGS handicap games                        | Low      | Out of scope; flagged for a separate fix.                                                                                                                                             |
+| Risk                                                                                                                                                                | Severity | Mitigation                                                                                                                                                                                                                |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ~~`sidePanel.open()` **gesture propagation**~~ — **resolved.** The gesture does propagate, but is _restricted_ and destroyed by the first `await` (crbug 355266358) | Low      | Called synchronously, above every `await` in the `onMessage` listener, with a marker comment. `hint`-state fallback retained; generation starts either way. Still needs one manual confirmation in a real Chrome profile. |
+| **Duplicate button after an extension reload** — re-injection leaves the previous content script's host in the DOM with dead listeners                              | Low      | `mount()` removes any `#kifu-sensei-root` that is not the current host. Found by live verification, not reasoning.                                                                                                        |
+| **Service-worker lifetime** — the 30 s fetch-response cap kills any long request in the worker                                                                      | **High** | Structurally avoided by Phase 0.5: every worker fetch is a short poll. `chrome.alarms` resurrects the worker; `chrome.storage.session` holds all state so nothing is lost on death.                                       |
+| **SPA mount** — `.PlayControls` is React-rendered, absent at `document_idle`, replaced on navigation                                                                | Medium   | `MutationObserver` + 500 ms `location.href` poll; three-level mount-point fallback; broadened `content_scripts.matches`.                                                                                                  |
+| **OGS DOM drift** — class names are not a public API                                                                                                                | Medium   | Fallback chain ends at `.right-col`; if all fail, log once and skip injection. The panel path is fully functional without the button.                                                                                     |
+| **Long-request deadline (900 s)** may still be short for `num_comments=100` on a 300-move game                                                                      | Medium   | Deadline is a named constant; `AbortError` gets its own message telling the user to lower the comment count.                                                                                                              |
+| **Backend job runner is in-process** (`BackgroundTasks`) — a Render restart mid-job orphans the row                                                                 | Medium   | Jobs stuck in `running` past the deadline are reported as `internal_error` by the poller. A real queue is the follow-up if this bites.                                                                                    |
+| **Third copy of the model/language list** now lives in the extension                                                                                                | Low      | Header comment naming the backend `Literal` as source of truth and both mirror files; OpenAPI codegen noted as follow-up.                                                                                                 |
+| **Extension is not linted by CI** — no ESLint/Prettier config, and `scripts/ci-local.sh` covers only `backend/` and `frontend/src`                                  | Low      | Match existing style manually (4-space indent, double quotes, semicolons, `trailingComma: "es5"`). Adding the extension to `make ci` is an explicitly optional follow-up.                                                 |
+| **Pre-existing:** `_extract_komi` substitutes 7.5 when komi is `0.0`, which is common in OGS handicap games                                                         | Low      | Out of scope; flagged for a separate fix.                                                                                                                                                                                 |
 
 ---
 
@@ -447,14 +550,16 @@ Persist the last-used `CommentaryConfig` to `chrome.storage.local` under a singl
 - [ ] Offline → network message, distinct from the timeout message.
 - [ ] Verify each error path produces **different** copy — no shared generic string.
 
-**Injected button**
+**Injected button** — the first three were verified directly against `online-go.com/game/65097807` (see Phase 5); the rest need a loaded extension.
 
-- [ ] Renders in `.game-action-buttons` on a finished game; absent on a live game.
-- [ ] Toggle OGS light → dark → accessible (theme buttons in the OGS nav): button restyles without reload.
+- [x] Renders in `.game-action-buttons` on a finished game.
+- [x] Toggle OGS light → dark → accessible: button restyles without reload.
+- [x] OGS CSS does not leak in (button font is not Nunito 16 px).
+- [ ] Absent on a live game — no button at all, not a disabled one.
 - [ ] Navigate `/overview` → a game **without a page reload**: button mounts.
 - [ ] Navigate game → game: button re-mounts, state resets.
-- [ ] OGS CSS does not leak in (button font is not Nunito 16 px).
-- [ ] Click → panel opens **and** generation starts. If `sidePanel.open()` rejects, the fallback copy appears and generation still runs.
+- [ ] Reload the extension at `chrome://extensions` with an OGS game open, then let the button re-mount: exactly **one** button remains.
+- [ ] **The one open question:** click → panel opens **and** generation starts. If `sidePanel.open()` rejects, the button shows "Open the Kifu-Sensei icon" for six seconds and generation still runs. This is the only Phase 5 behaviour that could not be verified outside a real Chrome profile.
 
 **Footer**
 

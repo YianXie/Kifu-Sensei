@@ -1,9 +1,11 @@
+import { startButton } from "./button/controller";
 import { refreshTokens } from "./shared/api";
 import { ENDPOINTS } from "./shared/config";
 import {
     AUTH_MESSAGE_SOURCE,
     AUTH_MESSAGE_TYPE,
     AUTH_STORAGE_KEY,
+    OGS_ORIGIN,
     REVOKED_AUTH_KEY,
 } from "./shared/constants";
 import type { ExtensionAuthObject } from "./shared/types";
@@ -152,3 +154,9 @@ window.addEventListener("message", (event: MessageEvent) => {
 });
 
 injectPageScript();
+
+// The button belongs only on online-go.com. On the Kifu-Sensei frontend origins this
+// script exists solely for the auth handoff above.
+if (location.origin === OGS_ORIGIN) {
+    void startButton();
+}

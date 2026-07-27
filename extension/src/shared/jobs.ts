@@ -12,7 +12,7 @@
 import { authedFetch, readErrorResponse } from "./api";
 import { clampCommentaryConfig, type CommentaryConfig } from "./commentary";
 import { ENDPOINTS } from "./config";
-import { JOB_SESSION_KEY } from "./constants";
+import { JOB_SESSION_KEY, JOB_STATUS_KEY } from "./constants";
 import { fetchOgsSgf } from "./ogs";
 import type {
     CommentaryApiError,
@@ -61,12 +61,31 @@ export async function readJob(): Promise<StoredJob | null> {
 }
 
 /** What the injected button is allowed to see. No record, no commentary. */
+export interface PublicJobStatus {
+    gameId: number;
+    status: JobStatus;
+    done: number;
+    total: number;
+}
+
 async function writeJob(job: StoredJob): Promise<void> {
-    await chrome.storage.session.set({ [JOB_SESSION_KEY]: job });
+    const publicStatus: PublicJobStatus = {
+        gameId: job.gameId,
+        status: job.status,
+        done: job.progress.done,
+        total: job.progress.total,
+    };
+    await Promise.all([
+        chrome.storage.session.set({ [JOB_SESSION_KEY]: job }),
+        chrome.storage.local.set({ [JOB_STATUS_KEY]: publicStatus }),
+    ]);
 }
 
 export async function clearJob(): Promise<void> {
-    await chrome.storage.session.remove(JOB_SESSION_KEY);
+    await Promise.all([
+        chrome.storage.session.remove(JOB_SESSION_KEY),
+        chrome.storage.local.remove(JOB_STATUS_KEY),
+    ]);
 }
 
 export function isTerminal(status: JobStatus): boolean {
@@ -226,13 +245,6 @@ export async function submitJob(job: StoredJob): Promise<StoredJob> {
  * Regenerate and retry both go through here: the SGF is already in hand, so there is
  * no second OGS round-trip, and a review can still be re-run after the game itself has
  * become unavailable. The config is reused as-is.
- */
-/**
- * Re-run a job we already have the record for.
- *
- * Deliberately does not go back to OGS: retrying after a rate limit costs one
- * request rather than a download plus a request, and a game that has since become
- * unavailable can still be regenerated.
  */
 export async function resubmitJob(previous: StoredJob): Promise<StoredJob> {
     return submitJob({

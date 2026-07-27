@@ -1,8 +1,13 @@
 // Service worker. Owns commentary runs so they outlive the side panel, and keeps
 // polling across its own restarts.
 
-import type { CommentaryConfig } from "./shared/commentary";
+import {
+    clampCommentaryConfig,
+    DEFAULT_COMMENTARY_CONFIG,
+    type CommentaryConfig,
+} from "./shared/commentary";
 import { FRONTEND_URL } from "./shared/config";
+import { CONFIG_STORAGE_KEY } from "./shared/constants";
 import {
     clearJob,
     isTerminal,
@@ -64,6 +69,8 @@ chrome.runtime.onStartup.addListener(() => void clearPollAlarm());
 
 type PanelMessage =
     | { type: "start-commentary"; gameId: number; config: CommentaryConfig }
+    | { type: "start-from-button"; gameId: number }
+    | { type: "open-side-panel" }
     | { type: "open-login" }
     | { type: "regenerate-commentary" }
     | { type: "resume-polling" }
@@ -95,11 +102,31 @@ async function handleMessage(message: PanelMessage): Promise<MessageResult> {
             }
             return { ok: job.status !== "failed" };
         }
+        case "start-from-button": {
+            // The button carries no configuration of its own; it uses whatever the
+            // panel last saved, falling back to the shared defaults.
+            const stored = await chrome.storage.local.get(CONFIG_STORAGE_KEY);
+            const saved = stored[CONFIG_STORAGE_KEY] as
+                | CommentaryConfig
+                | undefined;
+            const config = clampCommentaryConfig(
+                saved ?? DEFAULT_COMMENTARY_CONFIG
+            );
+            const job = await startCommentaryJob(message.gameId, config);
+            if (!isTerminal(job.status)) {
+                void driveJob();
+            }
+            return { ok: job.status !== "failed" };
+        }
         case "open-login": {
             await chrome.tabs.create({
                 url: `${FRONTEND_URL}/login?source=extension`,
             });
             return { ok: true };
+        }
+        case "open-side-panel": {
+            // Handled synchronously in the listener; see the note there.
+            return { ok: false };
         }
         case "regenerate-commentary": {
             const previous = await readJob();
@@ -130,9 +157,35 @@ async function handleMessage(message: PanelMessage): Promise<MessageResult> {
     }
 }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!isPanelMessage(message)) {
         return false;
+    }
+
+    // MUST stay above every `await` in this listener.
+    //
+    // A message from a content script carries the click's user gesture, but it is a
+    // restricted one: the first Promise resolution discards it, and `sidePanel.open()`
+    // then fails with "may only be called in response to a user gesture"
+    // (crbug 355266358). So this branch calls it directly, before `handleMessage` —
+    // which is async — is ever reached.
+    if (message.type === "open-side-panel") {
+        const windowId = sender.tab?.windowId;
+        if (windowId === undefined) {
+            sendResponse({ ok: false });
+            return true;
+        }
+        chrome.sidePanel.open({ windowId }).then(
+            () => sendResponse({ ok: true }),
+            (error: unknown) => {
+                console.warn(
+                    "[Kifu-Sensei worker] Could not open the side panel:",
+                    error
+                );
+                sendResponse({ ok: false });
+            }
+        );
+        return true;
     }
 
     handleMessage(message).then(sendResponse, (error: unknown) => {

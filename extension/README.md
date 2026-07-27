@@ -1,10 +1,10 @@
 # Kifu-Sensei Browser Extension
 
-> ⚠️ **Work in progress — NOT ready for production use.**
-> The account/auth handoff between the web app and the extension works end to end,
-> but the in-panel commentary generation flow (the API-key, generating, and
-> commentary screens) is still being built. Load it unpacked for development only;
-> it is not published to the Chrome Web Store.
+> ⚠️ **Load unpacked, for development.** Not published to the Chrome Web Store.
+> The full flow — auth handoff, game detection, commentary generation, and the injected
+> OGS button — is implemented, but it has not yet been exercised end to end in a real
+> Chrome profile against a deployed backend. See the checklist in
+> [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for what still needs confirming.
 
 A Manifest V3 Chrome **side-panel** extension that brings Kifu-Sensei commentary next
 to online-go.com games. It shares an account with the web app: you sign in on the
@@ -24,7 +24,7 @@ website, and the session is handed off to the extension so it can call the same 
 cd extension
 npm install
 cp .env.example .env    # set VITE_API_URL (backend); also set VITE_FRONTEND_URL (see below)
-npm run build           # tsc && vite build → extension/dist/
+npm run build           # tsc + three vite builds → extension/dist/
 ```
 
 Then in Chrome: **`chrome://extensions` → enable Developer mode → Load unpacked →
@@ -65,47 +65,72 @@ Config is derived from env vars at build time (Vite inlines `import.meta.env.*`)
 - **`side_panel`**: `dist/panel/panel.html`. Clicking the toolbar icon opens the panel
   (wired up in the background worker).
 
-## Build configuration (`vite.config.ts`)
+## Build configuration
 
-Vite is configured with **four entry points**, each emitting a predictable filename so
-the manifest can reference it:
+`npm run build` runs **three** Vite builds, because the four entry points are not all
+loaded the same way. Each emits a predictable filename so the manifest can reference it:
 
-| Entry        | Source              | Output               | Context it runs in                     |
-| ------------ | ------------------- | -------------------- | -------------------------------------- |
-| `panel`      | `panel/panel.html`  | `dist/panel/panel.*` | The side-panel document                |
-| `background` | `src/background.ts` | `dist/background.js` | The service worker                     |
-| `content`    | `src/content.ts`    | `dist/content.js`    | Content script (isolated world)        |
-| `inject`     | `src/inject.ts`     | `dist/inject.js`     | Injected into the page's main JS world |
+| Entry        | Source              | Output               | Config                   | Format | Context it runs in                     |
+| ------------ | ------------------- | -------------------- | ------------------------ | ------ | -------------------------------------- |
+| `panel`      | `panel/panel.html`  | `dist/panel/panel.*` | `vite.config.ts`         | ESM    | The side-panel document                |
+| `background` | `src/background.ts` | `dist/background.js` | `vite.config.ts`         | ESM    | The service worker                     |
+| `content`    | `src/content.ts`    | `dist/content.js`    | `vite.content.config.ts` | IIFE   | Content script (isolated world)        |
+| `inject`     | `src/inject.ts`     | `dist/inject.js`     | `vite.inject.config.ts`  | IIFE   | Injected into the page's main JS world |
 
-Output is ES modules with `entryFileNames: "[name].js"` and `base: ""` (relative paths,
-required for `chrome-extension://` loading).
+`base: ""` throughout (relative paths, required for `chrome-extension://` loading).
+
+**Why three configs.** Chrome loads content scripts as classic scripts, and `content.ts`
+appends `inject.js` to the page with a plain `<script src=…>` — also classic. Neither
+can contain an `import` statement; one there fails at runtime with _"Cannot use import
+statement outside a module"_. Building them in the same pass as the module entries lets
+Rollup hoist any code they share into a chunk, which emits exactly that import. Both are
+therefore built as self-contained IIFEs, in their own passes (`emptyOutDir: false`, so
+they run after the main build rather than wiping it).
+
+The panel and the service worker are genuinely ES modules, so they may share a chunk.
 
 ## File structure
 
 ```
 extension/
 ├── manifest.json            # MV3 manifest (references dist/ files)
-├── vite.config.ts           # four-entry build config
+├── vite.config.ts           # ESM entries (panel, background)
+├── vite.content.config.ts   # content.ts as a self-contained IIFE
+├── vite.inject.config.ts    # inject.ts as a self-contained IIFE
 ├── panel/
 │   ├── panel.html           # side-panel markup — all screens, toggled by class
 │   ├── panel.css            # side-panel styles
 │   └── panel.ts             # side-panel logic (auth state, screen switching, sign-out)
 ├── src/
-│   ├── background.ts        # service worker — opens the panel on toolbar click
+│   ├── background.ts        # service worker — owns job polling, alarms, panel open
 │   ├── inject.ts            # page-world: polls website localStorage for auth
-│   ├── content.ts           # isolated-world: validates & persists auth
+│   ├── content.ts           # isolated-world: validates & persists auth; starts the button
+│   ├── button/
+│   │   ├── ogs-button.ts    # the shadow-DOM button itself: states, styles, theme
+│   │   ├── mount.ts         # where it goes, and re-mounting across SPA navigation
+│   │   └── controller.ts    # what it says and what a click does
 │   └── shared/
-│       ├── config.ts        # API_URL + ENDPOINTS (tokenRefresh, userSettings)
-│       ├── types.ts         # ExtensionAuthObject { accessToken, refreshToken }
+│       ├── api.ts           # authedFetch + refresh-on-401 + error-body parsing
+│       ├── commentary.ts    # model/language lists, bounds, config validation
+│       ├── config.ts        # API_URL + ENDPOINTS (backend and OGS)
+│       ├── constants.ts     # storage keys + message tags shared across JS worlds
+│       ├── jobs.ts          # job submit/poll state machine + timeouts
+│       ├── ogs.ts           # game-id parsing, SGF fetch, finished-game guard
+│       ├── types.ts         # API response shapes and auth types
 │       └── auth.ts          # small localStorage auth helpers
 └── public/icons/            # toolbar / panel icons (16–128px)
 ```
 
 ## Roles of each script
 
-- **`background.ts`** — minimal service worker. Calls
-  `chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })` so clicking the
-  toolbar icon opens the side panel.
+- **`background.ts`** — the service worker, and the owner of every long-running job.
+  Calls `chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })` so the
+  toolbar icon opens the panel, submits commentary jobs, polls them, and mirrors
+  progress into storage. **Why it polls rather than waiting:** Chrome terminates an MV3
+  worker when a single `fetch()` takes more than 30 s, so a multi-minute request can
+  never be held open here. Each poll is short, a `chrome.alarms` tick resurrects the
+  worker if it is killed between polls, and all state lives in storage — so the panel is
+  a pure view that can be closed and reopened without losing a run.
 - **`inject.ts`** — runs in the **page's own JS world**. Content scripts can't read the
   website's `localStorage` (different world/storage area), so this script polls
   `localStorage["extension_auth"]` every 500 ms and `postMessage`s any change to the
@@ -163,57 +188,64 @@ so a stale website entry can't re-authenticate, but a genuine re-login (which mi
 Signing out **on the website** (`AuthContext.logout`) also removes the website's
 `extension_auth` key, covering the other direction.
 
-> **Keep constants in sync.** `STORAGE_KEY` / `REVOKED_KEY` and the message
-> `source`/`type` constants are duplicated across `inject.ts`, `content.ts`, and
-> `panel.ts`. If you rename one, rename all of them.
+> **Shared constants.** The storage keys and the message `source`/`type` tags live in
+> `src/shared/constants.ts` and are imported by `inject.ts`, `content.ts`, and
+> `panel.ts`. They used to be three hand-synced copies.
 
 ## Side-panel screens (`panel.html`)
 
 The panel is a single document with several `.screen` sections; `showScreen(id)` toggles
 exactly one visible via a `.hidden` class. Screens: `screen-demo` (unauthenticated
 preview), `screen-welcome` (signed in), `screen-api-key`, `screen-generating`,
-`screen-commentary`, `screen-error`, `screen-waiting`. **Today only the demo and welcome
-screens are wired to real logic** — the API-key, generating, and commentary screens are
-static scaffolding for the WIP flow described below.
+`screen-commentary`, `screen-error`, `screen-waiting`, `screen-config`. All are wired to
+real logic.
 
 ## What works today vs. what's WIP
 
 **Working**
 
-- Toolbar icon opens the side panel.
+- Toolbar icon opens the side panel; the injected OGS button opens it too.
 - Full sign-in handoff from the web app → extension, with token validation/refresh.
 - Live signed-in / signed-out panel state, greeting the user by email (decoded from the
   JWT).
 - Robust sign-out that can't be silently undone by a stale website session.
+- Detecting the current OGS game, guarding against unfinished ones, and pulling its SGF.
+- Config screen (model, language, comment count, token budget, custom instruction)
+  seeded from the account's saved preferences and persisted between runs.
+- End-to-end commentary: submit → real progress → per-move cards with colour and
+  win-rate delta → summary footer with model, comment count, and token usage.
+- Regenerate, and a distinct actionable message for every backend error code.
 
-**Not yet implemented**
+**Known limits**
 
-- Detecting the current OGS game and extracting its SGF from the page.
-- Triggering `POST /api/commentary/` from the panel and driving the generating →
-  commentary screens with real data.
-- In-panel Claude API-key entry (the `screen-api-key` markup exists but isn't wired).
-- Overlaying commentary directly on the OGS board.
+- The panel's progress bar reads `0%` until the backend reports a total. That is
+  deliberate — it is honest about not knowing yet, rather than animating a guess.
+- Regenerate spends real Anthropic tokens on a single click, with no confirmation step.
+- `chrome.alarms` fires at most once a minute, so if the worker is killed between polls
+  a run can appear stalled for up to a minute before polling resumes. Nothing is lost.
 
 ## Potential features / roadmap
 
-- **Live OGS integration** — auto-detect a finished game, pull the SGF, and generate
-  commentary without leaving the page.
 - **Board overlay** — render win-rate swings and comment markers on the OGS board itself,
   not just in the panel.
 - **In-panel API-key management** — add/replace the Claude key from the extension via the
-  backend's `PUT /auth/user/claude-api-key/`.
-- **Progress streaming** — real move-by-move progress on the generating screen instead of
-  the current static mock.
-- **Regenerate / history** — re-run a review and browse past reviews from the panel
-  (backend already exposes commentary history).
-- **Config controls** — model/language/comment-count pickers mirroring the web app.
+  backend's `PUT /auth/user/claude-api-key/`. The panel currently routes to the web app.
+- **History** — browse past reviews from the panel (the backend already exposes them).
 - **Firefox / cross-browser** support once the flow stabilizes.
-- **Robust config** — ship `VITE_FRONTEND_URL` in `.env.example` and centralize all
-  shared constants to remove the manual sync between scripts.
+- **Lint in CI** — the extension is outside `make ci`, which covers only `backend/` and
+  `frontend/src`. It has no ESLint or Prettier config of its own.
+- **Generated API types** — `src/shared/commentary.ts` is a third hand-maintained copy
+  of the model and language lists (the others are the backend `Literal`s and
+  `frontend/src/types/commentary.ts`). Generating them from the OpenAPI schema would
+  remove the duplication.
 
 ## Conventions
 
 - Type every function signature; use the shared `ExtensionAuthObject` type for tokens.
+- Talk to the backend only from the side panel or the service worker. A content
+  script's `fetch` carries the page's origin, and the backend's CORS allowlist covers
+  only the frontend origins — a request from online-go.com is blocked. Extension pages
+  bypass CORS for hosts in `host_permissions`.
 - Never log or persist tokens beyond `chrome.storage.local`; the panel only decodes the
   JWT locally to show the email.
 - The extension is intentionally frameworkless — keep the panel plain DOM + CSS.

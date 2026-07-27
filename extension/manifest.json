@@ -3,7 +3,6 @@
     "name": "Kifu-Sensei",
     "version": "0.1.0",
     "description": "An automated LLM-based Go game commentary generator",
-
     "permissions": [
         "storage",
         "sidePanel",
@@ -12,19 +11,16 @@
         "scripting",
         "alarms"
     ],
-
     "host_permissions": [
         "http://localhost:5173/*",
         "http://localhost:8000/*",
         "https://online-go.com/*",
         "https://*.kifu-sensei.ai/*"
     ],
-
     "background": {
         "service_worker": "dist/background.js",
         "type": "module"
     },
-
     "content_scripts": [
         {
             "matches": [
@@ -36,11 +32,9 @@
             "run_at": "document_idle"
         }
     ],
-
     "side_panel": {
         "default_path": "dist/panel/panel.html"
     },
-
     "web_accessible_resources": [
         {
             "matches": [
@@ -48,10 +42,9 @@
                 "https://*.kifu-sensei.ai/*",
                 "https://online-go.com/*"
             ],
-            "resources": ["dist/inject.js"]
+            "resources": ["dist/inject.js", "dist/icons/*"]
         }
     ],
-
     "action": {
         "default_title": "Kifu-Sensei: click to open side panel",
         "default_icon": {
@@ -61,7 +54,6 @@
             "128": "dist/icons/icon-128.png"
         }
     },
-
     "icons": {
         "16": "dist/icons/icon-16.png",
         "32": "dist/icons/icon-32.png",
