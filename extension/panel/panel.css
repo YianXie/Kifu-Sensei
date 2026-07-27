@@ -782,13 +782,108 @@ select.field-input {
     font-weight: 500;
 }
 
+/*
+ * The commentary screen is the one screen that scrolls internally: the list takes
+ * the overflow so the toolbar, the download button and the footer stay put. That
+ * only works if the shell is exactly the viewport height — with the shared
+ * `min-height` the document itself grows instead and everything below the list
+ * ends up off-screen. Scoped with `:has()` so the other screens keep growing
+ * naturally rather than being clipped.
+ */
+#panel:has(#screen-commentary:not(.hidden)) {
+    height: 100vh;
+    min-height: 0;
+}
+
+#screen-commentary {
+    min-height: 0;
+}
+
+/* Positioning context for the floating download button, which sits over the list
+   rather than scrolling away with it. */
+.commentary-main {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
 .commentary-list {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding: 10px 14px;
+    /* Bottom padding clears the floating button so the last card is still
+       reachable when it is showing. */
+    padding: 10px 14px 52px;
     overflow-y: auto;
     flex: 1;
+    /* Without this the list refuses to shrink below its content and nothing
+       scrolls. */
+    min-height: 0;
+}
+
+/* Now that the list has a definite height, its cards would otherwise shrink to
+   fit it instead of overflowing into a scroll. */
+.commentary-list > * {
+    flex-shrink: 0;
+}
+
+/* ── Download annotated SGF ──────────────────────────────────────── */
+.download-dock {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    justify-content: center;
+    padding: 14px 14px 12px;
+    /* Fades the cards out underneath instead of cutting them off. */
+    background: linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0),
+        var(--ks-white) 45%
+    );
+    pointer-events: none;
+    transition:
+        transform 0.2s ease,
+        opacity 0.2s ease;
+}
+
+/* Slid out of the way while the user scrolls down through the commentary. */
+.download-dock--hidden {
+    transform: translateY(100%);
+    opacity: 0;
+}
+
+.btn-download {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    border: none;
+    border-radius: 6px;
+    padding: 9px 0;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    letter-spacing: -0.01em;
+    color: var(--ks-white);
+    background: var(--ks-accent);
+    box-shadow: 0 2px 8px rgba(26, 26, 26, 0.16);
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.btn-download:hover:not(:disabled) {
+    background: #215a41;
+}
+.btn-download:disabled {
+    background: var(--ks-light);
+    color: var(--ks-mid);
+    box-shadow: none;
+    cursor: not-allowed;
 }
 
 .commentary-footer {

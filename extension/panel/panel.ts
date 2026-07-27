@@ -478,6 +478,121 @@ function buildCard(item: CommentaryItem, moves: GameMove[]): HTMLElement {
     return card;
 }
 
+// ── Downloading the annotated record ────────────────────────────────────────
+
+const DOWNLOAD_LABEL = "↓ Download annotated SGF";
+/** How long the confirmation label stays up after a download starts. */
+const DOWNLOAD_CONFIRM_MS = 1_600;
+/** Ignore scroll jitter below this, so a trackpad twitch doesn't flip the button. */
+const SCROLL_DELTA_MIN = 8;
+/** Near the top there is nothing worth uncovering, so the button stays put. */
+const SCROLL_TOP_GRACE = 24;
+
+// The annotated record for the commentary currently on screen.
+let downloadableSgf: { content: string; fileName: string } | null = null;
+let downloadConfirmTimer: number | null = null;
+let lastListScrollTop = 0;
+
+function downloadButton(): HTMLButtonElement | null {
+    return el<HTMLButtonElement>("btn-download-sgf");
+}
+
+/** `ogs-12345.sgf` → `ogs-12345_annotated.sgf`, matching the website. */
+function annotatedFileName(sgfFileName: string): string {
+    const base = sgfFileName.replace(/\.sgf$/i, "").trim();
+    return base === "" ? "annotated.sgf" : `${base}_annotated.sgf`;
+}
+
+function setDockHidden(hidden: boolean): void {
+    el("download-dock")?.classList.toggle("download-dock--hidden", hidden);
+}
+
+/** Point the button at a freshly rendered result and reset its scroll state. */
+function prepareDownload(result: CommentaryResponse): void {
+    if (downloadConfirmTimer !== null) {
+        clearTimeout(downloadConfirmTimer);
+        downloadConfirmTimer = null;
+    }
+    downloadableSgf =
+        result.annotated_sgf_content !== ""
+            ? {
+                  content: result.annotated_sgf_content,
+                  fileName: annotatedFileName(result.sgf_file_name),
+              }
+            : null;
+
+    const button = downloadButton();
+    if (button) {
+        button.textContent = DOWNLOAD_LABEL;
+        // A commentary replayed without its record can't be downloaded, and a
+        // dead button is clearer than one that silently does nothing.
+        button.disabled = downloadableSgf === null;
+    }
+    lastListScrollTop = 0;
+    setDockHidden(false);
+}
+
+/**
+ * Save the annotated SGF, same as the website's download button.
+ *
+ * The backend has already injected the comments, so this is purely a client-side
+ * save of `annotated_sgf_content` — no extra request, and it still works offline.
+ */
+function downloadAnnotatedSgf(): void {
+    if (downloadableSgf === null) {
+        return;
+    }
+    const blob = new Blob([downloadableSgf.content], {
+        type: "application/x-go-sgf",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = downloadableSgf.fileName;
+    anchor.click();
+    // Revoked on a later tick: Chrome cancels the download if the blob URL dies
+    // before it has read it.
+    setTimeout(() => URL.revokeObjectURL(url), 1_000);
+
+    const button = downloadButton();
+    if (button) {
+        button.textContent = "✔ Saved";
+        if (downloadConfirmTimer !== null) {
+            clearTimeout(downloadConfirmTimer);
+        }
+        downloadConfirmTimer = window.setTimeout(() => {
+            downloadConfirmTimer = null;
+            button.textContent = DOWNLOAD_LABEL;
+        }, DOWNLOAD_CONFIRM_MS);
+    }
+}
+
+/**
+ * Hide the button while the user reads down the list, bring it back on the way up.
+ *
+ * Deltas below the threshold are accumulated rather than dropped, so a slow scroll
+ * still flips the button once it adds up to a real gesture.
+ */
+function watchListScroll(): void {
+    const list = el("commentary-list");
+    if (list === null) {
+        return;
+    }
+    list.addEventListener(
+        "scroll",
+        () => {
+            const top = list.scrollTop;
+            const delta = top - lastListScrollTop;
+            if (Math.abs(delta) < SCROLL_DELTA_MIN) {
+                return;
+            }
+            lastListScrollTop = top;
+            setDockHidden(delta > 0 && top > SCROLL_TOP_GRACE);
+        },
+        { passive: true }
+    );
+}
+
 function renderCommentary(result: CommentaryResponse): void {
     const list = el("commentary-list");
     if (list) {
@@ -486,7 +601,9 @@ function renderCommentary(result: CommentaryResponse): void {
                 .sort((a, b) => a.turn - b.turn)
                 .map((item) => buildCard(item, result.moves))
         );
+        list.scrollTop = 0;
     }
+    prepareDownload(result);
 
     const count = el("commentary-count");
     if (count) {
@@ -893,6 +1010,8 @@ function initCommentaryScreen(): void {
         "click",
         () => void rerunCommentary()
     );
+    downloadButton()?.addEventListener("click", downloadAnnotatedSgf);
+    watchListScroll();
 }
 
 function initErrorScreen(): void {
