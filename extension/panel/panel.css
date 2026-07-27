@@ -660,6 +660,43 @@ p {
     line-height: 1.35;
 }
 
+/* ── Config screen ───────────────────────────────────────────────── */
+.field-row {
+    display: flex;
+    gap: 10px;
+}
+
+.field-row .field-group {
+    flex: 1;
+    min-width: 0;
+}
+
+/* The shared .field-input is sized for text; selects and textareas need the
+   native chrome kept in check without restyling the base class. */
+select.field-input {
+    appearance: none;
+    background-image:
+        linear-gradient(45deg, transparent 50%, var(--ks-mid) 50%),
+        linear-gradient(135deg, var(--ks-mid) 50%, transparent 50%);
+    background-position:
+        calc(100% - 14px) calc(50% + 1px),
+        calc(100% - 9px) calc(50% + 1px);
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+    padding-right: 26px;
+}
+
+.field-textarea {
+    resize: vertical;
+    min-height: 62px;
+    line-height: 1.5;
+    font-family: inherit;
+}
+
+#screen-config .screen-body {
+    gap: 12px;
+}
+
 /* ── Generating screen ───────────────────────────────────────────── */
 .gen-subtitle {
     font-size: 12px;
@@ -721,8 +758,14 @@ p {
     margin-left: 6px;
 }
 
-.gen-first-result-inner {
-    padding-top: 14px;
+/* Dimmed until the KataGo passes finish and the real total is known. */
+.gen-step--pending .gen-step-label {
+    color: var(--ks-mid);
+}
+
+#btn-cancel-generating {
+    align-self: center;
+    margin-top: 4px;
 }
 
 /* ── Commentary screen ───────────────────────────────────────────── */

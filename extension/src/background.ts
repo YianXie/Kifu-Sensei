@@ -1,3 +1,132 @@
+// Service worker. Owns commentary runs so they outlive the side panel, and keeps
+// polling across its own restarts.
+
+import type { CommentaryConfig } from "./shared/commentary";
+import { FRONTEND_URL } from "./shared/config";
+import {
+    clearJob,
+    isTerminal,
+    readJob,
+    runJobPoller,
+    startCommentaryJob,
+} from "./shared/jobs";
+
+/**
+ * Wakes the worker if Chrome tore it down mid-run. One minute is the documented
+ * floor for a released extension; some builds accept 0.5, which is not relied on.
+ * While the worker is alive the poll loop's own 3s requests keep it awake, so this
+ * only matters after an unexpected teardown.
+ */
+const POLL_ALARM = "kifu-sensei-poll";
+const POLL_ALARM_PERIOD_MINUTES = 1;
+
 chrome.sidePanel
     .setPanelBehavior({ openPanelOnActionClick: true })
     .catch((error) => console.error(error));
+
+async function ensurePollAlarm(): Promise<void> {
+    const existing = await chrome.alarms.get(POLL_ALARM);
+    if (existing === undefined) {
+        await chrome.alarms.create(POLL_ALARM, {
+            periodInMinutes: POLL_ALARM_PERIOD_MINUTES,
+        });
+    }
+}
+
+async function clearPollAlarm(): Promise<void> {
+    await chrome.alarms.clear(POLL_ALARM);
+}
+
+/** Poll to completion, then stop the alarm so an idle worker is not woken forever. */
+async function driveJob(): Promise<void> {
+    await ensurePollAlarm();
+    try {
+        await runJobPoller();
+    } finally {
+        const job = await readJob();
+        if (job === null || job.jobId === "" || isTerminal(job.status)) {
+            await clearPollAlarm();
+        }
+    }
+}
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name !== POLL_ALARM) {
+        return;
+    }
+    void driveJob();
+});
+
+// Nothing is in flight across a browser restart — session storage is already gone —
+// but the alarm can outlive it, so tidy up.
+chrome.runtime.onStartup.addListener(() => void clearPollAlarm());
+
+type PanelMessage =
+    | { type: "start-commentary"; gameId: number; config: CommentaryConfig }
+    | { type: "open-login" }
+    | { type: "resume-polling" }
+    | { type: "cancel-commentary" };
+
+interface MessageResult {
+    ok: boolean;
+}
+
+function isPanelMessage(value: unknown): value is PanelMessage {
+    return (
+        typeof value === "object" &&
+        value !== null &&
+        typeof (value as PanelMessage).type === "string"
+    );
+}
+
+async function handleMessage(message: PanelMessage): Promise<MessageResult> {
+    switch (message.type) {
+        case "start-commentary": {
+            const job = await startCommentaryJob(
+                message.gameId,
+                message.config
+            );
+            if (!isTerminal(job.status)) {
+                void driveJob();
+            }
+            return { ok: job.status !== "failed" };
+        }
+        case "open-login": {
+            await chrome.tabs.create({
+                url: `${FRONTEND_URL}/login?source=extension`,
+            });
+            return { ok: true };
+        }
+        case "resume-polling": {
+            // The panel reopened. If a run is still going, make sure something is
+            // polling it — this worker may have been restarted since it began.
+            const job = await readJob();
+            if (job !== null && job.jobId !== "" && !isTerminal(job.status)) {
+                void driveJob();
+            }
+            return { ok: true };
+        }
+        case "cancel-commentary": {
+            await clearJob();
+            await clearPollAlarm();
+            return { ok: true };
+        }
+    }
+}
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (!isPanelMessage(message)) {
+        return false;
+    }
+
+    handleMessage(message).then(sendResponse, (error: unknown) => {
+        console.error(
+            "[Kifu-Sensei worker] Message failed:",
+            message.type,
+            error
+        );
+        sendResponse({ ok: false });
+    });
+    // Keep the message channel open for the async reply.
+    return true;
+});
