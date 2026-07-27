@@ -23,7 +23,7 @@
             "matches": [
                 "http://localhost:5173/*",
                 "https://*.kifu-sensei.ai/*",
-                "https://online-go.com/game/*"
+                "https://online-go.com/*"
             ],
             "js": ["dist/content.js"],
             "run_at": "document_idle"

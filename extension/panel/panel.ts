@@ -1,6 +1,7 @@
 import {
     authedFetch,
     clearStoredAuth,
+    getCurrentAuth,
     isAuthObject,
     readErrorResponse,
     setCurrentAuth,
@@ -11,6 +12,7 @@ import {
     OGS_GAMES_URL,
     REVOKED_AUTH_KEY,
 } from "../src/shared/constants";
+import { checkOgsGame, type OgsGameCheck } from "../src/shared/ogs";
 import type { ExtensionAuthObject } from "../src/shared/types";
 
 // Frontend origins where the website may hold a stale extension_auth entry.
@@ -39,7 +41,14 @@ const API_KEY_HINT_PATTERN = /^sk-ant-\S{16,}$/;
 
 type ScreenId = (typeof SCREEN_IDS)[number];
 
+let currentScreen: ScreenId | null = null;
+
+// Guards against a slow game check overwriting a newer one: tab switches and SPA
+// navigations can fire faster than OGS answers.
+let gameCheckToken = 0;
+
 function showScreen(id: ScreenId): void {
+    currentScreen = id;
     for (const screenId of SCREEN_IDS) {
         document
             .getElementById(screenId)
@@ -68,7 +77,17 @@ function decodeEmailFromToken(accessToken: string): string | null {
     }
 }
 
-function renderWelcome(auth: ExtensionAuthObject): void {
+const WELCOME_LEAD_DEFAULT =
+    "Your account is connected. Open a finished game and let Kifu-Sensei turn the key moments into plain-language commentary.";
+
+function renderWelcome(auth: ExtensionAuthObject, game?: OgsGameCheck): void {
+    const leadEl = document.getElementById("welcome-lead");
+    if (leadEl) {
+        leadEl.textContent =
+            game?.state === "ready"
+                ? `Game ${game.gameId} has finished and is ready to review.`
+                : WELCOME_LEAD_DEFAULT;
+    }
     const emailEl = document.getElementById("welcome-email");
     const email = decodeEmailFromToken(auth.accessToken);
     if (emailEl) {
@@ -81,6 +100,89 @@ function renderWelcome(auth: ExtensionAuthObject): void {
         }
     }
     showScreen("screen-welcome");
+}
+
+/**
+ * Copy for every state that is *not* ready to review.
+ *
+ * `ready` is excluded from the parameter type and there is no `default`, so adding a
+ * state to `OgsGameCheck` without giving it wording here is a compile error rather
+ * than a silent fall-through to generic text.
+ */
+function waitingMessage(
+    check: Exclude<OgsGameCheck, { state: "ready" } | { state: "no-game" }>
+): string {
+    switch (check.state) {
+        case "unfinished":
+            return check.phase === "stone removal"
+                ? "This game is being scored. Kifu-Sensei can review it once it finishes."
+                : "This game is still in progress. Kifu-Sensei can review it once it finishes.";
+        case "unavailable":
+            if (check.reason === "not-found") {
+                return "That game could not be found on online-go.com.";
+            }
+            if (check.reason === "forbidden") {
+                return "That game is private, so Kifu-Sensei cannot read it.";
+            }
+            return "Kifu-Sensei could not read this game's details from online-go.com.";
+        case "offline":
+            return "Could not reach online-go.com. Check your connection and try again.";
+    }
+}
+
+// ── Running a review ────────────────────────────────────────────────────────
+
+/**
+ * Re-evaluate the active tab. Only redraws the two game-dependent screens, so a
+ * navigation cannot yank the user out of the API-key flow.
+ */
+async function refreshGameState(): Promise<void> {
+    if (
+        currentScreen !== "screen-welcome" &&
+        currentScreen !== "screen-waiting"
+    ) {
+        return;
+    }
+    const auth = getCurrentAuth();
+    if (auth === null) {
+        return;
+    }
+    await renderSignedIn(auth);
+}
+
+/**
+ * Decide what a signed-in user sees, based on the game in the active tab.
+ *
+ * Guarded by a token because the user can switch tabs while the OGS lookup is in
+ * flight; a stale result must not overwrite a newer one.
+ */
+async function renderSignedIn(auth: ExtensionAuthObject): Promise<void> {
+    const token = ++gameCheckToken;
+    const [tab] = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+    });
+    const check = await checkOgsGame(tab?.url);
+    if (token !== gameCheckToken) {
+        return; // A newer check started while this one was in flight.
+    }
+
+    if (check.state === "no-game") {
+        // Not looking at a game: the welcome screen is the signed-in home, and the
+        // only route to sign-out.
+        renderWelcome(auth);
+        return;
+    }
+    if (check.state === "ready") {
+        renderWelcome(auth, check);
+        return;
+    }
+
+    const textEl = document.getElementById("waiting-text");
+    if (textEl) {
+        textEl.textContent = waitingMessage(check);
+    }
+    showScreen("screen-waiting");
 }
 
 // Drops the stored session and returns the panel to the signed-out screen.
@@ -115,7 +217,7 @@ async function syncAuthState(): Promise<void> {
         console.warn(
             "[Kifu-Sensei panel] Could not read user settings; assuming a key is set."
         );
-        renderWelcome(auth);
+        await renderSignedIn(auth);
         return;
     }
 
@@ -130,12 +232,12 @@ async function syncAuthState(): Promise<void> {
             "[Kifu-Sensei panel] Malformed settings response:",
             error
         );
-        renderWelcome(auth);
+        await renderSignedIn(auth);
         return;
     }
 
     if (settings.has_claude_api_key === true) {
-        renderWelcome(auth);
+        await renderSignedIn(auth);
     } else {
         showApiKeyScreen();
     }
@@ -374,6 +476,17 @@ function watchAuthState(): void {
     });
 }
 
+function watchActiveTab(): void {
+    chrome.tabs.onActivated.addListener(() => void refreshGameState());
+    chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
+        // OGS is a single-page app: moving between games fires onUpdated with a new
+        // url and no page load, which is the only signal the panel gets.
+        if (changeInfo.url !== undefined && tab.active) {
+            void refreshGameState();
+        }
+    });
+}
+
 function init(): void {
     initHeader();
     initDemoScreen();
@@ -381,6 +494,7 @@ function init(): void {
     initApiKeyScreen();
     initKeySavedScreen();
     watchAuthState();
+    watchActiveTab();
     void syncAuthState();
 }
 
