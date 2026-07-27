@@ -1,11 +1,18 @@
+import {
+    authedFetch,
+    clearStoredAuth,
+    isAuthObject,
+    readErrorResponse,
+    setCurrentAuth,
+} from "../src/shared/api";
 import { ENDPOINTS, FRONTEND_URL } from "../src/shared/config";
+import {
+    AUTH_STORAGE_KEY,
+    OGS_GAMES_URL,
+    REVOKED_AUTH_KEY,
+} from "../src/shared/constants";
 import type { ExtensionAuthObject } from "../src/shared/types";
 
-const OGS_GAMES_URL = "https://online-go.com/observe-games/";
-const STORAGE_KEY = "extension_auth";
-// Marker read by the content script so a signed-out session isn't picked up
-// again from the website's localStorage. Keep in sync with content.ts.
-const REVOKED_KEY = "revoked_refresh_token";
 // Frontend origins where the website may hold a stale extension_auth entry.
 // Wildcarded because production serves the app from www — the bare apex only
 // redirects there — and `*.` also covers the apex itself.
@@ -30,11 +37,9 @@ const SCREEN_IDS = [
 // format hint — the real check is the backend accepting the key.
 const API_KEY_HINT_PATTERN = /^sk-ant-\S{16,}$/;
 
-// The session backing the requests this panel makes. Kept in sync with
-// chrome.storage.local so a refresh mid-flow doesn't strand us on a dead token.
-let currentAuth: ExtensionAuthObject | null = null;
+type ScreenId = (typeof SCREEN_IDS)[number];
 
-function showScreen(id: (typeof SCREEN_IDS)[number]): void {
+function showScreen(id: ScreenId): void {
     for (const screenId of SCREEN_IDS) {
         document
             .getElementById(screenId)
@@ -78,82 +83,9 @@ function renderWelcome(auth: ExtensionAuthObject): void {
     showScreen("screen-welcome");
 }
 
-function isAuthObject(value: unknown): value is ExtensionAuthObject {
-    return (
-        typeof value === "object" &&
-        value !== null &&
-        typeof (value as ExtensionAuthObject).accessToken === "string"
-    );
-}
-
-// Exchanges a refresh token for a fresh token pair, or null if it is rejected.
-async function refreshTokens(
-    refreshToken: string
-): Promise<ExtensionAuthObject | null> {
-    try {
-        const response = await fetch(ENDPOINTS.tokenRefresh, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ refresh: refreshToken }),
-        });
-        if (!response.ok) {
-            return null;
-        }
-        const data = (await response.json()) as {
-            access?: string;
-            refresh?: string;
-        };
-        if (!data.access || !data.refresh) {
-            return null;
-        }
-        return { accessToken: data.access, refreshToken: data.refresh };
-    } catch (error) {
-        console.error("[Kifu-Sensei panel] Token refresh failed:", error);
-        return null;
-    }
-}
-
-// Sends an authenticated request, retrying once with a refreshed token on 401.
-// Returns null when the backend is unreachable, so callers can tell "offline"
-// apart from a 401 meaning the session is genuinely dead.
-async function authedFetch(
-    url: string,
-    init: RequestInit = {}
-): Promise<Response | null> {
-    if (currentAuth === null) {
-        return null;
-    }
-
-    const send = (token: string): Promise<Response> =>
-        fetch(url, {
-            ...init,
-            headers: { ...init.headers, Authorization: `Bearer ${token}` },
-        });
-
-    try {
-        const response = await send(currentAuth.accessToken);
-        if (response.status !== 401) {
-            return response;
-        }
-
-        const refreshed = await refreshTokens(currentAuth.refreshToken);
-        if (refreshed === null) {
-            // The refresh token is dead too; let the caller handle the 401.
-            return response;
-        }
-        currentAuth = refreshed;
-        await chrome.storage.local.set({ [STORAGE_KEY]: refreshed });
-        return await send(refreshed.accessToken);
-    } catch (error) {
-        console.error("[Kifu-Sensei panel] Request failed:", url, error);
-        return null;
-    }
-}
-
 // Drops the stored session and returns the panel to the signed-out screen.
 async function handleDeadSession(): Promise<void> {
-    currentAuth = null;
-    await chrome.storage.local.remove(STORAGE_KEY);
+    await clearStoredAuth();
     showScreen("screen-demo");
 }
 
@@ -162,14 +94,14 @@ async function handleDeadSession(): Promise<void> {
 // screen depending on whether their account already has a Claude API key.
 // Runs on every panel open, so the key state can't go stale between sessions.
 async function syncAuthState(): Promise<void> {
-    const stored = await chrome.storage.local.get(STORAGE_KEY);
-    const auth = stored[STORAGE_KEY];
+    const stored = await chrome.storage.local.get(AUTH_STORAGE_KEY);
+    const auth = stored[AUTH_STORAGE_KEY];
     if (!isAuthObject(auth)) {
-        currentAuth = null;
+        setCurrentAuth(null);
         showScreen("screen-demo");
         return;
     }
-    currentAuth = auth;
+    setCurrentAuth(auth);
 
     const response = await authedFetch(ENDPOINTS.userSettings);
     if (response === null || !response.ok) {
@@ -183,21 +115,27 @@ async function syncAuthState(): Promise<void> {
         console.warn(
             "[Kifu-Sensei panel] Could not read user settings; assuming a key is set."
         );
-        renderWelcome(currentAuth);
+        renderWelcome(auth);
         return;
     }
 
-    let settings: { has_claude_api_key?: unknown };
+    let settings: {
+        has_claude_api_key?: unknown;
+        preferences?: Record<string, unknown>;
+    };
     try {
-        settings = (await response.json()) as { has_claude_api_key?: unknown };
+        settings = (await response.json()) as typeof settings;
     } catch (error) {
-        console.error("[Kifu-Sensei panel] Malformed settings response:", error);
-        renderWelcome(currentAuth);
+        console.error(
+            "[Kifu-Sensei panel] Malformed settings response:",
+            error
+        );
+        renderWelcome(auth);
         return;
     }
 
     if (settings.has_claude_api_key === true) {
-        renderWelcome(currentAuth);
+        renderWelcome(auth);
     } else {
         showApiKeyScreen();
     }
@@ -255,14 +193,16 @@ async function clearWebsiteAuth(): Promise<void> {
 async function signOut(): Promise<void> {
     // Record the session being revoked so the content script won't re-adopt it
     // from any lingering website localStorage entry.
-    const stored = await chrome.storage.local.get(STORAGE_KEY);
-    const auth = stored[STORAGE_KEY];
+    const stored = await chrome.storage.local.get(AUTH_STORAGE_KEY);
+    const auth = stored[AUTH_STORAGE_KEY];
     if (isAuthObject(auth)) {
-        await chrome.storage.local.set({ [REVOKED_KEY]: auth.refreshToken });
+        await chrome.storage.local.set({
+            [REVOKED_AUTH_KEY]: auth.refreshToken,
+        });
     }
     // Clearing the stored session flips the panel back to the demo screen via
     // the storage-change listener.
-    await chrome.storage.local.remove(STORAGE_KEY);
+    await clearStoredAuth();
     await clearWebsiteAuth();
 }
 
@@ -326,31 +266,6 @@ function showApiKeyScreen(): void {
     showScreen("screen-api-key");
 }
 
-// Pulls a human-readable message out of a failed save. The backend returns
-// either {"detail": "…"} or DRF-style {"field": ["…"]}.
-async function readApiKeyError(response: Response): Promise<string> {
-    const fallback = "Could not save your API key. Please try again.";
-    try {
-        const body: unknown = await response.json();
-        if (typeof body !== "object" || body === null) {
-            return fallback;
-        }
-        const { detail, claude_api_key: fieldErrors } = body as {
-            detail?: unknown;
-            claude_api_key?: unknown;
-        };
-        if (typeof detail === "string" && detail) {
-            return detail;
-        }
-        if (Array.isArray(fieldErrors) && typeof fieldErrors[0] === "string") {
-            return fieldErrors[0];
-        }
-        return fallback;
-    } catch {
-        return fallback;
-    }
-}
-
 function setSavingKey(saving: boolean): void {
     const button = saveKeyButton();
     if (button === null) {
@@ -388,7 +303,11 @@ async function saveApiKey(): Promise<void> {
         return;
     }
     if (!response.ok) {
-        showApiKeyError(await readApiKeyError(response));
+        const { detail } = await readErrorResponse(
+            response,
+            "Could not save your API key. Please try again."
+        );
+        showApiKeyError(detail);
         syncKeyFieldState();
         return;
     }
@@ -413,13 +332,15 @@ function initApiKeyScreen(): void {
     });
     saveKeyButton()?.addEventListener("click", () => void saveApiKey());
 
-    document.getElementById("accordion-toggle")?.addEventListener("click", () => {
-        const body = document.getElementById("accordion-body");
-        const isOpen = body?.classList.toggle("hidden") === false;
-        document
-            .getElementById("accordion-chevron")
-            ?.classList.toggle("accordion-chevron--open", isOpen);
-    });
+    document
+        .getElementById("accordion-toggle")
+        ?.addEventListener("click", () => {
+            const body = document.getElementById("accordion-body");
+            const isOpen = body?.classList.toggle("hidden") === false;
+            document
+                .getElementById("accordion-chevron")
+                ?.classList.toggle("accordion-chevron--open", isOpen);
+        });
 }
 
 function initKeySavedScreen(): void {
@@ -434,16 +355,16 @@ function initKeySavedScreen(): void {
 // content script authenticates while this panel is open).
 function watchAuthState(): void {
     chrome.storage.onChanged.addListener((changes, area) => {
-        if (area !== "local" || !(STORAGE_KEY in changes)) {
+        if (area !== "local" || !(AUTH_STORAGE_KEY in changes)) {
             return;
         }
-        const { newValue, oldValue } = changes[STORAGE_KEY];
+        const { newValue, oldValue } = changes[AUTH_STORAGE_KEY];
         if (!isAuthObject(newValue)) {
-            currentAuth = null;
+            setCurrentAuth(null);
             showScreen("screen-demo");
             return;
         }
-        currentAuth = newValue;
+        setCurrentAuth(newValue);
         // A token rotation (signed in both before and after) must not yank the
         // user out of the key-entry or key-saved screen, so only a fresh
         // sign-in re-runs the sync.
