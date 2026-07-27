@@ -3,6 +3,7 @@ import logging
 import os
 import string
 from collections import Counter
+from collections.abc import Callable
 from typing import Any, Literal
 
 import httpx
@@ -14,6 +15,7 @@ from sgfmill.boards import Board
 from app.config import settings
 from app.crypto import decrypt_secret
 from app.deps import CurrentUser
+from app.errors import InvalidSgfError, MissingApiKeyError
 from app.models import User
 
 _http_client = None
@@ -99,7 +101,11 @@ _RULES_ALIASES: dict[str, str] = {
     "chinese-ogs": "chinese-ogs",
 }
 
-_CLAUDE_MODEL = "claude-haiku-4-5"
+# Called as ``on_progress(done, total)`` after each comment is written, so a caller can
+# publish real progress. Must not raise — see the guard in the job runner.
+ProgressCallback = Callable[[int, int], None]
+
+_CLAUDE_MODEL = "claude-sonnet-5"
 _COMMENTARY_LANGUAGE = "english"
 _MAX_TOKENS = 1024
 
@@ -298,6 +304,24 @@ def _prior_descriptor(prior: float) -> str:
     return "high — a natural-looking move to the neural net"
 
 
+def _mover_winrate_delta(detail: dict[str, Any], prev_detail: dict[str, Any]) -> float:
+    """Return the win-rate change in percentage points for the player who just moved.
+
+    Negative means the move lost win rate — this is the value clients render as the
+    ``-18%`` badge. It is computed from the *detailed* analysis pass so that it matches
+    the ``[CHANGE: ...]`` figure ``_generate_user_prompt`` puts in front of the model;
+    the coarser first-pass numbers used for move selection would let the badge and the
+    commentary text disagree.
+    """
+    color = _color_letter_to_word(detail["rootInfo"]["currentPlayer"])
+    winrate = _black_winrate_pct(detail)
+    prev_winrate = _black_winrate_pct(prev_detail)
+    if color == "White":
+        winrate = 100 - winrate
+        prev_winrate = 100 - prev_winrate
+    return round(winrate - prev_winrate, 1)
+
+
 def _describe_pv_path(pv: list[str], board_size: int) -> str:
     """Return the one or two board regions a principal variation runs through."""
     names = []
@@ -419,7 +443,13 @@ def _generate_ownership_summary(
 def sgf_to_winrate_request(sgf_content: str) -> dict[str, Any]:
     """Parse an SGF string into a KataGo analysis-engine request payload."""
     payload = sgf_content.encode("utf-8") if isinstance(sgf_content, str) else sgf_content
-    game = sgf.Sgf_game.from_bytes(payload)
+    try:
+        game = sgf.Sgf_game.from_bytes(payload)
+    except ValueError as exc:
+        # Raised as a typed error here rather than pattern-matched on ValueError in the
+        # router: coordinate helpers elsewhere in this module raise ValueError too, and
+        # those are bugs, not malformed input.
+        raise InvalidSgfError(f"Could not parse the SGF file: {exc}") from exc
 
     board_size = game.get_size()
     root = game.get_root()
@@ -571,7 +601,7 @@ def _generate_user_prompt(
         f"({'Black' if prev_score_lead >= 0 else 'White'} ahead)\n\n"
     )
     prompt += f"After {color} played {last_move_label} (position after move {turn_number}):\n"
-    prompt += f"  {color} winrate:    {winrate:+1f}%   [CHANGE: {winrate - prev_winrate:+.1f}%]\n"
+    prompt += f"  {color} winrate:    {winrate:+.1f}%   [CHANGE: {winrate - prev_winrate:+.1f}%]\n"
     prompt += f"  Score lead:       {score_lead:+.1f} pts [CHANGE: {score_lead - prev_score_lead:+.1f} pts]\n\n"
 
     played_info = next(
@@ -648,6 +678,31 @@ def _generate_user_prompt(
     return prompt
 
 
+def _empty_usage() -> dict[str, int]:
+    """Return a zeroed token-usage accumulator."""
+    return {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+    }
+
+
+def _accumulate_usage(totals: dict[str, int], usage: Any) -> None:
+    """Add one Anthropic response's token counts into ``totals``.
+
+    The cache counters are ``None`` unless prompt caching is in play. The pipeline does
+    not use it — the system prompt is far below the minimum cacheable prefix, so a
+    ``cache_control`` marker would silently never cache — but they are summed anyway so
+    turning caching on later needs no change here. ``getattr`` guards against SDK
+    versions that omit the attributes entirely.
+    """
+    totals["input_tokens"] += getattr(usage, "input_tokens", 0) or 0
+    totals["output_tokens"] += getattr(usage, "output_tokens", 0) or 0
+    totals["cache_read_input_tokens"] += getattr(usage, "cache_read_input_tokens", 0) or 0
+    totals["cache_creation_input_tokens"] += getattr(usage, "cache_creation_input_tokens", 0) or 0
+
+
 def generate_commentary_with_claude(
     user: User,
     prompts: list[str],
@@ -656,7 +711,8 @@ def generate_commentary_with_claude(
     language: str = _COMMENTARY_LANGUAGE,
     max_token: int = _MAX_TOKENS,
     custom_instruction: str = "",
-) -> list[str]:
+    on_progress: ProgressCallback | None = None,
+) -> tuple[list[str], dict[str, int]]:
     """Example: decrypt the user's Claude API key and call the Anthropic API.
 
     The key is only decrypted in memory, here, at the moment it is used — it is never
@@ -664,7 +720,7 @@ def generate_commentary_with_claude(
     that was stored via the ``PUT /auth/user/claude-api-key/`` endpoint.
     """
     if not user.has_claude_api_key or not user.claude_api:
-        raise ValueError("This user has not configured a Claude API key.")
+        raise MissingApiKeyError("This account has no Claude API key configured.")
 
     # Decrypt the stored ciphertext back into the usable API key.
     claude_api_key = decrypt_secret(user.claude_api)
@@ -675,6 +731,11 @@ def generate_commentary_with_claude(
         custom_instruction=custom_instruction, language=language
     )
     comments: list[str] = []
+    usage = _empty_usage()
+    # Publish the total before the first call so a poller can show "0 of N" rather than
+    # "0 of 0" for the length of the first request.
+    if on_progress is not None:
+        on_progress(0, len(prompts))
     for user_prompt in prompts:
         message = client.messages.create(
             model=model,
@@ -689,8 +750,11 @@ def generate_commentary_with_claude(
         )
         text = "".join(block.text for block in message.content if block.type == "text")
         comments.append(text)
+        _accumulate_usage(usage, message.usage)
+        if on_progress is not None:
+            on_progress(len(comments), len(prompts))
 
-    return comments
+    return comments, usage
 
 
 def _katago_moves_to_frontend(
@@ -724,7 +788,10 @@ def _inject_comments_into_sgf(sgf_content: str, comments: list[dict[str, Any]]) 
     payload = sgf_content.encode("utf-8") if isinstance(sgf_content, str) else sgf_content
     # Force a UTF-8 presenter so SGF comments from the LLM can include
     # punctuation like em dashes without latin-1 serialization failures.
-    game = sgf.Sgf_game.from_bytes(payload, override_encoding="utf-8")
+    try:
+        game = sgf.Sgf_game.from_bytes(payload, override_encoding="utf-8")
+    except ValueError as exc:
+        raise InvalidSgfError(f"Could not re-parse the SGF file: {exc}") from exc
     for idx, node in enumerate(game.get_main_sequence()):
         if idx == 0:
             continue  # root node is not a move
@@ -743,8 +810,16 @@ def generate_commentary(
     num_comments: int = 20,
     max_token: int = _MAX_TOKENS,
     custom_instruction: str = "",
+    on_progress: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     """Run the two-pass KataGo analysis and return board data with commentary."""
+    # Checked up front, not just at the Claude call below: the KataGo passes take
+    # minutes, and there is no point spending them for a user who cannot be billed for
+    # the commentary at the end. generate_commentary_with_claude re-checks, since it is
+    # callable on its own.
+    if not user.has_claude_api_key or not user.claude_api:
+        raise MissingApiKeyError("This account has no Claude API key configured.")
+
     client = get_http_client()
 
     winrate_request = sgf_to_winrate_request(sgf_content)
@@ -807,26 +882,36 @@ def generate_commentary(
         prompts.append(prompt)
         logger.info("User prompt for move %d:\n%s\n", detailed_results[i]["turnNumber"], prompt)
 
-    comment_texts = generate_commentary_with_claude(
+    comment_texts, usage = generate_commentary_with_claude(
         user,
         prompts,
         model=model,
         language=language,
         max_token=max_token,
         custom_instruction=custom_instruction,
+        on_progress=on_progress,
     )
     frontend_moves, frontend_initial = _katago_moves_to_frontend(moves, initial_stones)
-    comments = [
-        {
-            "turn": detailed_results[i]["turnNumber"],
-            "comment": comment_texts[i],
-        }
-        for i in range(len(detailed_results))
-    ]
+    comments: list[dict[str, Any]] = []
+    for i, detail in enumerate(detailed_results):
+        turn = detail["turnNumber"]
+        comments.append(
+            {
+                "turn": turn,
+                "comment": comment_texts[i],
+                "winrate_delta": _mover_winrate_delta(detail, detailed_prev_results[i]),
+                # ``turn`` is 1-based over the SGF main sequence; ``moves`` is 0-based.
+                # Read from the move list rather than inferred from turn parity, which
+                # is wrong for handicap games — those open with White to play.
+                "color": moves[turn - 1][0],
+            }
+        )
     return {
         "board_size": board_size,
         "sgf_file_name": sgf_file_name,
         "language": language,
+        "model": model,
+        "usage": usage,
         "moves": frontend_moves,
         "initial_stones": frontend_initial,
         "comments": comments,

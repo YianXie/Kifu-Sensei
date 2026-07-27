@@ -1,22 +1,22 @@
+import { startButton } from "./button/controller";
+import { refreshTokens } from "./shared/api";
 import { ENDPOINTS } from "./shared/config";
+import {
+    AUTH_MESSAGE_SOURCE,
+    AUTH_MESSAGE_TYPE,
+    AUTH_STORAGE_KEY,
+    OGS_ORIGIN,
+    REVOKED_AUTH_KEY,
+} from "./shared/constants";
 import type { ExtensionAuthObject } from "./shared/types";
-
-const MESSAGE_SOURCE = "kifu-sensei-inject";
-const MESSAGE_TYPE = "extension_auth_update";
-const STORAGE_KEY = "extension_auth";
-// Refresh token of a session the user explicitly signed out of. The website
-// leaves the old extension_auth in its own localStorage, so without this a
-// freshly loaded frontend tab would re-deliver it and silently sign the user
-// back in. Set by the panel's sign-out handler.
-const REVOKED_KEY = "revoked_refresh_token";
 
 // The access token most recently persisted, used to skip re-validating an
 // identical update (checkStorage polls and can re-emit the same value).
 let authenticatedToken: string | null = null;
 
 function isAuthUpdateMessage(data: unknown): data is {
-    source: typeof MESSAGE_SOURCE;
-    type: typeof MESSAGE_TYPE;
+    source: typeof AUTH_MESSAGE_SOURCE;
+    type: typeof AUTH_MESSAGE_TYPE;
     detail: ExtensionAuthObject | null;
 } {
     if (typeof data !== "object" || data === null) {
@@ -25,8 +25,8 @@ function isAuthUpdateMessage(data: unknown): data is {
 
     const message = data as Record<string, unknown>;
     return (
-        message.source === MESSAGE_SOURCE &&
-        message.type === MESSAGE_TYPE &&
+        message.source === AUTH_MESSAGE_SOURCE &&
+        message.type === AUTH_MESSAGE_TYPE &&
         (message.detail === null || typeof message.detail === "object")
     );
 }
@@ -49,6 +49,11 @@ function notifyUser(message: string): void {
 }
 
 // Confirms the access token is currently accepted by the backend.
+//
+// This is the one API call made from the content script rather than an extension
+// context. It is safe only because it runs on the frontend origins, which the
+// backend's CORS allowlist covers — the same request from online-go.com would be
+// blocked. Anything else that talks to the API belongs in the panel or the worker.
 async function isAccessTokenValid(accessToken: string): Promise<boolean> {
     try {
         const response = await fetch(ENDPOINTS.userSettings, {
@@ -61,36 +66,6 @@ async function isAccessTokenValid(accessToken: string): Promise<boolean> {
             error
         );
         return false;
-    }
-}
-
-// Exchanges a refresh token for a fresh token pair, or null if it is rejected.
-async function refreshTokens(
-    refreshToken: string
-): Promise<ExtensionAuthObject | null> {
-    try {
-        const response = await fetch(ENDPOINTS.tokenRefresh, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ refresh: refreshToken }),
-        });
-        if (!response.ok) {
-            return null;
-        }
-        const data = (await response.json()) as {
-            access?: string;
-            refresh?: string;
-        };
-        if (!data.access || !data.refresh) {
-            return null;
-        }
-        return { accessToken: data.access, refreshToken: data.refresh };
-    } catch (error) {
-        console.error(
-            "[Kifu-Sensei content] Token refresh request failed:",
-            error
-        );
-        return null;
     }
 }
 
@@ -117,7 +92,7 @@ async function handleAuthUpdate(
     // The key was cleared (e.g. the user logged out): drop any stored session.
     if (updatedObject === null) {
         authenticatedToken = null;
-        await chrome.storage.local.remove(STORAGE_KEY);
+        await chrome.storage.local.remove(AUTH_STORAGE_KEY);
         return;
     }
 
@@ -142,8 +117,8 @@ async function handleAuthUpdate(
     // Don't silently re-authenticate a session the user signed out of. Only the
     // exact same session is blocked — a genuine re-login mints a new refresh
     // token, which passes this check and clears the marker below.
-    const revoked = await chrome.storage.local.get(REVOKED_KEY);
-    if (revoked[REVOKED_KEY] === refreshToken) {
+    const revoked = await chrome.storage.local.get(REVOKED_AUTH_KEY);
+    if (revoked[REVOKED_AUTH_KEY] === refreshToken) {
         console.log(
             "[Kifu-Sensei content] Ignoring stale extension_auth from a signed-out session."
         );
@@ -158,8 +133,8 @@ async function handleAuthUpdate(
         return;
     }
 
-    await chrome.storage.local.set({ [STORAGE_KEY]: verified });
-    await chrome.storage.local.remove(REVOKED_KEY);
+    await chrome.storage.local.set({ [AUTH_STORAGE_KEY]: verified });
+    await chrome.storage.local.remove(REVOKED_AUTH_KEY);
     authenticatedToken = verified.accessToken;
     console.log(
         "[Kifu-Sensei content] Authenticated; tokens saved to chrome.storage.local."
@@ -179,3 +154,9 @@ window.addEventListener("message", (event: MessageEvent) => {
 });
 
 injectPageScript();
+
+// The button belongs only on online-go.com. On the Kifu-Sensei frontend origins this
+// script exists solely for the auth handoff above.
+if (location.origin === OGS_ORIGIN) {
+    void startButton();
+}

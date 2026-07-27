@@ -79,7 +79,7 @@
                         <p id="welcome-email" class="welcome-email hidden"></p>
                     </div>
 
-                    <p class="welcome-lead">
+                    <p id="welcome-lead" class="welcome-lead">
                         Your account is connected. Open a finished game and let
                         Kifu-Sensei turn the key moments into plain-language
                         commentary.
@@ -95,11 +95,17 @@
                         </li>
                         <li>
                             <span class="welcome-step-num">2</span>
-                            <span>Click the Kifu-Sensei icon to open this panel</span>
+                            <span
+                                >Click the Kifu-Sensei icon to open this
+                                panel</span
+                            >
                         </li>
                         <li>
                             <span class="welcome-step-num">3</span>
-                            <span>Read move-by-move commentary on your mistakes</span>
+                            <span
+                                >Read move-by-move commentary on your
+                                mistakes</span
+                            >
                         </li>
                     </ol>
 
@@ -197,6 +203,83 @@
                 </div>
             </div>
 
+            <!-- ── CONFIG SCREEN (finished game detected) ────────────────── -->
+            <div id="screen-config" class="screen hidden">
+                <div class="screen-body">
+                    <div>
+                        <p class="screen-label">Ready to review</p>
+                        <p id="config-game" class="screen-heading"></p>
+                    </div>
+
+                    <div class="field-row">
+                        <div class="field-group">
+                            <label class="field-label" for="config-model"
+                                >Model</label
+                            >
+                            <select
+                                id="config-model"
+                                class="field-input"
+                            ></select>
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label" for="config-language"
+                                >Language</label
+                            >
+                            <select
+                                id="config-language"
+                                class="field-input"
+                            ></select>
+                        </div>
+                    </div>
+
+                    <div class="field-row">
+                        <div class="field-group">
+                            <label class="field-label" for="config-comments"
+                                >Comments</label
+                            >
+                            <input
+                                id="config-comments"
+                                class="field-input"
+                                type="number"
+                                inputmode="numeric"
+                            />
+                            <p id="config-comments-hint" class="field-note"></p>
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label" for="config-max-token"
+                                >Max tokens</label
+                            >
+                            <input
+                                id="config-max-token"
+                                class="field-input"
+                                type="number"
+                                inputmode="numeric"
+                            />
+                            <p class="field-note">256–8192 per comment.</p>
+                        </div>
+                    </div>
+
+                    <div class="field-group">
+                        <label class="field-label" for="config-instruction"
+                            >Custom instruction (optional)</label
+                        >
+                        <textarea
+                            id="config-instruction"
+                            class="field-input field-textarea"
+                            rows="3"
+                            maxlength="1000"
+                            placeholder="e.g. Focus on the opening and explain alternatives briefly."
+                        ></textarea>
+                        <p id="config-instruction-count" class="field-note"></p>
+                    </div>
+
+                    <button id="btn-generate" class="btn btn--primary">
+                        Generate commentary
+                    </button>
+                    <p id="config-error" class="error-inline hidden"></p>
+                </div>
+            </div>
+
             <!-- ── GENERATING SCREEN ─────────────────────────────────────── -->
             <div id="screen-generating" class="screen hidden">
                 <div class="screen-body">
@@ -215,57 +298,32 @@
                     </div>
                     <div class="gen-steps">
                         <div class="gen-step">
-                            <span class="gen-step-icon gen-step-icon--done"
-                                >✔</span
+                            <span
+                                id="gen-finding-icon"
+                                class="gen-step-icon gen-step-icon--spin"
+                                >◷</span
                             >
                             <span class="gen-step-label"
                                 >Finding key moments</span
                             >
                         </div>
-                        <div class="gen-step">
-                            <span
-                                id="gen-spin-icon"
-                                class="gen-step-icon gen-step-icon--spin"
-                                >◷</span
+                        <div
+                            id="gen-writing-step"
+                            class="gen-step gen-step--pending"
+                        >
+                            <span id="gen-writing-icon" class="gen-step-icon"
+                                >○</span
                             >
                             <div>
                                 <span class="gen-step-label"
                                     >Generating commentary…</span
                                 >
-                                <span
-                                    id="gen-current"
-                                    class="gen-step-sub"
-                                ></span>
                             </div>
                         </div>
                     </div>
-                    <!-- First result preview — shown after ~30% progress -->
-                    <div id="gen-first-result" class="hidden">
-                        <div class="divider"></div>
-                        <div class="gen-first-result-inner">
-                            <p class="section-label">First result</p>
-                            <div class="card card--blunder card--partial">
-                                <div class="card-header">
-                                    <span class="card-move">Move 9</span>
-                                    <div class="card-badges">
-                                        <span class="badge badge--black"
-                                            >B</span
-                                        >
-                                        <span class="badge badge--blunder"
-                                            >−18%</span
-                                        >
-                                    </div>
-                                </div>
-                                <div class="card-body card-body--fade">
-                                    <p class="card-text">
-                                        "Extending at Q10 looks natural but
-                                        leaves a significant weakness at the
-                                        bottom. White immediately…
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <button id="btn-cancel-generating" class="btn-link">
+                        Cancel
+                    </button>
                 </div>
             </div>
 
@@ -281,7 +339,7 @@
                 <div id="commentary-list" class="commentary-list"></div>
                 <div class="divider"></div>
                 <footer class="commentary-footer">
-                    <p id="commentary-age" class="footer-age"></p>
+                    <p id="commentary-stats" class="footer-age"></p>
                     <p class="footer-disclaimer">
                         Kifu-Sensei analysis — values may differ slightly from
                         OGS's review.
@@ -297,6 +355,7 @@
                     <button id="btn-retry" class="btn btn--primary">
                         Try Again
                     </button>
+                    <button id="btn-error-back" class="btn-link">Back</button>
                 </div>
             </div>
 
@@ -304,7 +363,7 @@
             <div id="screen-waiting" class="screen hidden">
                 <div class="screen-body screen-body--centered">
                     <span class="waiting-icon">♟</span>
-                    <p class="waiting-text">
+                    <p id="waiting-text" class="waiting-text">
                         Open a finished game on OGS to get AI commentary.
                     </p>
                 </div>

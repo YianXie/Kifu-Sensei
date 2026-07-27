@@ -1,10 +1,24 @@
 import type { GameMove } from "@/types/game";
 
 export type ClaudeModel =
-    | "claude-fable-5-0"
-    | "claude-opus-5-0"
-    | "claude-sonnet-5-0"
+    | "claude-fable-5"
+    | "claude-opus-5"
+    | "claude-sonnet-5"
     | "claude-haiku-4-5";
+
+/**
+ * Machine-readable failure codes from `POST /api/commentary/`. Mirrors the `code`
+ * literal on the backend's `CommentaryErrorResponse` — branch on this rather than on
+ * `detail`, which is prose and may be reworded.
+ */
+export type CommentaryErrorCode =
+    | "no_api_key"
+    | "invalid_sgf"
+    | "upstream_rate_limited"
+    | "upstream_auth_failed"
+    | "upstream_error"
+    | "katago_unavailable"
+    | "internal_error";
 
 export type CommentaryLanguage =
     | "english"
@@ -21,7 +35,7 @@ export type CommentaryConfigValues = {
 };
 
 export const DEFAULT_COMMENTARY_CONFIG: CommentaryConfigValues = {
-    model: "claude-sonnet-5-0",
+    model: "claude-sonnet-5",
     language: "english",
     num_comments: 20,
     max_token: 1024,
@@ -29,9 +43,9 @@ export const DEFAULT_COMMENTARY_CONFIG: CommentaryConfigValues = {
 };
 
 const CLAUDE_MODELS: ClaudeModel[] = [
-    "claude-fable-5-0",
-    "claude-opus-5-0",
-    "claude-sonnet-5-0",
+    "claude-fable-5",
+    "claude-opus-5",
+    "claude-sonnet-5",
     "claude-haiku-4-5",
 ];
 
@@ -82,12 +96,34 @@ export function readCommentaryConfig(
 export type CommentaryItem = {
     turn: number;
     comment: string;
+    /**
+     * Win-rate change in percentage points from the mover's perspective; negative
+     * means the move lost win rate. Optional because commentaries saved before this
+     * field existed are replayed from the database without it.
+     */
+    winrate_delta?: number;
+    /** Colour of the player who made this move. Optional for the same reason. */
+    color?: "B" | "W";
+};
+
+export type CommentaryUsage = {
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_input_tokens: number;
+    cache_creation_input_tokens: number;
 };
 
 export type CommentaryResponse = {
     board_size: number;
     sgf_file_name: string;
     language: CommentaryLanguage;
+    /**
+     * Claude model that produced the commentary, and the tokens it consumed.
+     * Optional because commentaries saved before these fields existed are replayed
+     * from the database without them.
+     */
+    model?: ClaudeModel | null;
+    usage?: CommentaryUsage | null;
     moves: GameMove[];
     initial_stones: GameMove[];
     comments: CommentaryItem[];

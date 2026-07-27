@@ -86,7 +86,7 @@ Authenticated requests use the `Authorization: Bearer <access_token>` header. Th
 `CurrentUser` dependency (`deps.py`) validates the access JWT and loads the user.
 
 The commentary request accepts `sgf_content`, `sgf_file_name`, `model`
-(`claude-fable-5-0` | `claude-opus-5-0` | `claude-sonnet-5-0` | `claude-haiku-4-5`), `language`
+(`claude-fable-5` | `claude-opus-5` | `claude-sonnet-5` | `claude-haiku-4-5`), `language`
 (`english` | `chinese (simplified)` | `japanese` | `korean`), `num_comments`
 (1–100), `max_token` (256–8192), and an optional `custom_instruction` (≤1000 chars) —
 see `GenerateCommentaryRequest` in `schemas.py`.

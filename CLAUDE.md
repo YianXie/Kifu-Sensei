@@ -59,7 +59,7 @@ Key files:
 - `services/katago.py` — **Core logic.** Two-pass KataGo analysis:
     1. Fast pass (`maxVisits=50`, no ownership/policy) across all turns to compute winrate diffs.
     2. Detailed pass (`maxVisits=500`, with ownership + policy) on the 20 worst moves and their preceding positions.
-    3. Builds rich prompts (ASCII board, KataGo stats, ownership map) and calls Claude (`claude-haiku-4-5`) once per selected move.
+    3. Builds rich prompts (ASCII board, KataGo stats, ownership map) and calls Claude (`claude-sonnet-5` by default) once per selected move.
     4. Injects commentary back into the SGF via sgfmill.
 
 **Coordinate system note:** sgfmill uses `(row=0, col=0)` at the bottom-left; KataGo uses column letters `A-T` (skipping `I`) and rows from 1 at the bottom. The display/ownership arrays are top-row-first. Multiple helpers in `katago.py` convert between these.

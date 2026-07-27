@@ -96,14 +96,14 @@ export default function CommentaryConfig({
                                 setModel(event.target.value);
                             }}
                         >
-                            <MenuItem value="claude-fable-5-0">
-                                Claude Fable 5.0
+                            <MenuItem value="claude-fable-5">
+                                Claude Fable 5
                             </MenuItem>
-                            <MenuItem value="claude-opus-5-0">
-                                Claude Opus 5.0
+                            <MenuItem value="claude-opus-5">
+                                Claude Opus 5
                             </MenuItem>
-                            <MenuItem value="claude-sonnet-5-0">
-                                Claude Sonnet 5.0
+                            <MenuItem value="claude-sonnet-5">
+                                Claude Sonnet 5
                             </MenuItem>
                             <MenuItem value="claude-haiku-4-5">
                                 Claude Haiku 4.5

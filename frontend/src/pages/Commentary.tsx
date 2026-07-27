@@ -25,6 +25,7 @@ import {
     readCommentaryConfig,
 } from "@/types/commentary";
 import type { GameMove } from "@/types/game";
+import { getCommentaryError } from "@/utils/errorFormatting";
 
 function isSgfFile(file: File) {
     return file.name.toLowerCase().endsWith(".sgf");
@@ -157,7 +158,13 @@ export default function Commentary() {
             setResult(data);
         } catch (err) {
             console.error("Error generating commentary:", err);
-            toast.error("Error generating commentary");
+            const { code, message } = getCommentaryError(err);
+            toast.error(message);
+            if (code === "no_api_key") {
+                // The key was removed after this page loaded, so the guard screen
+                // above didn't catch it — send them where they can fix it.
+                navigate("/setup-api-key");
+            }
         } finally {
             setIsLoading(false);
         }

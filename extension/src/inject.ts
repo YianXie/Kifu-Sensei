@@ -1,16 +1,17 @@
+import {
+    AUTH_MESSAGE_SOURCE,
+    AUTH_MESSAGE_TYPE,
+    AUTH_STORAGE_KEY,
+} from "./shared/constants";
 import type { ExtensionAuthObject } from "./shared/types";
-
-const TARGET_KEY = "extension_auth";
-const MESSAGE_SOURCE = "kifu-sensei-inject";
-const MESSAGE_TYPE = "extension_auth_update";
 
 let lastData: string | null = null;
 
 function notifyAuthUpdate(parsedData: ExtensionAuthObject | null): void {
     window.postMessage(
         {
-            source: MESSAGE_SOURCE,
-            type: MESSAGE_TYPE,
+            source: AUTH_MESSAGE_SOURCE,
+            type: AUTH_MESSAGE_TYPE,
             detail: parsedData,
         },
         window.location.origin
@@ -19,7 +20,7 @@ function notifyAuthUpdate(parsedData: ExtensionAuthObject | null): void {
 
 function checkStorage(): void {
     try {
-        const rawData = localStorage.getItem(TARGET_KEY);
+        const rawData = localStorage.getItem(AUTH_STORAGE_KEY);
 
         if (rawData !== lastData) {
             lastData = rawData;
