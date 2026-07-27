@@ -837,20 +837,26 @@ def test_no_detector_raises_on_a_pass() -> None:
     assert [finding.concept for finding in findings] == ["game_phase"]
 
 
-def test_supersedes_is_applied_generically() -> None:
-    """The mechanism, exercised without either real detector involved."""
-    winner = Finding(
-        concept="winner",
-        label="Winner",
-        detail="wins",
-        salience=Salience.CRITICAL,
-        supersedes=frozenset({"loser"}),
-    )
+def test_suppression_is_applied_generically() -> None:
+    """The mechanism, exercised without any real detector or concept involved."""
+    winner = Finding(concept="winner", label="Winner", detail="wins", salience=Salience.CRITICAL)
     loser = Finding(concept="loser", label="Loser", detail="loses", salience=Salience.CRITICAL)
     findings = run_detectors(
-        _ctx(Board(9), Point(4, 4)), detectors=[lambda _: winner, lambda _: loser]
+        _ctx(Board(9), Point(4, 4)),
+        detectors=[lambda _: winner, lambda _: loser],
+        suppressions={"winner": frozenset({"loser"})},
     )
     assert [finding.concept for finding in findings] == ["winner"]
+
+
+def test_suppression_only_bites_when_the_suppressing_finding_fired() -> None:
+    loser = Finding(concept="loser", label="Loser", detail="loses", salience=Salience.CRITICAL)
+    findings = run_detectors(
+        _ctx(Board(9), Point(4, 4)),
+        detectors=[lambda _: loser],
+        suppressions={"winner": frozenset({"loser"})},
+    )
+    assert [finding.concept for finding in findings] == ["loser"]
 
 
 def test_a_detector_returning_none_contributes_nothing() -> None:

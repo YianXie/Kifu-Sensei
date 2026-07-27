@@ -54,7 +54,7 @@ White ownership is a dying Black group, not "White territory".
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum, IntEnum
 from typing import Any, Final
 
@@ -62,6 +62,7 @@ from app.services.board import (
     Board,
     Chain,
     Color,
+    IllegalMoveError,
     InvalidCoordinateError,
     Move,
     MoveResult,
@@ -76,6 +77,7 @@ __all__ = [
     "Detector",
     "DetectorContext",
     "Finding",
+    "SUPPRESSIONS",
     "OwnershipLengthError",
     "OwnershipMap",
     "Salience",
@@ -161,6 +163,35 @@ _SENTE_MAX_DISTANCE: Final = 4
 #: Only the opponent's immediate reply is used. PVs degrade with depth — the tenth
 #: move of a line is close to speculative — so nothing here reads past index 1.
 _PV_REPLY_INDEX: Final = 1
+
+# -- Tier 3: shapes and tactical reads ----------------------------------------
+
+#: Named relationships, keyed by the *normalised* offset between two stones:
+#: ``tuple(sorted((abs(row delta), abs(column delta))))``. Normalising this way makes
+#: the table symmetric by construction — every keima, whether ``(2, 1)``, ``(-1, 2)``
+#: or ``(1, -2)``, arrives here as ``(1, 2)`` — so no orientation is enumerated and
+#: none can be forgotten.
+_RELATIONSHIPS: Final[dict[tuple[int, int], str]] = {
+    (1, 1): "kosumi (diagonal)",
+    (0, 2): "tobi (one-space jump)",
+    (1, 2): "keima (knight's move)",
+    (0, 3): "nikken tobi (two-space jump)",
+    (1, 3): "ogeima (large knight's move)",
+}
+
+#: Furthest a named relationship reaches on either axis, from the ogeima at (1, 3).
+_RELATIONSHIP_MAX_SPAN: Final = 3
+
+#: Ladder depth cap, as a multiple of the board dimension. A ladder crossing the
+#: whole board takes about one move per line, so four times the dimension leaves
+#: ample room while keeping the read bounded.
+_LADDER_DEPTH_MULTIPLIER: Final = 4
+
+#: Hard ceiling on positions examined in one ladder read. The chased side is always
+#: forced, but the chaser picks between two liberties, so the search can branch. In
+#: real ladders one branch dies immediately; this bounds the pathological case, which
+#: reports itself as unresolved rather than hanging.
+_LADDER_MAX_NODES: Final = 512
 
 _LABEL_WIDTH: Final = 18
 
@@ -282,10 +313,8 @@ class Finding:
     stays free of per-concept knowledge that way, so a later tier adds a function
     to :data:`DETECTORS` instead of extending a dispatch chain in two places.
 
-    ``supersedes`` names concepts this finding replaces when both fired. It exists
-    so that "double atari" can absorb "atari given" without either detector knowing
-    about the other — the detectors stay independent and the dominance is declared
-    data that :func:`run_detectors` applies generically.
+    Which findings displace which is declared once in :data:`SUPPRESSIONS` rather
+    than carried here, so no detector needs to know that any other detector exists.
     """
 
     concept: str
@@ -294,7 +323,6 @@ class Finding:
     salience: Salience
     points: tuple[Point, ...] = ()
     certainty: Certainty = Certainty.EXACT
-    supersedes: frozenset[str] = field(default_factory=frozenset)
 
 
 @dataclass(frozen=True, slots=True)
@@ -630,8 +658,9 @@ def detect_atari_given(context: DetectorContext) -> Finding | None:
 def detect_double_atari(context: DetectorContext) -> Finding | None:
     """Two or more enemy chains are put in atari by the same move.
 
-    Reported as one finding, and it supersedes ``atari_given`` so the block does not
-    spend two of its capped lines saying the same thing twice.
+    Reported as one finding. :data:`SUPPRESSIONS` drops the plain ``atari_given``
+    line when this fires, so the block does not spend two of its capped lines saying
+    the same thing twice.
     """
     chains = _newly_ataried_enemy_chains(context)
     if len(chains) < 2:
@@ -648,7 +677,6 @@ def detect_double_atari(context: DetectorContext) -> Finding | None:
         ),
         salience=Salience.CRITICAL,
         points=stones,
-        supersedes=frozenset({"atari_given"}),
     )
 
 
@@ -1271,6 +1299,481 @@ def detect_move_ranking(context: DetectorContext) -> Finding | None:
     )
 
 
+# ── Tier 3 helpers: geometry ──────────────────────────────────────────────────
+
+
+def _normalised_offset(a: Point, b: Point) -> tuple[int, int]:
+    """The orientation-free offset between two points.
+
+    Absolute deltas, sorted. Reflections and rotations all collapse onto the same
+    pair, which is what lets :data:`_RELATIONSHIPS` be a five-entry dict instead of
+    forty coordinate templates.
+    """
+    row, col = abs(a.row - b.row), abs(a.col - b.col)
+    return (min(row, col), max(row, col))
+
+
+def _connecting_path(a: Point, b: Point) -> tuple[Point, ...]:
+    """Points strictly inside the bounding box of ``a`` and ``b``, excluding both.
+
+    One definition for every relationship, which keeps "is this shape clean" from
+    turning into five special cases. A tobi's path is the single point between the
+    stones; a kosumi's is the two points completing the square; a keima's is the four
+    remaining cells of its 2x3 box.
+    """
+    return tuple(
+        Point(row, col)
+        for row in range(min(a.row, b.row), max(a.row, b.row) + 1)
+        for col in range(min(a.col, b.col), max(a.col, b.col) + 1)
+        if Point(row, col) not in (a, b)
+    )
+
+
+def _diagonals(board: Board, point: Point) -> tuple[Point, ...]:
+    return tuple(
+        Point(point.row + dr, point.col + dc)
+        for dr in (-1, 1)
+        for dc in (-1, 1)
+        if board.is_on_board(Point(point.row + dr, point.col + dc))
+    )
+
+
+def _squares_containing(point: Point, board_size: int) -> tuple[tuple[Point, ...], ...]:
+    """Every 2x2 square that contains ``point`` and fits on the board.
+
+    Enumerating squares rather than shapes is what makes the empty-triangle and
+    tiger's-mouth reads orientation-free: a square has no preferred direction, so
+    all four rotations and both reflections of a shape land in the same check.
+    """
+    squares: list[tuple[Point, ...]] = []
+    for top in (point.row - 1, point.row):
+        for left in (point.col - 1, point.col):
+            if top < 0 or left < 0 or top + 1 >= board_size or left + 1 >= board_size:
+                continue
+            squares.append(
+                (
+                    Point(top, left),
+                    Point(top, left + 1),
+                    Point(top + 1, left),
+                    Point(top + 1, left + 1),
+                )
+            )
+    return tuple(squares)
+
+
+def _bamboo_windows(point: Point, board_size: int) -> tuple[tuple[tuple[Point, ...], ...], ...]:
+    """Windows containing ``point`` shaped like a bamboo joint, as (pair, gap, pair).
+
+    Only two orientations exist: the pairs run along rows or along columns. A bamboo
+    joint is symmetric under both reflections and under a half turn, so rotating it
+    produces nothing new.
+    """
+    windows: list[tuple[tuple[Point, ...], ...]] = []
+    for top in (point.row - 2, point.row - 1, point.row):
+        for left in (point.col - 1, point.col):
+            if top < 0 or left < 0 or top + 2 >= board_size or left + 1 >= board_size:
+                continue
+            windows.append(
+                tuple(
+                    (Point(top + offset, left), Point(top + offset, left + 1))
+                    for offset in (0, 1, 2)
+                )
+            )
+    for top in (point.row - 1, point.row):
+        for left in (point.col - 2, point.col - 1, point.col):
+            if top < 0 or left < 0 or top + 1 >= board_size or left + 2 >= board_size:
+                continue
+            windows.append(
+                tuple(
+                    (Point(top, left + offset), Point(top + 1, left + offset))
+                    for offset in (0, 1, 2)
+                )
+            )
+    return tuple(windows)
+
+
+# ── Tier 3 detectors: stone relationships ─────────────────────────────────────
+
+
+def detect_stone_relationship(context: DetectorContext) -> Finding | None:
+    """The named relationship between the played stone and its nearest friend.
+
+    **Tie-break.** A move is often a keima to one stone and a tobi to another, so the
+    rule is: the single nearest friendly stone by Euclidean distance, ties broken by
+    ``(row, col)`` order, and the finding is emitted only if *that* stone's
+    relationship has a name. Picking the nearest rather than the prettiest also makes
+    this mutually exclusive with ``extension`` by construction — an adjacent stone
+    sits at distance 1 and always wins, and ``(0, 1)`` is deliberately absent from
+    :data:`_RELATIONSHIPS`.
+
+    **Cleanliness.** The connecting path (see :func:`_connecting_path`) must be
+    completely empty. A keima with an enemy stone in the gap is not meaningfully a
+    keima, and neither is one already filled in with friendly stones.
+
+    Background salience: relationships are worth a line only when the move is
+    otherwise unremarkable, and are pure noise next to a group in atari.
+    """
+    point = context.point
+    if point is None:
+        return None
+    before = context.board_before
+    friendly = context.color
+
+    candidates: list[tuple[int, Point]] = []
+    span = range(-_RELATIONSHIP_MAX_SPAN, _RELATIONSHIP_MAX_SPAN + 1)
+    for row_delta in span:
+        for col_delta in span:
+            other = Point(point.row + row_delta, point.col + col_delta)
+            if other == point or not before.is_on_board(other):
+                continue
+            if before.get(other) is not friendly:
+                continue
+            candidates.append((row_delta * row_delta + col_delta * col_delta, other))
+    if not candidates:
+        return None
+
+    candidates.sort()
+    nearest = candidates[0][1]
+    name = _RELATIONSHIPS.get(_normalised_offset(point, nearest))
+    if name is None:
+        return None
+    if any(before.get(step) is not None for step in _connecting_path(point, nearest)):
+        return None
+
+    size = context.board_size
+    return Finding(
+        concept="stone_relationship",
+        label="Relationship",
+        detail=(
+            f"{_name(point, size)} is a {name} from {_word(friendly)} "
+            f"{_name(nearest, size)}, with the connecting points empty"
+        ),
+        salience=Salience.BACKGROUND,
+        points=(nearest,),
+    )
+
+
+# ── Tier 3 detectors: shapes ──────────────────────────────────────────────────
+
+
+def detect_hane(context: DetectorContext) -> Finding | None:
+    """A stone played diagonally around an enemy stone that a friend already touches."""
+    point = context.point
+    if point is None:
+        return None
+    before = context.board_before
+    friendly = context.color
+    enemy = friendly.opponent
+
+    for corner in _diagonals(before, point):
+        if before.get(corner) is not enemy:
+            continue
+        for neighbour in before.neighbors(point):
+            if before.get(neighbour) is not friendly:
+                continue
+            if corner not in before.neighbors(neighbour):
+                continue
+            size = context.board_size
+            return Finding(
+                concept="hane",
+                label="Hane",
+                detail=(
+                    f"{_name(point, size)} reaches around {_word(enemy)} "
+                    f"{_name(corner, size)} from {_word(friendly)} {_name(neighbour, size)}"
+                ),
+                salience=Salience.NOTABLE,
+                points=(neighbour, corner),
+            )
+    return None
+
+
+def detect_empty_triangle(context: DetectorContext) -> Finding | None:
+    """Three friendly stones in an L with the fourth point of the square empty.
+
+    Reported wherever it occurs, including on the first and second lines, where the
+    same three stones are frequently correct rather than clumsy. That judgement needs
+    the surrounding position, which this layer does not have — Tier 1's line-number
+    finding gives the model what it needs to make it.
+
+    An *enemy* stone on the fourth point is the common false positive and is excluded:
+    the point must be empty, not merely not-friendly.
+    """
+    point = context.point
+    if point is None:
+        return None
+    after = context.board_after
+    friendly = context.color
+
+    found: list[tuple[tuple[Point, ...], Point]] = []
+    for square in _squares_containing(point, context.board_size):
+        stones = tuple(p for p in square if after.get(p) is friendly)
+        empties = tuple(p for p in square if after.get(p) is None)
+        if len(stones) == 3 and len(empties) == 1:
+            found.append((stones, empties[0]))
+    if not found:
+        return None
+
+    size = context.board_size
+    stones, gap = found[0]
+    detail = (
+        f"{_word(friendly)} stones at {_names(stones, size)} form an empty triangle, "
+        f"with {_name(gap, size)} empty"
+    )
+    if len(found) > 1:
+        detail += f" ({len(found) - 1} more formed by the same move)"
+    return Finding(
+        concept="empty_triangle",
+        label="Empty triangle",
+        detail=detail,
+        salience=Salience.NOTABLE,
+        points=stones,
+    )
+
+
+def detect_tigers_mouth(context: DetectorContext) -> Finding | None:
+    """An empty point flanked by three friendly stones, one of them just played.
+
+    The gap has exactly three friendly neighbours and one empty one, so an enemy
+    playing into it lands on a single liberty. Points on the board edge are excluded:
+    with only three neighbours, three friendly stones make an eye rather than a mouth.
+    """
+    point = context.point
+    if point is None:
+        return None
+    after = context.board_after
+    friendly = context.color
+
+    for gap in after.neighbors(point):
+        if after.get(gap) is not None:
+            continue
+        surrounding = after.neighbors(gap)
+        if len(surrounding) != 4:
+            continue
+        colors = [after.get(p) for p in surrounding]
+        if colors.count(friendly) != 3 or colors.count(None) != 1:
+            continue
+        stones = tuple(p for p in surrounding if after.get(p) is friendly)
+        size = context.board_size
+        return Finding(
+            concept="tigers_mouth",
+            label="Tiger's mouth",
+            detail=(
+                f"{_word(friendly)} stones at {_names(stones, size)} leave "
+                f"{_name(gap, size)} as a tiger's mouth"
+            ),
+            salience=Salience.NOTABLE,
+            points=(gap,),
+        )
+    return None
+
+
+def detect_bamboo_joint(context: DetectorContext) -> Finding | None:
+    """Two friendly pairs separated by two empty points."""
+    point = context.point
+    if point is None:
+        return None
+    after = context.board_after
+    friendly = context.color
+
+    for first, gap, second in _bamboo_windows(point, context.board_size):
+        if any(after.get(p) is not friendly for p in first + second):
+            continue
+        if any(after.get(p) is not None for p in gap):
+            continue
+        size = context.board_size
+        return Finding(
+            concept="bamboo_joint",
+            label="Bamboo joint",
+            detail=(
+                f"{_word(friendly)} stones at {_names(first + second, size)} stand as a "
+                f"bamboo joint around {_names(gap, size)}"
+            ),
+            salience=Salience.NOTABLE,
+            points=first + second,
+        )
+    return None
+
+
+def detect_ponnuki(context: DetectorContext) -> Finding | None:
+    """Four friendly stones in a diamond around a point this move just emptied.
+
+    The capture is what makes it a ponnuki. A diamond around a point that was empty
+    all along is a different shape entirely, so the centre must appear in this move's
+    captures rather than merely be vacant now.
+    """
+    captured = context.result.captured
+    if len(captured) != 1:
+        return None
+    centre = next(iter(captured))
+    after = context.board_after
+    friendly = context.color
+
+    surrounding = after.neighbors(centre)
+    if len(surrounding) != 4:
+        return None
+    if any(after.get(p) is not friendly for p in surrounding):
+        return None
+    size = context.board_size
+    return Finding(
+        concept="ponnuki",
+        label="Ponnuki",
+        detail=(
+            f"{_word(friendly)} stones at {_names(surrounding, size)} form a ponnuki "
+            f"around {_name(centre, size)}"
+        ),
+        salience=Salience.NOTABLE,
+        points=tuple(sorted(surrounding)),
+    )
+
+
+# ── Tier 3 detectors: tactical reads ──────────────────────────────────────────
+
+
+def detect_cut(context: DetectorContext) -> Finding | None:
+    """The played point touches two or more distinct enemy chains.
+
+    Reports the separation at this point and stops there. Whether the chains can
+    reconnect elsewhere, or whether the cut can be sustained, is a reading problem
+    this detector does not attempt — claiming the cut "works" would be exactly the
+    kind of unfounded confidence the block exists to keep out.
+    """
+    point = context.point
+    if point is None:
+        return None
+    chains = _adjacent_chains(context.board_before, point, context.color.opponent)
+    if len(chains) < 2:
+        return None
+    size = context.board_size
+    summary = ", ".join(_names(chain.points, size) for chain in chains)
+    return Finding(
+        concept="cut",
+        label="Cut",
+        detail=(
+            f"{_name(point, size)} sits between {len(chains)} separate "
+            f"{_word(context.color.opponent)} chains: {summary}"
+        ),
+        salience=Salience.CRITICAL,
+        points=tuple(sorted(p for chain in chains for p in chain.points)),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _LadderRead:
+    """Outcome of an alternating-atari read, and why it stopped."""
+
+    outcome: str  # "captured" | "escapes" | "unresolved"
+    breaker: Point | None
+
+
+def _ladder_line(
+    board: Board, anchor: Point, chased: Color, depth: int, budget: list[int], max_depth: int
+) -> _LadderRead:
+    """Read one ladder continuation from a position where the chased side is in atari.
+
+    A pure OR-tree: the chased side is forced (one liberty, one move), and only the
+    chaser chooses, between the two liberties left after the chased runs. So the
+    chaser succeeds if *any* branch captures.
+
+    ``budget`` is a single-element list used as a mutable counter, bounding total
+    positions examined. Recursion depth is separately capped by ``max_depth``, well
+    below the interpreter's own limit — the ladder must never depend on that as a
+    safety net.
+    """
+    if depth >= max_depth or budget[0] <= 0:
+        return _LadderRead("unresolved", None)
+    budget[0] -= 1
+
+    chain = board.chain_at(anchor)
+    liberties = board.liberties(chain)
+    if not liberties:
+        return _LadderRead("captured", None)
+    if len(liberties) > 1:
+        return _LadderRead("escapes", None)
+
+    run_to = next(iter(liberties))
+    # A stone of the chased colour waiting at the escape point is the ladder breaker,
+    # and its location is the single most useful thing this read can report.
+    breaker = next(
+        (
+            p
+            for p in sorted(board.neighbors(run_to))
+            if board.get(p) is chased and p not in chain.points
+        ),
+        None,
+    )
+    try:
+        run = board.place_move(run_to, chased)
+    except IllegalMoveError:
+        return _LadderRead("captured", breaker)  # cannot even run
+
+    if run.captured:
+        return _LadderRead("escapes", breaker)  # running took stones off; chase broken
+    escaped = run.liberties_after
+    if escaped is None:
+        return _LadderRead("unresolved", breaker)
+    if len(escaped) >= 3:
+        return _LadderRead("escapes", breaker)
+    if len(escaped) == 1:
+        return _LadderRead("captured", breaker)  # still in atari, chaser simply takes
+
+    outcome = "escapes"
+    for liberty in sorted(escaped):
+        try:
+            atari = run.board.place_move(liberty, chased.opponent)
+        except IllegalMoveError:
+            continue
+        if len(atari.board.liberties(atari.board.chain_at(anchor))) != 1:
+            continue  # this liberty does not renew the atari, so it is not the chase
+        deeper = _ladder_line(atari.board, anchor, chased, depth + 1, budget, max_depth)
+        if deeper.outcome == "captured":
+            return _LadderRead("captured", None)
+        if deeper.outcome == "unresolved":
+            outcome = "unresolved"
+        breaker = breaker or deeper.breaker
+    return _LadderRead(outcome, breaker)
+
+
+def detect_ladder(context: DetectorContext) -> Finding | None:
+    """Read the ladder on an enemy chain this move just put in atari.
+
+    Gated deliberately: it runs only when the move gave atari, which keeps a search
+    off the ~95% of moves where there is no ladder to read. Reports which side the
+    read favours and why it stopped — captured, escaped past a breaker, or unresolved
+    inside the search limits. It does not say the move was therefore right; a ladder
+    that works can still be the wrong move.
+    """
+    chains = _newly_ataried_enemy_chains(context)
+    if not chains:
+        return None
+    chased = context.color.opponent
+    size = context.board_size
+    max_depth = _LADDER_DEPTH_MULTIPLIER * size
+
+    chain = chains[0]
+    anchor = min(chain.points)
+    read = _ladder_line(context.board_after, anchor, chased, 0, [_LADDER_MAX_NODES], max_depth)
+
+    where = _names(chain.points, size)
+    if read.outcome == "captured":
+        detail = f"the {_word(chased)} chain at {where} is caught in a ladder and captured"
+    elif read.outcome == "escapes":
+        detail = f"the {_word(chased)} chain at {where} escapes the ladder"
+        if read.breaker is not None:
+            detail += f", with a {_word(chased)} stone at {_name(read.breaker, size)} breaking it"
+    else:
+        detail = (
+            f"the ladder on the {_word(chased)} chain at {where} did not resolve within "
+            f"{max_depth} moves"
+        )
+    return Finding(
+        concept="ladder",
+        label="Ladder",
+        detail=detail,
+        salience=Salience.CRITICAL,
+        points=tuple(sorted(chain.points)),
+    )
+
+
 # ── Registry ──────────────────────────────────────────────────────────────────
 
 #: Every detector, in the order they are run. Position here breaks ties between
@@ -1303,27 +1806,68 @@ DETECTORS: Final[tuple[Detector, ...]] = (
     detect_local_ownership_swing,
     detect_sente_gote,
     detect_direction_of_play,
+    # Tier 3 — exact again, from stone geometry. Cut and ladder are critical, shapes
+    # notable, and the relationship reads are background: almost every move has a
+    # nearest-stone relationship, so they must never crowd out a group in atari.
+    detect_cut,
+    detect_ladder,
+    detect_ponnuki,
+    detect_hane,
+    detect_tigers_mouth,
+    detect_bamboo_joint,
+    detect_empty_triangle,
+    detect_stone_relationship,
 )
 
 
+#: Which findings displace which, declared once so that no detector knows about any
+#: other and later tiers extend a table instead of editing conditionals.
+#:
+#: Two deliberate omissions:
+#:
+#: * ``ponnuki`` does **not** suppress ``capture``. The capture line carries the count
+#:   and the points; ponnuki adds the shape. Dropping the capture would lose
+#:   information rather than a duplicate, so ponnuki simply does not restate it.
+#: * ``stone_relationship`` does **not** suppress ``extension``, because the two
+#:   cannot both fire: the relationship is measured to the *nearest* friendly stone,
+#:   and an adjacent stone always wins that comparison while having no named
+#:   relationship. A suppression entry here would be dead data pretending to be a
+#:   safeguard, so the invariant is pinned by a test instead.
+SUPPRESSIONS: Final[Mapping[str, frozenset[str]]] = {
+    # Naming both chains at once says everything the single-atari line would.
+    "double_atari": frozenset({"atari_given"}),
+    # A hane is a contact play by definition.
+    "hane": frozenset({"contact_play"}),
+    # Both shapes describe how stones hold together; the named shape says more.
+    "bamboo_joint": frozenset({"connection"}),
+    "tigers_mouth": frozenset({"connection"}),
+}
+
+
 def run_detectors(
-    context: DetectorContext, detectors: Sequence[Detector] | None = None
+    context: DetectorContext,
+    detectors: Sequence[Detector] | None = None,
+    suppressions: Mapping[str, frozenset[str]] | None = None,
 ) -> tuple[Finding, ...]:
     """Run every detector and return what fired, most salient first.
 
-    Findings whose concept is superseded by another that fired are dropped here, so
-    no detector needs to know what any other detector found. Ties within a salience
-    level keep :data:`DETECTORS` order, which makes the output deterministic.
+    Findings displaced by :data:`SUPPRESSIONS` are dropped here, so no detector needs
+    to know what any other detector found. Ties within a salience level keep
+    :data:`DETECTORS` order, which makes the output deterministic.
     """
     registry = DETECTORS if detectors is None else tuple(detectors)
+    table = SUPPRESSIONS if suppressions is None else suppressions
+
     fired: list[tuple[int, Finding]] = []
     for index, detector in enumerate(registry):
         finding = detector(context)
         if finding is not None:
             fired.append((index, finding))
 
-    superseded = {concept for _, finding in fired for concept in finding.supersedes}
-    kept = [pair for pair in fired if pair[1].concept not in superseded]
+    suppressed: set[str] = set()
+    for _, finding in fired:
+        suppressed |= table.get(finding.concept, frozenset())
+    kept = [pair for pair in fired if pair[1].concept not in suppressed]
     kept.sort(key=lambda pair: (pair[1].salience, pair[0]))
     return tuple(finding for _, finding in kept)
 
