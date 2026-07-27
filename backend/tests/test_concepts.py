@@ -647,20 +647,20 @@ def test_line_number_is_silent_on_a_pass() -> None:
 @pytest.mark.parametrize(
     ("size", "point", "expected"),
     [
-        # 19x19: the outer band is 7 lines, so the centre is the middle 5x5.
+        # 19x19: the outer band is 7 lines, so the center is the middle 5x5.
         (19, Point(3, 3), "lower-left corner"),
         (19, Point(15, 15), "upper-right corner"),
         (19, Point(3, 9), "lower side"),
         (19, Point(9, 3), "left side"),
-        (19, Point(9, 9), "centre"),
+        (19, Point(9, 9), "center"),
         # 13x13: band of 5.
         (13, Point(2, 2), "lower-left corner"),
         (13, Point(2, 6), "lower side"),
-        (13, Point(6, 6), "centre"),
+        (13, Point(6, 6), "center"),
         # 9x9: band of 3.
         (9, Point(0, 0), "lower-left corner"),
         (9, Point(0, 4), "lower side"),
-        (9, Point(4, 4), "centre"),
+        (9, Point(4, 4), "center"),
     ],
 )
 def test_board_zone_scales_with_board_size(size: int, point: Point, expected: str) -> None:
@@ -896,7 +896,8 @@ def test_renderer_aligns_labels_into_a_column() -> None:
     assert all(line[19] == " " and line[20] != " " for line in lines)
 
 
-def test_renderer_tags_heuristics_and_leaves_exact_findings_flat() -> None:
+def test_renderer_hedges_heuristics_and_leaves_exact_findings_flat() -> None:
+    """The hedge leads the line, so it is read before the claim it qualifies."""
     text = render_detected_features(
         [
             _finding("capture", Salience.CRITICAL, detail="exact thing"),
@@ -905,15 +906,15 @@ def test_renderer_tags_heuristics_and_leaves_exact_findings_flat() -> None:
             ),
         ]
     )
-    assert "threshold-based approximations" in text
-    assert "exact thing" in text
-    assert "fuzzy thing  (heuristic)" in text
+    assert 'Lines beginning "estimated —"' in text
+    assert "Capture:          exact thing" in text
+    assert "Tenuki:           estimated — fuzzy thing" in text
 
 
 def test_renderer_omits_the_heuristic_note_when_nothing_shown_is_heuristic() -> None:
     text = render_detected_features([_finding("capture", Salience.CRITICAL)])
-    assert "threshold-based approximations" not in text
-    assert "(heuristic)" not in text
+    assert 'Lines beginning "estimated —"' not in text
+    assert "estimated —" not in text
 
 
 def test_renderer_truncates_from_the_bottom_by_salience() -> None:

@@ -14,11 +14,41 @@ back into the pipeline, which is the failure this whole layer is here to prevent
 Every detector is a pure function of a :class:`DetectorContext`. No I/O, no logging,
 no mutation, standard library only — importing this module must stay cheap, which is
 why nothing here reaches into :mod:`app.services.katago` (that pulls in Anthropic,
-httpx, and settings at import time).
+httpx, and settings at import time). Detectors consume KataGo output that a caller
+already fetched; they never call the engine.
 
 Adding a detector in a later tier means writing a function and appending it to
 :data:`DETECTORS`. Nothing else changes: the renderer holds no per-concept
 knowledge, so there is no dispatch chain to edit.
+
+KataGo conventions, verified empirically
+----------------------------------------
+The Tier 2 detectors read a neural-network estimate delivered over a JSON protocol
+with its own orientation and perspective conventions. Getting those wrong fails
+*silently and plausibly*: a transposed ownership map still yields well-formed
+numbers, and the feature block tells the model it may state them as fact. So they
+were measured against the real engine rather than assumed, using a position whose
+answer distinguishes transposition from row and column inversion — Black sealing the
+upper-left corner and White the lower-right, two corners that exchange under
+transposition:
+
+* **Ownership array order** — row-major with the **first row at the top** of the
+  board. With our bottom-origin rows that is ``(size - 1 - row) * size + col``.
+  Measured: the Black-walled upper-left read ``+0.989`` and the White-walled
+  lower-right ``-0.989``, where a transposed read would have given ``-0.989``, a
+  row-inverted read ``-0.472``, and a column-inverted read ``+0.577``.
+* **Ownership sign and perspective** — positive is **Black**, and the values are
+  Black-relative, not mover-relative: re-running the identical position with White
+  to move left the upper-left at ``+0.987`` instead of flipping it.
+* **``rootInfo.winrate`` and ``rootInfo.scoreLead``** — also Black-relative. In a
+  position where Black was overwhelmingly ahead, both stayed pinned to Black
+  (``1.0000`` / ``+161.5`` with Black to play, ``1.0000`` / ``+148.8`` with White to
+  play) rather than inverting with the mover.
+
+Every reading of that array goes through :class:`OwnershipMap`, so the conventions
+live in exactly one place. :meth:`OwnershipMap.for_color` converts to the *owner's*
+perspective, which is the framing that matters: a Black chain sitting in strongly
+White ownership is a dying Black group, not "White territory".
 """
 
 from __future__ import annotations
@@ -32,9 +62,11 @@ from app.services.board import (
     Board,
     Chain,
     Color,
+    InvalidCoordinateError,
     Move,
     MoveResult,
     Point,
+    point_from_go_notation,
     point_to_go_notation,
 )
 
@@ -44,6 +76,8 @@ __all__ = [
     "Detector",
     "DetectorContext",
     "Finding",
+    "OwnershipLengthError",
+    "OwnershipMap",
     "Salience",
     "context_for_move",
     "render_detected_features",
@@ -81,14 +115,137 @@ _MAX_POINTS_LISTED: Final = 6
 #: two-pass pipeline in mostly-unremarkable lines.
 _MAX_FEATURE_LINES: Final = 8
 
+# -- Tier 2: KataGo-derived thresholds ----------------------------------------
+#
+# The pipeline runs a shallow pass (50 visits) over every move and a deep pass
+# (500 visits) over only the ~20-30 largest winrate drops, so ownership and usable
+# principal variations exist for a minority of moves. Below the visit floor these
+# detectors stay silent: a missing finding costs nothing, while a fabricated one
+# breaks the block's promise that everything inside it is certified fact.
+
+#: Root visits below which ownership and PV estimates are treated as too noisy to
+#: report. Sits between the two passes' visit counts, so the shallow pass never
+#: reaches an ownership detector.
+_MIN_RELIABLE_VISITS: Final = 100
+
+#: Owner-relative mean ownership at or above which a chain reads as settled, and at
+#: or below which it reads as dying. Between the two it is unsettled.
+_SETTLED_MIN: Final = 0.60
+_DYING_MAX: Final = -0.60
+
+#: Owner-relative settledness change smaller than this is noise, not a finding.
+_SETTLEDNESS_CHANGE_MIN: Final = 0.15
+
+#: Chebyshev distance within which another chain counts as "nearby" the played move,
+#: and the most chains one settledness finding will spell out.
+_NEARBY_CHAIN_DISTANCE: Final = 4
+_MAX_CHAINS_REPORTED: Final = 3
+
+#: Fraction of the board by which the largest area must beat the played area before
+#: the gap counts as substantial (and the finding is promoted to critical). A
+#: fraction rather than a flat count: a 9x9 region holds at most 9 points, so any
+#: absolute threshold near 10 could never be reached there.
+_LARGEST_AREA_GAP_FRACTION: Final = 0.03
+
+#: Local ownership swing, in points, below which the move did not visibly change
+#: who holds its neighbourhood.
+_LOCAL_SWING_MIN: Final = 1.5
+
+#: Divisor setting the local box radius: a 5x5 box on 19x19 and 13x13, 3x3 on 9x9.
+_LOCAL_BOX_DIVISOR: Final = 8
+
+#: Chebyshev distance within which the opponent's PV reply counts as a local answer,
+#: making the move locally sente.
+_SENTE_MAX_DISTANCE: Final = 4
+
+#: Only the opponent's immediate reply is used. PVs degrade with depth — the tenth
+#: move of a line is close to speculative — so nothing here reads past index 1.
+_PV_REPLY_INDEX: Final = 1
+
 _LABEL_WIDTH: Final = 18
 
 _FEATURE_HEADER: Final = (
     "[DETECTED FEATURES — computed from the board, not inferred. You may state these as fact.]"
 )
+#: Heuristic findings lead with this rather than carrying a trailing tag. The header
+#: promises everything below may be stated as fact, and a threshold-based regional
+#: estimate is computed but is not the same kind of fact as a liberty count. Putting
+#: the hedge first means the qualifier is read before the claim it qualifies.
+_HEURISTIC_PREFIX: Final = "estimated — "
 _HEURISTIC_NOTE: Final = (
-    "Lines tagged (heuristic) are threshold-based approximations — hedge them or omit them."
+    'Lines beginning "estimated —" rest on tuned thresholds rather than exact '
+    "computation. Hedge them or leave them out; state the rest plainly."
 )
+
+
+# ── Ownership ─────────────────────────────────────────────────────────────────
+
+
+class OwnershipLengthError(ValueError):
+    """A KataGo ownership array does not match the board it claims to describe.
+
+    Raised rather than tolerated. A length mismatch is a protocol or wiring fault,
+    not absent data: silently indexing into it would place every subsequent claim
+    about territory on the wrong points, and the block would present those claims as
+    fact. Missing data is a different situation and produces silence instead.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class OwnershipMap:
+    """KataGo's flat ownership array, addressable by :class:`Point`.
+
+    The single place the array's orientation and sign conventions are encoded — both
+    verified against the live engine, see the module docstring. Every detector reads
+    ownership through here so that a convention change is one edit, not fourteen.
+
+    Raw values are Black-relative in ``[-1, 1]``. Prefer :meth:`for_color`, which
+    converts to the perspective of whoever owns the stones being discussed.
+    """
+
+    values: tuple[float, ...]
+    board_size: int
+
+    @classmethod
+    def build(cls, values: Sequence[float], board_size: int) -> OwnershipMap:
+        expected = board_size * board_size
+        if len(values) != expected:
+            raise OwnershipLengthError(
+                f"ownership array has {len(values)} entries but a {board_size}x{board_size} "
+                f"board has {expected} points"
+            )
+        return cls(values=tuple(values), board_size=board_size)
+
+    def _index(self, point: Point) -> int:
+        """Row-major from the top row. Our row 0 is the bottom, so it is inverted."""
+        return (self.board_size - 1 - point.row) * self.board_size + point.col
+
+    def at(self, point: Point) -> float:
+        """Black-relative ownership: positive leans Black, negative leans White."""
+        return self.values[self._index(point)]
+
+    def for_color(self, point: Point, color: Color) -> float:
+        """Ownership from ``color``'s perspective: positive means ``color`` holds it.
+
+        The same number means opposite things to the two players, which is the whole
+        point. A Black chain sitting at ``-0.9`` Black-relative is a Black group
+        about to die, and calling that "White territory" would describe the position
+        correctly while missing what actually happened.
+        """
+        value = self.at(point)
+        return value if color is Color.BLACK else -value
+
+    def mean_for(self, points: Iterable[Point], color: Color) -> float:
+        """Mean owner-relative ownership over ``points``.
+
+        Averaging the engine's own scalar over a group's stones substitutes for a
+        life-and-death solver: near ``+1`` the group is alive, near ``-1`` it is
+        being captured, and near ``0`` it is genuinely unsettled.
+        """
+        collected = list(points)
+        if not collected:
+            raise ValueError("cannot take the mean ownership of no points")
+        return sum(self.for_color(point, color) for point in collected) / len(collected)
 
 
 # ── Result types ──────────────────────────────────────────────────────────────
@@ -144,9 +301,19 @@ class Finding:
 class DetectorContext:
     """Everything known about a single move, frozen.
 
-    The KataGo fields are unused by every Tier 1 detector and carried anyway:
-    Tier 2 depends on them entirely, and widening this signature later would mean
-    touching every detector written against it.
+    Which position each KataGo field describes is easy to get backwards, so it is
+    spelled out here rather than left to the caller's memory:
+
+    * ``root_info`` / ``ownership`` — the position **after** the move, i.e. the
+      pipeline's ``detail`` for this turn.
+    * ``root_info_before`` / ``ownership_before`` — the position **before** it, the
+      pipeline's ``prev_detail``. Needed by the two detectors that compare.
+    * ``move_infos`` — KataGo's ranked candidates for the position **before** the
+      move, so they are the alternatives to what was played. Keeping the protocol's
+      own field name; the position it describes is the trap.
+
+    All of them are optional. The deep analysis pass covers only the ~20-30 biggest
+    winrate drops, so most moves arrive with no ownership at all.
     """
 
     board_before: Board
@@ -156,6 +323,8 @@ class DetectorContext:
     root_info: Mapping[str, Any] | None = None
     move_infos: Sequence[Mapping[str, Any]] | None = None
     ownership: Sequence[float] | None = None
+    root_info_before: Mapping[str, Any] | None = None
+    ownership_before: Sequence[float] | None = None
 
     def __post_init__(self) -> None:
         if self.board_before.size != self.result.board.size:
@@ -189,6 +358,32 @@ class DetectorContext:
         move = self.result.move
         return move if isinstance(move, Point) else None
 
+    def _reliable_map(
+        self, values: Sequence[float] | None, root: Mapping[str, Any] | None
+    ) -> OwnershipMap | None:
+        """Build an ownership map, or return ``None`` if it should not be trusted.
+
+        Absent data and low-visit data are both answered with ``None`` here, in one
+        place, so no detector has to remember to check either. A malformed array
+        still raises — that is a fault, not a gap.
+        """
+        if values is None:
+            return None
+        visits = (root or {}).get("visits", 0)
+        if not isinstance(visits, int | float) or visits < _MIN_RELIABLE_VISITS:
+            return None
+        return OwnershipMap.build(values, self.board_size)
+
+    @property
+    def ownership_map(self) -> OwnershipMap | None:
+        """Ownership after the move, or ``None`` when missing or too noisy."""
+        return self._reliable_map(self.ownership, self.root_info)
+
+    @property
+    def ownership_map_before(self) -> OwnershipMap | None:
+        """Ownership before the move, or ``None`` when missing or too noisy."""
+        return self._reliable_map(self.ownership_before, self.root_info_before)
+
 
 #: A detector takes a context and returns one finding, or ``None`` when it does not
 #: apply. It must not raise, and must not emit a placeholder for "nothing here".
@@ -208,6 +403,8 @@ def context_for_move(
     root_info: Mapping[str, Any] | None = None,
     move_infos: Sequence[Mapping[str, Any]] | None = None,
     ownership: Sequence[float] | None = None,
+    root_info_before: Mapping[str, Any] | None = None,
+    ownership_before: Sequence[float] | None = None,
 ) -> DetectorContext:
     """Play ``move`` on ``board`` and wrap the before/after pair in a context.
 
@@ -223,6 +420,8 @@ def context_for_move(
         root_info=root_info,
         move_infos=move_infos,
         ownership=ownership,
+        root_info_before=root_info_before,
+        ownership_before=ownership_before,
     )
 
 
@@ -603,13 +802,18 @@ def detect_line_number(context: DetectorContext) -> Finding | None:
 
 
 def _zone_of(point: Point, board_size: int) -> str:
-    """Name the corner / side / centre region containing ``point``.
+    """Name the corner / side / center region containing ``point``.
 
     The outer band is ``ceil(board_size / 3)`` lines deep on each edge, so it scales
     with the board: 7 lines on 19x19, 5 on 13x13, 3 on 9x9. A point inside the band
-    on both axes is a corner, on exactly one axis a side, on neither the centre.
+    on both axes is a corner, on exactly one axis a side, on neither the center.
     The corner/side boundary is a convention, which is why this detector is marked
     heuristic.
+
+    Distinct from :func:`_region_of`, which cuts the board into even thirds to answer
+    a different question — where the play *is* versus where the biggest area *is*.
+    Both spell it "center", matching the ownership-summary block in
+    :mod:`app.services.katago`, so nothing in the prompt disagrees about the word.
     """
     band = -(-board_size // _ZONE_BAND_DIVISOR)
     vertical = "lower" if point.row < band else "upper" if point.row >= board_size - band else None
@@ -620,7 +824,7 @@ def _zone_of(point: Point, board_size: int) -> str:
         return f"{vertical} side"
     if horizontal is not None:
         return f"{horizontal} side"
-    return "centre"
+    return "center"
 
 
 def detect_board_zone(context: DetectorContext) -> Finding | None:
@@ -702,29 +906,403 @@ def detect_game_phase(context: DetectorContext) -> Finding | None:
     )
 
 
+# ── Tier 2 helpers: regions, distance, PV parsing ─────────────────────────────
+
+#: A 3x3 partition of the board, named as :mod:`app.services.katago` already names
+#: it in the ownership-summary block. Sharing the vocabulary matters more than
+#: picking a better one: two blocks in the same prompt that disagree about where
+#: "the upper side" is would be a contradiction the model has no way to resolve.
+_REGION_NAMES: Final[dict[tuple[str, str], str]] = {
+    ("upper", "left"): "upper-left",
+    ("upper", "center"): "upper side",
+    ("upper", "right"): "upper-right",
+    ("center", "left"): "left side",
+    ("center", "center"): "center",
+    ("center", "right"): "right side",
+    ("lower", "left"): "lower-left",
+    ("lower", "center"): "lower side",
+    ("lower", "right"): "lower-right",
+}
+
+
+def _chebyshev(a: Point, b: Point) -> int:
+    return max(abs(a.row - b.row), abs(a.col - b.col))
+
+
+def _region_bands(board_size: int) -> tuple[int, int]:
+    """Split points into thirds. Scales to any board: 6/12 on 19x19, 3/6 on 9x9."""
+    return board_size // 3, (2 * board_size) // 3
+
+
+def _region_of(point: Point, board_size: int) -> str:
+    """Name the 3x3 region containing ``point``. Row 0 is the bottom of the board."""
+    first, second = _region_bands(board_size)
+    vertical = "lower" if point.row < first else "upper" if point.row >= second else "center"
+    horizontal = "left" if point.col < first else "right" if point.col >= second else "center"
+    return _REGION_NAMES[(vertical, horizontal)]
+
+
+def _contested_by_region(ownership: OwnershipMap, board_size: int) -> dict[str, float]:
+    """Score each region by how much of it is still up for grabs.
+
+    A point contributes ``1 - |ownership|``, so a dead-settled point adds nothing and
+    a genuinely undecided one adds a full point. The total reads directly as "about
+    this many points are still contested here", which is the comparison a kyu player
+    needs and the one the model can state without inventing a number.
+    """
+    totals: dict[str, float] = {name: 0.0 for name in _REGION_NAMES.values()}
+    for row in range(board_size):
+        for col in range(board_size):
+            point = Point(row, col)
+            totals[_region_of(point, board_size)] += 1.0 - abs(ownership.at(point))
+    return totals
+
+
+def _local_box_radius(board_size: int) -> int:
+    """Radius of the neighbourhood box: 2 (5x5) on 19x19 and 13x13, 1 (3x3) on 9x9."""
+    return max(1, round(board_size / _LOCAL_BOX_DIVISOR))
+
+
+def _box_points(centre: Point, radius: int, board_size: int) -> tuple[Point, ...]:
+    return tuple(
+        Point(row, col)
+        for row in range(max(0, centre.row - radius), min(board_size, centre.row + radius + 1))
+        for col in range(max(0, centre.col - radius), min(board_size, centre.col + radius + 1))
+    )
+
+
+def _played_candidate(context: DetectorContext) -> Mapping[str, Any] | None:
+    """The engine's entry for the move actually played, if it was a candidate.
+
+    A bad enough move falls outside a truncated candidate list, and that is a fact
+    about the move rather than an error — callers get ``None`` and say so.
+    """
+    if not context.move_infos or context.point is None:
+        return None
+    played = point_to_go_notation(context.point, context.board_size)
+    for info in context.move_infos:
+        if str(info.get("move", "")).upper() == played:
+            return info
+    return None
+
+
+def _pv_reply(info: Mapping[str, Any], board_size: int) -> Point | None:
+    """The opponent's immediate reply in a candidate's principal variation.
+
+    Only index :data:`_PV_REPLY_INDEX` is read. A pass, a malformed coordinate, or a
+    PV too short to contain a reply all yield ``None``.
+    """
+    pv = info.get("pv")
+    if not isinstance(pv, Sequence) or isinstance(pv, str | bytes):
+        return None
+    if len(pv) <= _PV_REPLY_INDEX:
+        return None
+    try:
+        return point_from_go_notation(str(pv[_PV_REPLY_INDEX]), board_size)
+    except InvalidCoordinateError:
+        return None  # "pass" and anything malformed
+
+
+def _settledness_band(value: float) -> str:
+    if value >= _SETTLED_MIN:
+        return "settled"
+    if value <= _DYING_MAX:
+        return "dying"
+    return "unsettled"
+
+
+# ── Tier 2 detectors: KataGo-derived ──────────────────────────────────────────
+
+
+def _chains_to_report(context: DetectorContext) -> tuple[Chain, ...]:
+    """The played chain, then nearby chains of either colour, nearest first."""
+    played = context.point
+    if played is None:
+        return ()
+    ordered: list[Chain] = []
+    if context.result.chain_after is not None:
+        ordered.append(context.result.chain_after)
+    nearby: list[tuple[int, Chain]] = []
+    for chain in context.board_after.chains():
+        if chain in ordered:
+            continue
+        distance = min(_chebyshev(point, played) for point in chain.points)
+        if distance <= _NEARBY_CHAIN_DISTANCE:
+            nearby.append((distance, chain))
+    nearby.sort(key=lambda pair: (pair[0], min(pair[1].points)))
+    ordered.extend(chain for _, chain in nearby)
+    return tuple(ordered[:_MAX_CHAINS_REPORTED])
+
+
+def detect_group_settledness(context: DetectorContext) -> Finding | None:
+    """Mean ownership across each nearby chain, read from that chain's own side.
+
+    This is what makes the tier worth building: averaging a scalar the engine
+    already produces stands in for a life-and-death solver, and "your group here was
+    still unsettled" becomes something the model can say with confidence.
+
+    The number reported is owner-relative, so ``-0.8`` on a White chain means White's
+    stones are dying, not that Black is doing badly.
+    """
+    ownership = context.ownership_map
+    if ownership is None:
+        return None
+    chains = _chains_to_report(context)
+    if not chains:
+        return None
+
+    size = context.board_size
+    parts: list[str] = []
+    friendly_at_risk = False
+    points: list[Point] = []
+    for chain in chains:
+        value = ownership.mean_for(chain.points, chain.color)
+        band = _settledness_band(value)
+        if chain.color is context.color and band != "settled":
+            friendly_at_risk = True
+        points.extend(chain.points)
+        parts.append(f"{_word(chain.color)} at {_names(chain.points, size)} {value:+.2f} ({band})")
+    return Finding(
+        concept="group_settledness",
+        label="Settledness",
+        detail="; ".join(parts) + " — each value is from that group's own side",
+        salience=Salience.CRITICAL if friendly_at_risk else Salience.BACKGROUND,
+        points=tuple(sorted(set(points))),
+    )
+
+
+def detect_settledness_change(context: DetectorContext) -> Finding | None:
+    """How much the move shifted ownership of the chain it produced.
+
+    Measured over the same points in both positions. Ownership is defined for empty
+    intersections too, so the played point contributes its pre-move estimate, and the
+    reading is "how did this area's ownership change" rather than a comparison
+    between two different groups.
+    """
+    after = context.ownership_map
+    before = context.ownership_map_before
+    chain = context.result.chain_after
+    if after is None or before is None or chain is None:
+        return None
+
+    color = context.color
+    delta = after.mean_for(chain.points, color) - before.mean_for(chain.points, color)
+    if abs(delta) < _SETTLEDNESS_CHANGE_MIN:
+        return None
+    direction = "more settled for" if delta > 0 else "less settled for"
+    size = context.board_size
+    return Finding(
+        concept="settledness_change",
+        label="Settledness Δ",
+        detail=(
+            f"the group at {_names(chain.points, size)} became {direction} {_word(color)} "
+            f"({delta:+.2f} owner-relative)"
+        ),
+        salience=Salience.NOTABLE,
+        points=tuple(sorted(chain.points)),
+    )
+
+
+def detect_direction_of_play(context: DetectorContext) -> Finding | None:
+    """Which region of the board holds the most still-undecided ownership.
+
+    The 3x3 partition is a convention, not a fact about Go, so the finding is
+    heuristic. The contested totals underneath it are measured.
+    """
+    ownership = context.ownership_map
+    if ownership is None:
+        return None
+    totals = _contested_by_region(ownership, context.board_size)
+    name, score = max(totals.items(), key=lambda item: (item[1], item[0]))
+    return Finding(
+        concept="direction_of_play",
+        label="Biggest area",
+        detail=f"the {name} holds the most undecided ownership, roughly {score:.0f} points",
+        salience=Salience.NOTABLE,
+        certainty=Certainty.HEURISTIC,
+    )
+
+
+def detect_move_in_largest_area(context: DetectorContext) -> Finding | None:
+    """Whether the move went to the largest contested region, and by how much it missed.
+
+    Playing a small move while a much larger area sits open is the most common
+    kyu-level mistake, and it is two comparisons on top of the ownership map. Phrased
+    as measured sizes rather than a verdict — the move may be a forced local answer,
+    which this layer cannot see.
+    """
+    ownership = context.ownership_map
+    point = context.point
+    if ownership is None or point is None:
+        return None
+
+    size = context.board_size
+    totals = _contested_by_region(ownership, size)
+    largest_name, largest_score = max(totals.items(), key=lambda item: (item[1], item[0]))
+    played_name = _region_of(point, size)
+    played_score = totals[played_name]
+
+    if played_name == largest_name:
+        detail = (
+            f"{_name(point, size)} is in the {played_name}, which is also the most "
+            f"contested region (~{played_score:.0f} points)"
+        )
+        salience = Salience.NOTABLE
+    else:
+        gap = largest_score - played_score
+        detail = (
+            f"{_name(point, size)} is in the {played_name} (~{played_score:.0f} contested "
+            f"points) while the {largest_name} holds ~{largest_score:.0f}, "
+            f"a difference of ~{gap:.0f}"
+        )
+        substantial = gap >= _LARGEST_AREA_GAP_FRACTION * size * size
+        salience = Salience.CRITICAL if substantial else Salience.NOTABLE
+    return Finding(
+        concept="move_in_largest_area",
+        label="Area choice",
+        detail=detail,
+        salience=salience,
+        certainty=Certainty.HEURISTIC,
+        points=(point,),
+    )
+
+
+def detect_local_ownership_swing(context: DetectorContext) -> Finding | None:
+    """Total ownership change in a box around the played point, before versus after."""
+    after = context.ownership_map
+    before = context.ownership_map_before
+    point = context.point
+    if after is None or before is None or point is None:
+        return None
+
+    size = context.board_size
+    radius = _local_box_radius(size)
+    box = _box_points(point, radius, size)
+    color = context.color
+    swing = sum(after.for_color(p, color) - before.for_color(p, color) for p in box)
+    if abs(swing) < _LOCAL_SWING_MIN:
+        return None
+    direction = "toward" if swing > 0 else "away from"
+    width = radius * 2 + 1
+    return Finding(
+        concept="local_ownership_swing",
+        label="Local swing",
+        detail=(
+            f"ownership in the {width}x{width} area around {_name(point, size)} moved "
+            f"{swing:+.1f} points {direction} {_word(color)}"
+        ),
+        salience=Salience.NOTABLE,
+        points=(point,),
+    )
+
+
+def detect_sente_gote(context: DetectorContext) -> Finding | None:
+    """Whether the engine's line has the opponent answering locally.
+
+    A proxy, not a proof: one principal variation is a single continuation, not a
+    demonstration that the opponent has to answer. Only the immediate reply is read,
+    and the finding is heuristic.
+    """
+    played = _played_candidate(context)
+    point = context.point
+    if played is None or point is None:
+        return None
+    visits = (context.root_info_before or {}).get("visits", 0)
+    if not isinstance(visits, int | float) or visits < _MIN_RELIABLE_VISITS:
+        return None
+    reply = _pv_reply(played, context.board_size)
+    if reply is None:
+        return None
+
+    size = context.board_size
+    distance = _chebyshev(point, reply)
+    local = distance <= _SENTE_MAX_DISTANCE
+    shape = "locally sente" if local else "locally gote"
+    where = "nearby at" if local else "elsewhere at"
+    return Finding(
+        concept="sente_gote",
+        label="Sente/gote",
+        detail=(
+            f"in the engine's line the opponent answers {where} {_name(reply, size)}, "
+            f"{distance} {_plural(distance, 'point', 'points')} away — {shape}"
+        ),
+        salience=Salience.NOTABLE,
+        certainty=Certainty.HEURISTIC,
+        points=(reply,),
+    )
+
+
+def detect_move_ranking(context: DetectorContext) -> Finding | None:
+    """Where the played move sat among the engine's candidates.
+
+    **Not in** :data:`DETECTORS` by design. The ``[KATAGO ANALYSIS DATA]`` block
+    already renders rank, policy prior, and the not-a-candidate case, and two blocks
+    computing the same value independently is how a prompt ends up contradicting
+    itself. Kept and exported so the wiring can switch homes for these values in one
+    place if that block is ever slimmed down.
+    """
+    if not context.move_infos or context.point is None:
+        return None
+    size = context.board_size
+    played = _played_candidate(context)
+    if played is None:
+        return Finding(
+            concept="move_ranking",
+            label="Move rank",
+            detail=(
+                f"{_name(context.point, size)} is outside the engine's top "
+                f"{len(context.move_infos)} candidates"
+            ),
+            salience=Salience.BACKGROUND,
+            points=(context.point,),
+        )
+    order = played.get("order")
+    rank = _ordinal(order + 1) if isinstance(order, int) else "unranked"
+    detail = f"{_name(context.point, size)} is the engine's {rank} choice"
+    prior = played.get("prior")
+    if isinstance(prior, int | float):
+        detail += f", policy prior {prior:.3f}"
+    return Finding(
+        concept="move_ranking",
+        label="Move rank",
+        detail=detail,
+        salience=Salience.BACKGROUND,
+        points=(context.point,),
+    )
+
+
 # ── Registry ──────────────────────────────────────────────────────────────────
 
 #: Every detector, in the order they are run. Position here breaks ties between
 #: findings of equal salience, so the order is part of the output. Later tiers
 #: append; they do not edit a dispatch chain.
+#: ``detect_move_ranking`` is deliberately absent — see its docstring; rank and
+#: policy prior already have a home in the ``[KATAGO ANALYSIS DATA]`` block.
 DETECTORS: Final[tuple[Detector, ...]] = (
-    # Critical
+    # Tier 1 — exact, from stone geometry
     detect_double_atari,
     detect_atari_given,
     detect_atari_ignored,
     detect_self_atari,
     detect_capture,
     detect_ko_capture,
-    # Notable
     detect_contact_play,
     detect_connection,
     detect_extension,
     detect_tenuki,
-    # Background
     detect_liberty_count,
     detect_line_number,
     detect_board_zone,
     detect_game_phase,
+    # Tier 2 — from KataGo's estimates. Salience varies per finding: an unsettled
+    # friendly group or a badly missed area is critical, the same detectors are
+    # background when the news is unremarkable.
+    detect_group_settledness,
+    detect_move_in_largest_area,
+    detect_settledness_change,
+    detect_local_ownership_swing,
+    detect_sente_gote,
+    detect_direction_of_play,
 )
 
 
@@ -775,6 +1353,6 @@ def render_detected_features(
     if any(finding.certainty is Certainty.HEURISTIC for finding in shown):
         lines.append(_HEURISTIC_NOTE)
     for finding in shown:
-        suffix = "  (heuristic)" if finding.certainty is Certainty.HEURISTIC else ""
-        lines.append(f"  {finding.label + ':':<{_LABEL_WIDTH}}{finding.detail}{suffix}")
+        prefix = _HEURISTIC_PREFIX if finding.certainty is Certainty.HEURISTIC else ""
+        lines.append(f"  {finding.label + ':':<{_LABEL_WIDTH}}{prefix}{finding.detail}")
     return "\n".join(lines) + "\n"
