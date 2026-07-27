@@ -13,6 +13,7 @@ import {
 } from "@mui/material";
 
 import {
+    CUSTOM_INSTRUCTION_MAX,
     MAX_TOKEN_MAX,
     MAX_TOKEN_MIN,
     NUM_COMMENTS_MAX,
@@ -208,7 +209,7 @@ export default function CommentaryConfig({
                     value={customInstruction}
                     slotProps={{
                         htmlInput: {
-                            maxLength: 1000,
+                            maxLength: CUSTOM_INSTRUCTION_MAX,
                         },
                     }}
                     multiline

@@ -1,3 +1,10 @@
+import {
+    CUSTOM_INSTRUCTION_MAX,
+    MAX_TOKEN_MAX,
+    MAX_TOKEN_MIN,
+    NUM_COMMENTS_MAX,
+    NUM_COMMENTS_MIN,
+} from "@/constants/commentary/config";
 import type { GameMove } from "@/types/game";
 
 export type ClaudeModel =
@@ -56,6 +63,19 @@ const COMMENTARY_LANGUAGES: CommentaryLanguage[] = [
     "korean",
 ];
 
+function clamp(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * A count is only usable if it reads as a finite *positive* number. `Number(null)`,
+ * `Number("")` and `Number([])` are all 0 — finite, but below every bound the backend
+ * accepts — so a bare `Number.isFinite` check would forward them and earn a 400.
+ */
+function isPositiveNumber(value: number): boolean {
+    return Number.isFinite(value) && value > 0;
+}
+
 /**
  * Resolve a user's saved default commentary config out of their free-form
  * preferences blob, falling back to {@link DEFAULT_COMMENTARY_CONFIG} for any
@@ -73,23 +93,46 @@ export function readCommentaryConfig(
     const numComments = Number(raw.num_comments);
     const maxToken = Number(raw.max_token);
     const customInstruction = raw.custom_instruction;
-    return {
+    return clampCommentaryConfig({
         model: CLAUDE_MODELS.includes(model)
             ? model
             : DEFAULT_COMMENTARY_CONFIG.model,
         language: COMMENTARY_LANGUAGES.includes(language)
             ? language
             : DEFAULT_COMMENTARY_CONFIG.language,
-        num_comments: Number.isFinite(numComments)
+        num_comments: isPositiveNumber(numComments)
             ? numComments
             : DEFAULT_COMMENTARY_CONFIG.num_comments,
-        max_token: Number.isFinite(maxToken)
+        max_token: isPositiveNumber(maxToken)
             ? maxToken
             : DEFAULT_COMMENTARY_CONFIG.max_token,
         custom_instruction:
             typeof customInstruction === "string"
                 ? customInstruction
                 : DEFAULT_COMMENTARY_CONFIG.custom_instruction,
+    });
+}
+
+/**
+ * Force a config inside the bounds the backend enforces, so a preference saved when
+ * the bounds were wider is corrected rather than rejected with a 400. Port of
+ * `clampCommentaryConfig` in `extension/src/shared/commentary.ts`.
+ */
+export function clampCommentaryConfig(
+    config: CommentaryConfigValues
+): CommentaryConfigValues {
+    return {
+        ...config,
+        num_comments: Math.round(
+            clamp(config.num_comments, NUM_COMMENTS_MIN, NUM_COMMENTS_MAX)
+        ),
+        max_token: Math.round(
+            clamp(config.max_token, MAX_TOKEN_MIN, MAX_TOKEN_MAX)
+        ),
+        custom_instruction: config.custom_instruction.slice(
+            0,
+            CUSTOM_INSTRUCTION_MAX
+        ),
     };
 }
 
