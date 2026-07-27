@@ -10,13 +10,20 @@ import httpx
 from anthropic import Anthropic
 from sgfmill import sgf
 from sgfmill.ascii_boards import render_board
-from sgfmill.boards import Board
+from sgfmill.boards import Board as SgfmillBoard
 
 from app.config import settings
 from app.crypto import decrypt_secret
 from app.deps import CurrentUser
 from app.errors import InvalidSgfError, MissingApiKeyError
 from app.models import User
+from app.services.board import PASS, Board, BoardError, Color, Move, Point
+from app.services.concepts import (
+    DetectorContext,
+    OwnershipLengthError,
+    render_detected_features,
+    run_detectors,
+)
 
 _http_client = None
 log_path = "logs/katago_service.log"
@@ -440,6 +447,73 @@ def _generate_ownership_summary(
     return "\n".join(bullets)
 
 
+def _katago_move_to_point(katago_point: str) -> Move:
+    """Convert a KataGo move string to a board :class:`Move`, passes included."""
+    if katago_point.lower() == "pass":
+        return PASS
+    return Point(*_katago_point_to_sgfmill(katago_point))
+
+
+def _detected_features_block(
+    *,
+    board_size: int,
+    initial_stones: list[list[str]],
+    moves: list[list[str]],
+    turn_number: int,
+    detail: dict[str, Any],
+    prev_detail: dict[str, Any],
+) -> str:
+    """Render the certified-facts block for the move played at ``turn_number``.
+
+    Replays the game into :class:`app.services.board.Board` — a second replay
+    alongside the sgfmill one above, which exists only to render the ASCII diagram
+    and has no chain, liberty, or capture API to detect anything with. A full replay
+    costs about a millisecond, so the duplication is cheaper than the coupling.
+
+    Returns ``""`` on anything the strict rules engine rejects. Real SGFs contain
+    moves played out of turn, onto occupied points, and odd handicap encodings, and
+    the right price for that is losing this one block rather than the whole comment.
+    """
+    if not 1 <= turn_number <= len(moves):
+        return ""
+    try:
+        board = Board(board_size).place_setup_stones(
+            black=[
+                _katago_move_to_point(point)
+                for colour, point in initial_stones
+                if colour == "B" and point.lower() != "pass"
+            ],
+            white=[
+                _katago_move_to_point(point)
+                for colour, point in initial_stones
+                if colour == "W" and point.lower() != "pass"
+            ],
+        )
+        previous: Move | None = None
+        for colour, katago_point in moves[: turn_number - 1]:
+            move = _katago_move_to_point(katago_point)
+            board = board.place_move(move, Color.from_letter(colour)).board
+            previous = move
+
+        colour, katago_point = moves[turn_number - 1]
+        result = board.place_move(_katago_move_to_point(katago_point), Color.from_letter(colour))
+        context = DetectorContext(
+            board_before=board,
+            result=result,
+            move_number=turn_number,
+            previous_move=previous,
+            root_info=detail.get("rootInfo"),
+            move_infos=prev_detail.get("moveInfos"),
+            ownership=detail.get("ownership"),
+            root_info_before=prev_detail.get("rootInfo"),
+            ownership_before=prev_detail.get("ownership"),
+        )
+        return render_detected_features(run_detectors(context))
+    except (BoardError, OwnershipLengthError, ValueError) as exc:
+        logger.warning("No detected-features block for turn %s: %s", turn_number, exc)
+        return ""
+
+
 def sgf_to_winrate_request(sgf_content: str) -> dict[str, Any]:
     """Parse an SGF string into a KataGo analysis-engine request payload."""
     payload = sgf_content.encode("utf-8") if isinstance(sgf_content, str) else sgf_content
@@ -513,7 +587,9 @@ def _generate_system_prompt(
     Your rules:
     - Ground every claim in the data provided. Do NOT invent tactical or strategic justifications that you cannot directly see in the board position or derive from the numbers.
     - If the data does not explain *why* a move is bad, say so honestly (e.g. "KataGo strongly preferred C5, though the exact reason is difficult to pin down from this position alone").
-    - Use Go terminology (joseki, influence, sente, etc.) only when it clearly applies.
+    - The [DETECTED FEATURES] block is computed from the board, not inferred. You may state those lines as fact. Lines that begin "estimated —" rest on tuned thresholds: hedge them or leave them out.
+    - Use Go terminology ONLY for concepts named in that block. If it reports an atari, write "atari". If it does not mention a ladder, do not write "ladder". When the block is absent, describe the position in plain language instead of reaching for jargon.
+    - The block reports what is on the board, never whether a move was good. A self-atari can be a throw-in and a working ladder can still be the wrong move — that judgement is yours to make from the position and the numbers.
     - Aim for 3–4 sentences. Tone: clear, educational, not condescending.
     - Structure: (1) brief game state, (2) assessment of the move played, (3) what the suggested move offered.
   """
@@ -554,7 +630,7 @@ def _generate_user_prompt(
     top_suggestion_sgfmill = (
         _katago_point_to_sgfmill(top_suggestion) if top_suggestion != "pass" else None
     )
-    board = Board(board_size)
+    board = SgfmillBoard(board_size)
     for stone_color, katago_point in initial_stones:
         row, col = _katago_point_to_sgfmill(katago_point)
         board.play(row, col, stone_color.lower())
@@ -582,6 +658,19 @@ def _generate_user_prompt(
     prompt += f"* = KataGo's top suggestion ({top_suggestion})\n\n"
     prompt += f"{ascii_board}\n\n"
     prompt += "---\n\n"
+
+    # Placed between the board and the numbers on purpose: the model reads the
+    # position, then the facts that are certain about it, then the estimates.
+    features = _detected_features_block(
+        board_size=board_size,
+        initial_stones=initial_stones,
+        moves=moves,
+        turn_number=turn_number,
+        detail=detail,
+        prev_detail=prev_detail,
+    )
+    if features:
+        prompt += f"{features}\n---\n\n"
 
     prev_winrate = _black_winrate_pct(prev_detail)
     if color == "White":

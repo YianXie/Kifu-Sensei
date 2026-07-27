@@ -565,6 +565,19 @@ def test_a_blank_custom_instruction_adds_no_section() -> None:
     assert "Additional instructions" not in _generate_system_prompt(custom_instruction="   ")
 
 
+def test_the_system_prompt_ties_go_terminology_to_the_detected_features() -> None:
+    """The point of the whole detector stack: the model may use a Go term when the
+    board has been shown to contain that concept, and not otherwise."""
+    prompt = _generate_system_prompt()
+    assert "Use Go terminology ONLY for concepts named in that block" in prompt
+    assert "do not write" in prompt
+
+
+def test_the_system_prompt_keeps_judgement_out_of_the_detected_features() -> None:
+    prompt = _generate_system_prompt()
+    assert "never whether a move was good" in prompt
+
+
 def _prompt_fixture(*, with_ownership: bool = True) -> str:
     request = sgf_to_winrate_request(SGF)
     detail = {
@@ -674,3 +687,85 @@ def test_the_user_prompt_describes_the_principal_variation() -> None:
     prompt = _prompt_fixture()
     assert "Principal variation: Q16 → D4 → Q4 ..." in prompt
     assert "Sequence runs 3 moves deep" in prompt
+
+
+# ── The detected-features block ───────────────────────────────────────────────
+
+
+def test_the_user_prompt_carries_the_detected_features_block() -> None:
+    prompt = _prompt_fixture()
+    assert "[DETECTED FEATURES" in prompt
+    assert "Liberties:" in prompt
+
+
+def test_the_features_block_sits_between_the_board_and_the_numbers() -> None:
+    """Read the position, then what is certain about it, then the estimates."""
+    prompt = _prompt_fixture()
+    assert (
+        prompt.index("[BOARD POSITION")
+        < prompt.index("[DETECTED FEATURES")
+        < prompt.index("[KATAGO ANALYSIS DATA]")
+    )
+
+
+def test_the_features_block_states_its_own_provenance() -> None:
+    """The block licenses the model to assert its contents, so it has to say why."""
+    assert "computed from the board, not inferred" in _prompt_fixture()
+
+
+def test_an_unreplayable_history_costs_the_block_not_the_comment() -> None:
+    """A history the strict rules engine rejects must not take the comment with it.
+
+    The move here is a corner suicide: sgfmill permits self-capture, so the ASCII
+    board still renders, while :mod:`app.services.board` raises and the block is
+    dropped. Every other section is unaffected.
+    """
+    request = sgf_to_winrate_request(SGF)
+    prompt = _generate_user_prompt(
+        {
+            "turnNumber": 4,
+            "rootInfo": {"winrate": 0.42, "scoreLead": -4.5, "currentPlayer": "W"},
+            "moveInfos": [],
+        },
+        {
+            "turnNumber": 3,
+            "rootInfo": {"winrate": 0.50, "scoreLead": 0.5, "currentPlayer": "B"},
+            "moveInfos": [
+                {"move": "A1", "order": 0, "prior": 0.25, "winrate": 0.55, "scoreLead": 2.0}
+            ],
+        },
+        board_size=request["boardXSize"],
+        komi=request["komi"],
+        rules=request["rules"],
+        initial_stones=[],
+        moves=[["W", "A2"], ["B", "T19"], ["W", "B1"], ["B", "A1"]],
+    )
+    assert "[DETECTED FEATURES" not in prompt
+    assert "[BOARD POSITION" in prompt
+    assert "[KATAGO ANALYSIS DATA]" in prompt
+    assert "[YOUR TASK]" in prompt
+
+
+def test_the_features_block_survives_a_pass_in_the_history() -> None:
+    """``SGF`` has Black passing at move 3, so move 4 replays through it."""
+    request = sgf_to_winrate_request(SGF)
+    prompt = _generate_user_prompt(
+        {
+            "turnNumber": 4,
+            "rootInfo": {"winrate": 0.4, "scoreLead": -3.0, "currentPlayer": "B"},
+            "moveInfos": [],
+        },
+        {
+            "turnNumber": 3,
+            "rootInfo": {"winrate": 0.5, "scoreLead": 0.0, "currentPlayer": "W"},
+            "moveInfos": [
+                {"move": "D4", "order": 0, "prior": 0.3, "winrate": 0.55, "scoreLead": 2.0}
+            ],
+        },
+        board_size=request["boardXSize"],
+        komi=request["komi"],
+        rules=request["rules"],
+        initial_stones=request["initialStones"],
+        moves=request["moves"],
+    )
+    assert "[DETECTED FEATURES" in prompt

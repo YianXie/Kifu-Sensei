@@ -708,6 +708,23 @@ def test_board_zone_scales_with_board_size(size: int, point: Point, expected: st
     assert expected in finding.detail
 
 
+@pytest.mark.parametrize("size", [9, 13, 19])
+def test_the_zone_and_region_names_can_never_disagree(size: int) -> None:
+    """These two findings render on adjacent lines in the same block.
+
+    Calling one point both "the upper-left corner" and "the upper side" is a
+    contradiction the model cannot resolve, so the zone is derived from the region
+    rather than banding the board a second way.
+    """
+    from app.services.concepts import _region_of, _zone_of
+
+    for row in range(size):
+        for col in range(size):
+            region = _region_of(Point(row, col), size)
+            zone = _zone_of(Point(row, col), size)
+            assert zone in (region, f"{region} corner")
+
+
 def test_board_zone_is_marked_heuristic() -> None:
     finding = detect_board_zone(_ctx(Board(19), Point(3, 3)))
     assert finding is not None

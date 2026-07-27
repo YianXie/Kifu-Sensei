@@ -104,11 +104,6 @@ _TENUKI_MIN_DISTANCE: Final = 5
 _OPENING_MAX_PROGRESS: Final = 0.20
 _MIDDLEGAME_MAX_PROGRESS: Final = 0.55
 
-#: The outer band of the board, as a fraction of its width, used to split corner /
-#: side / centre. A third gives a 7-line band on 19x19 (so the centre is the middle
-#: 5x5), 5 on 13x13, and 3 on 9x9.
-_ZONE_BAND_DIVISOR: Final = 3
-
 #: Ceiling on how many points a single finding spells out before it summarises. A
 #: 30-stone chain would otherwise produce one unreadable line and eat the budget.
 _MAX_POINTS_LISTED: Final = 6
@@ -495,6 +490,40 @@ def _ordinal(n: int) -> str:
 # ── Shared board queries ──────────────────────────────────────────────────────
 
 
+#: A 3x3 partition of the board, named as :mod:`app.services.katago` already names
+#: it in the ownership-summary block. Sharing the vocabulary matters more than
+#: picking a better one: two blocks in the same prompt that disagree about where
+#: "the upper side" is would be a contradiction the model has no way to resolve.
+_REGION_NAMES: Final[dict[tuple[str, str], str]] = {
+    ("upper", "left"): "upper-left",
+    ("upper", "center"): "upper side",
+    ("upper", "right"): "upper-right",
+    ("center", "left"): "left side",
+    ("center", "center"): "center",
+    ("center", "right"): "right side",
+    ("lower", "left"): "lower-left",
+    ("lower", "center"): "lower side",
+    ("lower", "right"): "lower-right",
+}
+
+
+def _chebyshev(a: Point, b: Point) -> int:
+    return max(abs(a.row - b.row), abs(a.col - b.col))
+
+
+def _region_bands(board_size: int) -> tuple[int, int]:
+    """Split points into thirds. Scales to any board: 6/12 on 19x19, 3/6 on 9x9."""
+    return board_size // 3, (2 * board_size) // 3
+
+
+def _region_of(point: Point, board_size: int) -> str:
+    """Name the 3x3 region containing ``point``. Row 0 is the bottom of the board."""
+    first, second = _region_bands(board_size)
+    vertical = "lower" if point.row < first else "upper" if point.row >= second else "center"
+    horizontal = "left" if point.col < first else "right" if point.col >= second else "center"
+    return _REGION_NAMES[(vertical, horizontal)]
+
+
 def _adjacent_chains(board: Board, point: Point, color: Color) -> tuple[Chain, ...]:
     """Distinct ``color`` chains touching ``point``, in a stable order."""
     found: list[Chain] = []
@@ -853,29 +882,21 @@ def detect_line_number(context: DetectorContext) -> Finding | None:
 
 
 def _zone_of(point: Point, board_size: int) -> str:
-    """Name the corner / side / center region containing ``point``.
+    """Name the corner / side / center zone containing ``point``.
 
-    The outer band is ``ceil(board_size / 3)`` lines deep on each edge, so it scales
-    with the board: 7 lines on 19x19, 5 on 13x13, 3 on 9x9. A point inside the band
-    on both axes is a corner, on exactly one axis a side, on neither the center.
-    The corner/side boundary is a convention, which is why this detector is marked
-    heuristic.
+    The same 3x3 partition :func:`_region_of` uses, in the corner/side/center
+    vocabulary. Deriving one from the other rather than banding the board a second
+    way is what keeps the block from contradicting itself: these two findings render
+    on adjacent lines, and describing one point as both "the upper-left corner" and
+    "the upper side" is a disagreement the model has no way to resolve.
 
-    Distinct from :func:`_region_of`, which cuts the board into even thirds to answer
-    a different question — where the play *is* versus where the biggest area *is*.
-    Both spell it "center", matching the ownership-summary block in
-    :mod:`app.services.katago`, so nothing in the prompt disagrees about the word.
+    Where the thirds fall is a convention rather than a rule, which is why the
+    finding built on this is marked heuristic.
     """
-    band = -(-board_size // _ZONE_BAND_DIVISOR)
-    vertical = "lower" if point.row < band else "upper" if point.row >= board_size - band else None
-    horizontal = "left" if point.col < band else "right" if point.col >= board_size - band else None
-    if vertical is not None and horizontal is not None:
-        return f"{vertical}-{horizontal} corner"
-    if vertical is not None:
-        return f"{vertical} side"
-    if horizontal is not None:
-        return f"{horizontal} side"
-    return "center"
+    region = _region_of(point, board_size)
+    if region == "center" or region.endswith(" side"):
+        return region
+    return f"{region} corner"
 
 
 def detect_board_zone(context: DetectorContext) -> Finding | None:
@@ -958,39 +979,6 @@ def detect_game_phase(context: DetectorContext) -> Finding | None:
 
 
 # ── Tier 2 helpers: regions, distance, PV parsing ─────────────────────────────
-
-#: A 3x3 partition of the board, named as :mod:`app.services.katago` already names
-#: it in the ownership-summary block. Sharing the vocabulary matters more than
-#: picking a better one: two blocks in the same prompt that disagree about where
-#: "the upper side" is would be a contradiction the model has no way to resolve.
-_REGION_NAMES: Final[dict[tuple[str, str], str]] = {
-    ("upper", "left"): "upper-left",
-    ("upper", "center"): "upper side",
-    ("upper", "right"): "upper-right",
-    ("center", "left"): "left side",
-    ("center", "center"): "center",
-    ("center", "right"): "right side",
-    ("lower", "left"): "lower-left",
-    ("lower", "center"): "lower side",
-    ("lower", "right"): "lower-right",
-}
-
-
-def _chebyshev(a: Point, b: Point) -> int:
-    return max(abs(a.row - b.row), abs(a.col - b.col))
-
-
-def _region_bands(board_size: int) -> tuple[int, int]:
-    """Split points into thirds. Scales to any board: 6/12 on 19x19, 3/6 on 9x9."""
-    return board_size // 3, (2 * board_size) // 3
-
-
-def _region_of(point: Point, board_size: int) -> str:
-    """Name the 3x3 region containing ``point``. Row 0 is the bottom of the board."""
-    first, second = _region_bands(board_size)
-    vertical = "lower" if point.row < first else "upper" if point.row >= second else "center"
-    horizontal = "left" if point.col < first else "right" if point.col >= second else "center"
-    return _REGION_NAMES[(vertical, horizontal)]
 
 
 def _contested_by_region(ownership: OwnershipMap, board_size: int) -> dict[str, float]:
