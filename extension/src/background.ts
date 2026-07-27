@@ -7,6 +7,7 @@ import {
     clearJob,
     isTerminal,
     readJob,
+    resubmitJob,
     runJobPoller,
     startCommentaryJob,
 } from "./shared/jobs";
@@ -64,11 +65,14 @@ chrome.runtime.onStartup.addListener(() => void clearPollAlarm());
 type PanelMessage =
     | { type: "start-commentary"; gameId: number; config: CommentaryConfig }
     | { type: "open-login" }
+    | { type: "regenerate-commentary" }
     | { type: "resume-polling" }
     | { type: "cancel-commentary" };
 
 interface MessageResult {
     ok: boolean;
+    /** False when there was no cached record to re-run, so the caller starts fresh. */
+    resubmitted?: boolean;
 }
 
 function isPanelMessage(value: unknown): value is PanelMessage {
@@ -96,6 +100,18 @@ async function handleMessage(message: PanelMessage): Promise<MessageResult> {
                 url: `${FRONTEND_URL}/login?source=extension`,
             });
             return { ok: true };
+        }
+        case "regenerate-commentary": {
+            const previous = await readJob();
+            if (previous === null || previous.sgf === "") {
+                // Nothing cached — e.g. the first attempt never got the record.
+                return { ok: false, resubmitted: false };
+            }
+            const job = await resubmitJob(previous);
+            if (!isTerminal(job.status)) {
+                void driveJob();
+            }
+            return { ok: job.status !== "failed", resubmitted: true };
         }
         case "resume-polling": {
             // The panel reopened. If a run is still going, make sure something is

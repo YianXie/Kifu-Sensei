@@ -227,6 +227,25 @@ export async function submitJob(job: StoredJob): Promise<StoredJob> {
  * no second OGS round-trip, and a review can still be re-run after the game itself has
  * become unavailable. The config is reused as-is.
  */
+/**
+ * Re-run a job we already have the record for.
+ *
+ * Deliberately does not go back to OGS: retrying after a rate limit costs one
+ * request rather than a download plus a request, and a game that has since become
+ * unavailable can still be regenerated.
+ */
+export async function resubmitJob(previous: StoredJob): Promise<StoredJob> {
+    return submitJob({
+        ...previous,
+        jobId: "",
+        status: "queued",
+        progress: { done: 0, total: 0 },
+        result: null,
+        error: null,
+        startedAt: Date.now(),
+    });
+}
+
 /** One poll. Returns the updated job, or null when the stored job has gone away. */
 async function pollOnce(job: StoredJob): Promise<StoredJob | null> {
     let response: Response | null;

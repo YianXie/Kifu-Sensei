@@ -373,6 +373,27 @@ async function startGeneration(): Promise<void> {
     }
 }
 
+/**
+ * Re-run the current game, reusing the record already downloaded.
+ *
+ * Falls back to a fresh start only when nothing was cached — a first attempt that
+ * failed before the record arrived. When the worker did resubmit, the stored job
+ * drives the screen from here, including if the resubmit itself failed.
+ */
+async function rerunCommentary(): Promise<void> {
+    renderProgress({ done: 0, total: 0 });
+    showScreen("screen-generating");
+
+    const response = (await chrome.runtime.sendMessage({
+        type: "regenerate-commentary",
+    })) as { ok: boolean; resubmitted?: boolean } | undefined;
+
+    if (response?.resubmitted === true) {
+        return;
+    }
+    await startGeneration();
+}
+
 function renderProgress(progress: { done: number; total: number }): void {
     const subtitle = el("gen-subtitle");
     const fill = el("progress-fill");
@@ -868,14 +889,10 @@ function initGeneratingScreen(): void {
 }
 
 function initCommentaryScreen(): void {
-    // Starts over from the config screen: the run is discarded and the game is
-    // re-read. Phase 4 makes this reuse the cached record instead.
-    el("btn-regenerate")?.addEventListener("click", () => {
-        void (async () => {
-            await chrome.runtime.sendMessage({ type: "cancel-commentary" });
-            await refreshAfterJobCleared();
-        })();
-    });
+    el("btn-regenerate")?.addEventListener(
+        "click",
+        () => void rerunCommentary()
+    );
 }
 
 function initErrorScreen(): void {
@@ -891,8 +908,7 @@ function initErrorScreen(): void {
                 });
                 return;
             }
-            await chrome.runtime.sendMessage({ type: "cancel-commentary" });
-            await refreshAfterJobCleared();
+            await rerunCommentary();
         })();
     });
     el("btn-error-back")?.addEventListener("click", () => {
