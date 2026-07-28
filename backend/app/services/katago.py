@@ -10,13 +10,29 @@ import httpx
 from anthropic import Anthropic
 from sgfmill import sgf
 from sgfmill.ascii_boards import render_board
-from sgfmill.boards import Board
+from sgfmill.boards import Board as SgfmillBoard
 
 from app.config import settings
 from app.crypto import decrypt_secret
 from app.deps import CurrentUser
 from app.errors import InvalidSgfError, MissingApiKeyError
 from app.models import User
+from app.services.board import (
+    Board,
+    BoardError,
+    Color,
+    Move,
+    Point,
+    move_from_go_notation,
+    point_from_go_notation,
+)
+from app.services.concepts import (
+    DetectorContext,
+    OwnershipLengthError,
+    render_detected_features,
+    run_detectors,
+)
+from app.services.go_text import REGION_NAMES, ordinal
 
 _http_client = None
 log_path = "logs/katago_service.log"
@@ -200,29 +216,6 @@ def _color_letter_to_word(letter: Literal["B", "W"]) -> Literal["Black", "White"
     return "Black"
 
 
-# 3x3 grid of human-readable board regions, keyed by (vertical band, horizontal band).
-_REGION_NAMES: dict[tuple[str, str], str] = {
-    ("upper", "left"): "upper-left",
-    ("upper", "center"): "upper side",
-    ("upper", "right"): "upper-right",
-    ("center", "left"): "left side",
-    ("center", "center"): "center",
-    ("center", "right"): "right side",
-    ("lower", "left"): "lower-left",
-    ("lower", "center"): "lower side",
-    ("lower", "right"): "lower-right",
-}
-
-
-def _ordinal(n: int) -> str:
-    """Return the ordinal string for ``n`` (e.g. ``1`` -> ``"1st"``)."""
-    if 10 <= n % 100 <= 20:
-        suffix = "th"
-    else:
-        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
-    return f"{n}{suffix}"
-
-
 def _katago_point_to_display(point: str, board_size: int) -> tuple[int, int]:
     """Convert a KataGo point to ``(display_row, col)`` in ownership-array order.
 
@@ -255,7 +248,7 @@ def _region_name(display_row: int, col: int, board_size: int) -> str:
         horizontal = "right"
     else:
         horizontal = "center"
-    return _REGION_NAMES[(vertical, horizontal)]
+    return REGION_NAMES[(vertical, horizontal)]
 
 
 def _ownership_symbol(value: float) -> str:
@@ -374,7 +367,7 @@ def _generate_ownership_summary(
     region_stats: dict[str, dict[str, Any]] = {}
     for i, (r0, r1) in enumerate(bands):
         for j, (c0, c1) in enumerate(bands):
-            name = _REGION_NAMES[(row_labels[i], col_labels[j])]
+            name = REGION_NAMES[(row_labels[i], col_labels[j])]
             cells = [
                 (dr, c, ownership[dr * board_size + c])
                 for dr in range(r0, r1)
@@ -438,6 +431,115 @@ def _generate_ownership_summary(
         bullets.append(bullet)
 
     return "\n".join(bullets)
+
+
+def _markable_point(katago_point: str | None, board_size: int) -> Point | None:
+    """The point to mark on the diagram, or ``None`` if there is nothing to mark.
+
+    A pass has no coordinates, and a coordinate the SGF got wrong should cost its
+    marker rather than the review — the same bargain :func:`_replay_for_display`
+    makes for the stones themselves.
+    """
+    if not katago_point or katago_point.lower() == "pass":
+        return None
+    try:
+        return point_from_go_notation(katago_point, board_size)
+    except BoardError as exc:
+        logger.warning("Not marking %s on the board: %s", katago_point, exc)
+        return None
+
+
+def _replay_for_display(
+    board_size: int, initial_stones: list[list[str]], moves: list[list[str]]
+) -> SgfmillBoard:
+    """Replay the game onto an sgfmill board, for the ASCII diagram in the prompt.
+
+    A stone that will not go down is skipped rather than raised. sgfmill rejects a
+    play onto an occupied point, and a malformed SGF that got this far would
+    otherwise fail the whole review over one unusable stone — a commentary run with
+    one stone missing from one diagram is a far better outcome than no commentary.
+
+    Every skip is logged, which is how a genuinely broken game gets noticed rather
+    than quietly producing odd-looking boards. In practice this should stay silent:
+    a game whose moves KataGo refused never reaches prompt building at all.
+
+    Deliberately more forgiving than :func:`_detected_features_block`, which
+    abandons its whole block on the first bad move: this board is a visual aid, that
+    one tells the model it may state its contents as fact.
+    """
+    board = SgfmillBoard(board_size)
+    for colour, katago_point in [*initial_stones, *moves]:
+        if not katago_point or katago_point.lower() == "pass":
+            continue
+        try:
+            # Both failures are reported the same way on purpose: from the operator's
+            # side "this stone is missing from the diagram" is one problem, whether the
+            # coordinate would not parse or the point was already taken.
+            point = point_from_go_notation(katago_point, board_size)
+            board.play(point.row, point.col, colour.lower())
+        except (BoardError, ValueError) as exc:
+            logger.warning("Skipping %s %s while drawing the board: %s", colour, katago_point, exc)
+    return board
+
+
+def _setup_points(initial_stones: list[list[str]], colour: str, board_size: int) -> list[Point]:
+    """Handicap and setup stones of one colour, as board points."""
+    return [
+        point_from_go_notation(point, board_size)
+        for stone_colour, point in initial_stones
+        if stone_colour == colour and point.lower() != "pass"
+    ]
+
+
+def _detected_features_block(
+    *,
+    board_size: int,
+    initial_stones: list[list[str]],
+    moves: list[list[str]],
+    turn_number: int,
+    detail: dict[str, Any],
+    prev_detail: dict[str, Any],
+) -> str:
+    """Render the certified-facts block for the move played at ``turn_number``.
+
+    Replays the game into :class:`app.services.board.Board` — a second replay
+    alongside the sgfmill one above, which exists only to render the ASCII diagram
+    and has no chain, liberty, or capture API to detect anything with. A full replay
+    costs about a millisecond, so the duplication is cheaper than the coupling.
+
+    Returns ``""`` on anything the strict rules engine rejects. Real SGFs contain
+    moves played out of turn, onto occupied points, and odd handicap encodings, and
+    the right price for that is losing this one block rather than the whole comment.
+    """
+    if not 1 <= turn_number <= len(moves):
+        return ""
+    try:
+        board = Board(board_size).place_setup_stones(
+            black=_setup_points(initial_stones, "B", board_size),
+            white=_setup_points(initial_stones, "W", board_size),
+        )
+        previous: Move | None = None
+        for colour, katago_point in moves[: turn_number - 1]:
+            move = move_from_go_notation(katago_point, board_size)
+            board = board.place_move(move, Color.from_letter(colour)).board
+            previous = move
+
+        colour, katago_point = moves[turn_number - 1]
+        result = board.place_move(
+            move_from_go_notation(katago_point, board_size), Color.from_letter(colour)
+        )
+        context = DetectorContext.from_analysis(
+            board,
+            result,
+            move_number=turn_number,
+            previous_move=previous,
+            detail=detail,
+            prev_detail=prev_detail,
+        )
+        return render_detected_features(run_detectors(context))
+    except (BoardError, OwnershipLengthError) as exc:
+        logger.warning("No detected-features block for turn %s: %s", turn_number, exc)
+        return ""
 
 
 def sgf_to_winrate_request(sgf_content: str) -> dict[str, Any]:
@@ -513,7 +615,9 @@ def _generate_system_prompt(
     Your rules:
     - Ground every claim in the data provided. Do NOT invent tactical or strategic justifications that you cannot directly see in the board position or derive from the numbers.
     - If the data does not explain *why* a move is bad, say so honestly (e.g. "KataGo strongly preferred C5, though the exact reason is difficult to pin down from this position alone").
-    - Use Go terminology (joseki, influence, sente, etc.) only when it clearly applies.
+    - The [DETECTED FEATURES] block is computed from the board, not inferred. You may state those lines as fact. Lines that begin "estimated —" rest on tuned thresholds: hedge them or leave them out.
+    - Use Go terminology ONLY for concepts named in that block. If it reports an atari, write "atari". If it does not mention a ladder, do not write "ladder". When the block is absent, describe the position in plain language instead of reaching for jargon.
+    - The block reports what is on the board, never whether a move was good. A self-atari can be a throw-in and a working ladder can still be the wrong move — that judgement is yours to make from the position and the numbers.
     - Aim for 3–4 sentences. Tone: clear, educational, not condescending.
     - Structure: (1) brief game state, (2) assessment of the move played, (3) what the suggested move offered.
   """
@@ -547,22 +651,10 @@ def _generate_user_prompt(
     moves_through_turn = moves[:turn_number]
     last_move = moves_through_turn[-1][1] if moves_through_turn else None
     last_move_label = last_move.upper() if last_move else "(none)"
-    last_move_sgfmill = (
-        _katago_point_to_sgfmill(last_move) if last_move and last_move != "pass" else None
-    )
+    last_move_sgfmill = _markable_point(last_move, board_size)
     top_suggestion = prev_detail["moveInfos"][0]["move"]
-    top_suggestion_sgfmill = (
-        _katago_point_to_sgfmill(top_suggestion) if top_suggestion != "pass" else None
-    )
-    board = Board(board_size)
-    for stone_color, katago_point in initial_stones:
-        row, col = _katago_point_to_sgfmill(katago_point)
-        board.play(row, col, stone_color.lower())
-    for move_color, katago_point in moves_through_turn:
-        if katago_point == "pass":
-            continue
-        row, col = _katago_point_to_sgfmill(katago_point)
-        board.play(row, col, move_color.lower())
+    top_suggestion_sgfmill = _markable_point(top_suggestion, board_size)
+    board = _replay_for_display(board_size, initial_stones, moves_through_turn)
     ascii_board = list(render_board(board))
     count = 0
     for i, char in enumerate(ascii_board):
@@ -582,6 +674,19 @@ def _generate_user_prompt(
     prompt += f"* = KataGo's top suggestion ({top_suggestion})\n\n"
     prompt += f"{ascii_board}\n\n"
     prompt += "---\n\n"
+
+    # Placed between the board and the numbers on purpose: the model reads the
+    # position, then the facts that are certain about it, then the estimates.
+    features = _detected_features_block(
+        board_size=board_size,
+        initial_stones=initial_stones,
+        moves=moves,
+        turn_number=turn_number,
+        detail=detail,
+        prev_detail=prev_detail,
+    )
+    if features:
+        prompt += f"{features}\n---\n\n"
 
     prev_winrate = _black_winrate_pct(prev_detail)
     if color == "White":
@@ -610,7 +715,7 @@ def _generate_user_prompt(
     prompt += f"Move quality of {last_move_label}:\n"
     if played_info is not None:
         rank = played_info["order"] + 1
-        prompt += f"  KataGo rank:  {_ordinal(rank)} best move (order: {played_info['order']})\n"
+        prompt += f"  KataGo rank:  {ordinal(rank)} best move (order: {played_info['order']})\n"
         prompt += (
             f"  Policy prior: {played_info['prior']:.3f}  "
             f"({_prior_descriptor(played_info['prior'])})\n\n"
