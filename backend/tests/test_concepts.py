@@ -905,6 +905,30 @@ def test_suppression_is_applied_generically() -> None:
     assert [finding.concept for finding in findings] == ["winner"]
 
 
+def test_a_suppressing_finding_inherits_the_rank_it_displaced() -> None:
+    """Otherwise suppression can cost the reader both findings.
+
+    The winner is registered last, so on its own rank it would be truncated away —
+    while the finding it suppressed was well inside the cap. Taking over that rank is
+    what keeps the block from going quiet about the concept entirely.
+    """
+    winner = Finding(concept="winner", label="W", detail="wins", salience=Salience.NOTABLE)
+    loser = Finding(concept="loser", label="L", detail="loses", salience=Salience.NOTABLE)
+    filler = [
+        Finding(concept=f"f{i}", label=f"F{i}", detail=f"filler {i}", salience=Salience.NOTABLE)
+        for i in range(3)
+    ]
+    detectors = [lambda _: loser, *[(lambda f: lambda _: f)(f) for f in filler], lambda _: winner]
+    findings = run_detectors(
+        _ctx(Board(9), Point(4, 4)),
+        detectors=detectors,
+        suppressions={"winner": frozenset({"loser"})},
+    )
+    concepts = [finding.concept for finding in findings]
+    assert "loser" not in concepts
+    assert concepts[0] == "winner"  # took the suppressed finding's place at the front
+
+
 def test_suppression_only_bites_when_the_suppressing_finding_fired() -> None:
     loser = Finding(concept="loser", label="Loser", detail="loses", salience=Salience.CRITICAL)
     findings = run_detectors(

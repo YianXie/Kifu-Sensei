@@ -469,12 +469,15 @@ def _replay_for_display(
     """
     board = SgfmillBoard(board_size)
     for colour, katago_point in [*initial_stones, *moves]:
-        move = _markable_point(katago_point, board_size)
-        if move is None:
+        if not katago_point or katago_point.lower() == "pass":
             continue
         try:
-            board.play(move.row, move.col, colour.lower())
-        except ValueError as exc:
+            # Both failures are reported the same way on purpose: from the operator's
+            # side "this stone is missing from the diagram" is one problem, whether the
+            # coordinate would not parse or the point was already taken.
+            point = point_from_go_notation(katago_point, board_size)
+            board.play(point.row, point.col, colour.lower())
+        except (BoardError, ValueError) as exc:
             logger.warning("Skipping %s %s while drawing the board: %s", colour, katago_point, exc)
     return board
 

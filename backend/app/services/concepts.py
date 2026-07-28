@@ -1910,6 +1910,11 @@ def run_detectors(
     Findings displaced by :data:`SUPPRESSIONS` are dropped here, so no detector needs
     to know what any other detector found. Ties within a salience level keep
     :data:`DETECTORS` order, which makes the output deterministic.
+
+    A finding that displaces another inherits its rank when that rank is better.
+    Without this, suppressing a well-placed finding in favour of a lower-ranked one
+    can push *both* out of the renderer's capped block — the reader loses the hane
+    to truncation and the contact play to suppression, and hears about neither.
     """
     registry = DETECTORS if detectors is None else tuple(detectors)
     table = SUPPRESSIONS if suppressions is None else suppressions
@@ -1923,9 +1928,23 @@ def run_detectors(
     suppressed: set[str] = set()
     for _, finding in fired:
         suppressed |= table.get(finding.concept, frozenset())
-    kept = [pair for pair in fired if pair[1].concept not in suppressed]
-    kept.sort(key=lambda pair: (pair[1].salience, pair[0]))
-    return tuple(finding for _, finding in kept)
+
+    ranks = {finding.concept: (finding.salience, index) for index, finding in fired}
+    kept: list[tuple[Salience, int, Finding]] = []
+    for index, finding in fired:
+        if finding.concept in suppressed:
+            continue
+        rank = min(
+            [(finding.salience, index)]
+            + [
+                ranks[displaced]
+                for displaced in table.get(finding.concept, ())
+                if displaced in ranks
+            ]
+        )
+        kept.append((rank[0], rank[1], finding))
+    kept.sort(key=lambda entry: (entry[0], entry[1]))
+    return tuple(finding for _, _, finding in kept)
 
 
 # ── Renderer ──────────────────────────────────────────────────────────────────

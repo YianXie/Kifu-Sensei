@@ -127,6 +127,10 @@ def _replay(
             result = board.place_move(move, color)
         except IllegalMoveError:
             skipped += 1
+            # The stone is not on the board, so it cannot serve as the previous move
+            # either: detectors that read it would be measuring against a position
+            # that never existed. Better to leave them silent for one move.
+            previous = None
             continue
 
         detail = analysis.get(number, {})
@@ -217,7 +221,8 @@ def _print_statistics(reviews: list[MoveReview], seen: int, skipped: int) -> Non
     print(f"  block non-empty:          {non_empty} ({non_empty / total:.0%})")
     print(f"  mean findings per move:   {raw / total:.2f} before the cap")
     print(f"                            {capped / total:.2f} after the cap")
-    print(f"  findings dropped by cap:  {dropped} ({dropped / raw:.1%} of all findings)")
+    share = f" ({dropped / raw:.1%} of all findings)" if raw else ""
+    print(f"  findings dropped by cap:  {dropped}{share}")
 
     counts = Counter(f.concept for r in reviews for f in r.findings)
     saliences = {f.concept: f.salience for r in reviews for f in r.findings}
@@ -228,8 +233,8 @@ def _print_statistics(reviews: list[MoveReview], seen: int, skipped: int) -> Non
         salience = saliences[concept].name.lower()
         print(f"  {concept:<24}{count:>7}{count / total:>7.0%}  {salience}")
 
-    silent = [d.__name__.removeprefix("detect_") for d in DETECTORS]
-    never = [name for name in silent if name not in counts and name != "move_ranking"]
+    registered = [detector.__name__.removeprefix("detect_") for detector in DETECTORS]
+    never = [name for name in registered if name not in counts]
     if never:
         print(f"\n  never fired: {', '.join(sorted(never))}")
 
