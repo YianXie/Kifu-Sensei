@@ -56,6 +56,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum, IntEnum
+from functools import lru_cache
 from typing import Any, Final
 
 from app.services.board import (
@@ -70,6 +71,7 @@ from app.services.board import (
     point_from_go_notation,
     point_to_go_notation,
 )
+from app.services.go_text import REGION_NAMES, ordinal
 
 __all__ = [
     "DETECTORS",
@@ -407,6 +409,53 @@ class DetectorContext:
         """Ownership before the move, or ``None`` when missing or too noisy."""
         return self._reliable_map(self.ownership_before, self.root_info_before)
 
+    @property
+    def reliable_move_infos(self) -> Sequence[Mapping[str, Any]] | None:
+        """The engine's candidates, or ``None`` when they are too noisy to read.
+
+        The same gate :meth:`_reliable_map` applies to ownership. Principal
+        variations degrade with visit count just as ownership does, so a detector
+        reading them goes through here rather than re-deriving the threshold — which
+        is how the next one to need a PV forgets it.
+        """
+        if not self.move_infos:
+            return None
+        visits = (self.root_info_before or {}).get("visits", 0)
+        if not isinstance(visits, int | float) or visits < _MIN_RELIABLE_VISITS:
+            return None
+        return self.move_infos
+
+    @classmethod
+    def from_analysis(
+        cls,
+        board_before: Board,
+        result: MoveResult,
+        *,
+        move_number: int,
+        previous_move: Move | None = None,
+        detail: Mapping[str, Any] | None = None,
+        prev_detail: Mapping[str, Any] | None = None,
+    ) -> DetectorContext:
+        """Build a context from a pair of KataGo analysis payloads.
+
+        Which payload each field comes from is the easy thing to get backwards, so
+        the mapping lives here once rather than at every call site that has a
+        ``detail``/``prev_detail`` pair to hand.
+        """
+        detail = detail or {}
+        prev_detail = prev_detail or {}
+        return cls(
+            board_before=board_before,
+            result=result,
+            move_number=move_number,
+            previous_move=previous_move,
+            root_info=detail.get("rootInfo"),
+            move_infos=prev_detail.get("moveInfos"),
+            ownership=detail.get("ownership"),
+            root_info_before=prev_detail.get("rootInfo"),
+            ownership_before=prev_detail.get("ownership"),
+        )
+
 
 #: A detector takes a context and returns one finding, or ``None`` when it does not
 #: apply. It must not raise, and must not emit a placeholder for "nothing here".
@@ -471,40 +520,23 @@ def _names(points: Iterable[Point], board_size: int) -> str:
     return "/".join(shown)
 
 
+def _and_more(matches: int) -> str:
+    """Disclose the instances a one-finding-per-concept report cannot spell out.
+
+    Shapes often form more than once from a single move. Reporting only the first and
+    saying nothing would understate the board in a block whose whole premise is that
+    its contents can be stated as fact.
+    """
+    if matches <= 1:
+        return ""
+    return f" ({matches - 1} more formed by the same move)"
+
+
 def _plural(count: int, singular: str, plural: str) -> str:
     return singular if count == 1 else plural
 
 
-def _ordinal(n: int) -> str:
-    """Return the ordinal string for ``n`` (e.g. ``1`` -> ``"1st"``).
-
-    Duplicated from :mod:`app.services.katago` on purpose: importing that module
-    would drag Anthropic, httpx, and application settings into what is meant to be
-    a dependency-free computation layer. Worth lifting into a shared text helper
-    when this layer is wired into the prompt builder.
-    """
-    suffix = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
-    return f"{n}{suffix}"
-
-
 # ── Shared board queries ──────────────────────────────────────────────────────
-
-
-#: A 3x3 partition of the board, named as :mod:`app.services.katago` already names
-#: it in the ownership-summary block. Sharing the vocabulary matters more than
-#: picking a better one: two blocks in the same prompt that disagree about where
-#: "the upper side" is would be a contradiction the model has no way to resolve.
-_REGION_NAMES: Final[dict[tuple[str, str], str]] = {
-    ("upper", "left"): "upper-left",
-    ("upper", "center"): "upper side",
-    ("upper", "right"): "upper-right",
-    ("center", "left"): "left side",
-    ("center", "center"): "center",
-    ("center", "right"): "right side",
-    ("lower", "left"): "lower-left",
-    ("lower", "center"): "lower side",
-    ("lower", "right"): "lower-right",
-}
 
 
 def _chebyshev(a: Point, b: Point) -> int:
@@ -521,7 +553,7 @@ def _region_of(point: Point, board_size: int) -> str:
     first, second = _region_bands(board_size)
     vertical = "lower" if point.row < first else "upper" if point.row >= second else "center"
     horizontal = "left" if point.col < first else "right" if point.col >= second else "center"
-    return _REGION_NAMES[(vertical, horizontal)]
+    return REGION_NAMES[(vertical, horizontal)]
 
 
 def _adjacent_chains(board: Board, point: Point, color: Color) -> tuple[Chain, ...]:
@@ -768,14 +800,12 @@ def detect_atari_ignored(context: DetectorContext) -> Finding | None:
     before, after = context.board_before, context.board_after
     friendly = context.color
     played = context.point
-    freshly_hit = set(before.neighbors(previous))
-
     ignored: list[Chain] = []
-    for chain in before.chains():
-        if chain.color is not friendly or len(before.liberties(chain)) != 1:
+    # Only chains the opponent's move actually touches can have been ataried by it,
+    # so this reads the four neighbours of that move rather than sweeping the board.
+    for chain in _adjacent_chains(before, previous, friendly):
+        if len(before.liberties(chain)) != 1:
             continue
-        if chain.points.isdisjoint(freshly_hit):
-            continue  # the opponent played elsewhere, so this atari is old news
         anchor = min(chain.points)
         if after.get(anchor) is not friendly:
             continue
@@ -875,7 +905,7 @@ def detect_line_number(context: DetectorContext) -> Finding | None:
     return Finding(
         concept="line_number",
         label="Line",
-        detail=f"{_name(point, size)} is on the {_ordinal(line)} line",
+        detail=f"{_name(point, size)} is on the {ordinal(line)} line",
         salience=Salience.BACKGROUND,
         points=(point,),
     )
@@ -981,15 +1011,22 @@ def detect_game_phase(context: DetectorContext) -> Finding | None:
 # ── Tier 2 helpers: regions, distance, PV parsing ─────────────────────────────
 
 
-def _contested_by_region(ownership: OwnershipMap, board_size: int) -> dict[str, float]:
+@lru_cache(maxsize=8)
+def _contested_by_region(ownership: OwnershipMap) -> dict[str, float]:
     """Score each region by how much of it is still up for grabs.
 
     A point contributes ``1 - |ownership|``, so a dead-settled point adds nothing and
     a genuinely undecided one adds a full point. The total reads directly as "about
     this many points are still contested here", which is the comparison a kyu player
     needs and the one the model can state without inventing a number.
+
+    Two detectors ask for this on the same position, so the result is cached — with a
+    small bound rather than unbounded, since a long-lived server would otherwise
+    retain an ownership array per position it ever scored. The returned mapping is
+    shared between callers and must be treated as read-only.
     """
-    totals: dict[str, float] = {name: 0.0 for name in _REGION_NAMES.values()}
+    board_size = ownership.board_size
+    totals: dict[str, float] = {name: 0.0 for name in REGION_NAMES.values()}
     for row in range(board_size):
         for col in range(board_size):
             point = Point(row, col)
@@ -1151,7 +1188,7 @@ def detect_direction_of_play(context: DetectorContext) -> Finding | None:
     ownership = context.ownership_map
     if ownership is None:
         return None
-    totals = _contested_by_region(ownership, context.board_size)
+    totals = _contested_by_region(ownership)
     name, score = max(totals.items(), key=lambda item: (item[1], item[0]))
     return Finding(
         concept="direction_of_play",
@@ -1176,7 +1213,7 @@ def detect_move_in_largest_area(context: DetectorContext) -> Finding | None:
         return None
 
     size = context.board_size
-    totals = _contested_by_region(ownership, size)
+    totals = _contested_by_region(ownership)
     largest_name, largest_score = max(totals.items(), key=lambda item: (item[1], item[0]))
     played_name = _region_of(point, size)
     played_score = totals[played_name]
@@ -1242,12 +1279,11 @@ def detect_sente_gote(context: DetectorContext) -> Finding | None:
     demonstration that the opponent has to answer. Only the immediate reply is read,
     and the finding is heuristic.
     """
-    played = _played_candidate(context)
     point = context.point
-    if played is None or point is None:
+    if point is None or context.reliable_move_infos is None:
         return None
-    visits = (context.root_info_before or {}).get("visits", 0)
-    if not isinstance(visits, int | float) or visits < _MIN_RELIABLE_VISITS:
+    played = _played_candidate(context)
+    if played is None:
         return None
     reply = _pv_reply(played, context.board_size)
     if reply is None:
@@ -1296,7 +1332,7 @@ def detect_move_ranking(context: DetectorContext) -> Finding | None:
             points=(context.point,),
         )
     order = played.get("order")
-    rank = _ordinal(order + 1) if isinstance(order, int) else "unranked"
+    rank = ordinal(order + 1) if isinstance(order, int) else "unranked"
     detail = f"{_name(context.point, size)} is the engine's {rank} choice"
     prior = played.get("prior")
     if isinstance(prior, int | float):
@@ -1530,8 +1566,7 @@ def detect_empty_triangle(context: DetectorContext) -> Finding | None:
         f"{_word(friendly)} stones at {_names(stones, size)} form an empty triangle, "
         f"with {_name(gap, size)} empty"
     )
-    if len(found) > 1:
-        detail += f" ({len(found) - 1} more formed by the same move)"
+    detail += _and_more(len(found))
     return Finding(
         concept="empty_triangle",
         label="Empty triangle",
@@ -1554,6 +1589,7 @@ def detect_tigers_mouth(context: DetectorContext) -> Finding | None:
     after = context.board_after
     friendly = context.color
 
+    found: list[tuple[Point, tuple[Point, ...]]] = []
     for gap in after.neighbors(point):
         if after.get(gap) is not None:
             continue
@@ -1563,19 +1599,22 @@ def detect_tigers_mouth(context: DetectorContext) -> Finding | None:
         colors = [after.get(p) for p in surrounding]
         if colors.count(friendly) != 3 or colors.count(None) != 1:
             continue
-        stones = tuple(p for p in surrounding if after.get(p) is friendly)
-        size = context.board_size
-        return Finding(
-            concept="tigers_mouth",
-            label="Tiger's mouth",
-            detail=(
-                f"{_word(friendly)} stones at {_names(stones, size)} leave "
-                f"{_name(gap, size)} as a tiger's mouth"
-            ),
-            salience=Salience.NOTABLE,
-            points=(gap,),
-        )
-    return None
+        found.append((gap, tuple(p for p in surrounding if after.get(p) is friendly)))
+    if not found:
+        return None
+
+    size = context.board_size
+    gap, stones = found[0]
+    return Finding(
+        concept="tigers_mouth",
+        label="Tiger's mouth",
+        detail=(
+            f"{_word(friendly)} stones at {_names(stones, size)} leave "
+            f"{_name(gap, size)} as a tiger's mouth{_and_more(len(found))}"
+        ),
+        salience=Salience.NOTABLE,
+        points=(gap,),
+    )
 
 
 def detect_bamboo_joint(context: DetectorContext) -> Finding | None:
@@ -1586,23 +1625,29 @@ def detect_bamboo_joint(context: DetectorContext) -> Finding | None:
     after = context.board_after
     friendly = context.color
 
-    for first, gap, second in _bamboo_windows(point, context.board_size):
+    found: list[tuple[tuple[Point, ...], ...]] = []
+    for window in _bamboo_windows(point, context.board_size):
+        first, gap, second = window
         if any(after.get(p) is not friendly for p in first + second):
             continue
         if any(after.get(p) is not None for p in gap):
             continue
-        size = context.board_size
-        return Finding(
-            concept="bamboo_joint",
-            label="Bamboo joint",
-            detail=(
-                f"{_word(friendly)} stones at {_names(first + second, size)} stand as a "
-                f"bamboo joint around {_names(gap, size)}"
-            ),
-            salience=Salience.NOTABLE,
-            points=first + second,
-        )
-    return None
+        found.append(window)
+    if not found:
+        return None
+
+    size = context.board_size
+    first, gap, second = found[0]
+    return Finding(
+        concept="bamboo_joint",
+        label="Bamboo joint",
+        detail=(
+            f"{_word(friendly)} stones at {_names(first + second, size)} stand as a "
+            f"bamboo joint around {_names(gap, size)}{_and_more(len(found))}"
+        ),
+        salience=Salience.NOTABLE,
+        points=first + second,
+    )
 
 
 def detect_ponnuki(context: DetectorContext) -> Finding | None:

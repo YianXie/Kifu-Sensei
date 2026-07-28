@@ -19,6 +19,7 @@ from app.services.board import PASS, Board, Color, Move, Point
 from app.services.concepts import (
     DETECTORS,
     Certainty,
+    DetectorContext,
     OwnershipLengthError,
     OwnershipMap,
     Salience,
@@ -200,6 +201,57 @@ def test_identical_ownership_reads_as_settled_or_dying_by_the_chains_colour() ->
 
 
 # ── Malformed input ───────────────────────────────────────────────────────────
+
+
+def test_from_analysis_maps_each_payload_to_the_right_position() -> None:
+    """Which payload feeds which field is the easy thing to get backwards, so the
+    mapping lives in one place and is pinned here."""
+    board = _settled_board()
+    result = board.place_move(Point(2, 2))
+    detail = {"rootInfo": {"visits": 500}, "ownership": ownership_with(5, {})}
+    prev = {
+        "rootInfo": {"visits": 400},
+        "ownership": ownership_with(5, {}, default=0.5),
+        "moveInfos": [{"move": "C3", "order": 0}],
+    }
+    context = DetectorContext.from_analysis(
+        board, result, move_number=7, detail=detail, prev_detail=prev
+    )
+    assert context.root_info is detail["rootInfo"]
+    assert context.ownership is detail["ownership"]
+    assert context.root_info_before is prev["rootInfo"]
+    assert context.ownership_before is prev["ownership"]
+    # The candidates describe the position *before* the move, so they come from prev.
+    assert context.move_infos is prev["moveInfos"]
+
+
+def test_from_analysis_tolerates_a_move_with_no_analysis() -> None:
+    """Most moves get only the shallow pass, and many get nothing at all."""
+    board = _settled_board()
+    context = DetectorContext.from_analysis(board, board.place_move(Point(2, 2)), move_number=7)
+    assert context.ownership_map is None
+    assert context.reliable_move_infos is None
+
+
+def test_move_infos_are_gated_on_visits_like_ownership_is() -> None:
+    """One gate for noisy engine data, not one per detector that reads it."""
+    board = _settled_board()
+    result = board.place_move(Point(2, 2))
+    candidates = [{"move": "C3", "order": 0}]
+    shallow = DetectorContext.from_analysis(
+        board,
+        result,
+        move_number=7,
+        prev_detail={"rootInfo": {"visits": 50}, "moveInfos": candidates},
+    )
+    deep = DetectorContext.from_analysis(
+        board,
+        result,
+        move_number=7,
+        prev_detail={"rootInfo": {"visits": 500}, "moveInfos": candidates},
+    )
+    assert shallow.reliable_move_infos is None
+    assert deep.reliable_move_infos is candidates
 
 
 def test_a_mismatched_ownership_length_raises() -> None:

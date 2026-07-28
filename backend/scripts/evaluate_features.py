@@ -131,16 +131,13 @@ def _replay(
 
         detail = analysis.get(number, {})
         before = analysis.get(number - 1, {})
-        context = DetectorContext(
-            board_before=board,
-            result=result,
+        context = DetectorContext.from_analysis(
+            board,
+            result,
             move_number=number,
             previous_move=previous,
-            root_info=detail.get("rootInfo"),
-            move_infos=before.get("moveInfos"),
-            ownership=detail.get("ownership"),
-            root_info_before=before.get("rootInfo"),
-            ownership_before=before.get("ownership"),
+            detail=detail,
+            prev_detail=before,
         )
         reviews.append(
             MoveReview(

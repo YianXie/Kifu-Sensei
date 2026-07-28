@@ -399,6 +399,23 @@ def test_tigers_mouth_reports_the_gap_point() -> None:
     assert finding.points == (Point(2, 2),)
 
 
+def test_tigers_mouth_discloses_a_second_one_formed_by_the_same_move() -> None:
+    """One finding per concept, so extra instances are counted rather than dropped —
+    silently reporting one of two would understate a block sold as fact."""
+    diagram = """
+    . . . . . . .
+    . . . . . . .
+    . . . . . . .
+    . X . . . X .
+    . . X . X . .
+    . . . . . . .
+    . . . . . . .
+    """
+    finding = detect_tigers_mouth(_ctx(board_from_ascii(diagram), Point(3, 3)))
+    assert finding is not None
+    assert "more formed by the same move" in finding.detail
+
+
 def test_tigers_mouth_is_silent_with_only_two_flanking_stones() -> None:
     diagram = """
     . . . . .

@@ -17,13 +17,22 @@ from app.crypto import decrypt_secret
 from app.deps import CurrentUser
 from app.errors import InvalidSgfError, MissingApiKeyError
 from app.models import User
-from app.services.board import PASS, Board, BoardError, Color, Move, Point
+from app.services.board import (
+    Board,
+    BoardError,
+    Color,
+    Move,
+    Point,
+    move_from_go_notation,
+    point_from_go_notation,
+)
 from app.services.concepts import (
     DetectorContext,
     OwnershipLengthError,
     render_detected_features,
     run_detectors,
 )
+from app.services.go_text import REGION_NAMES, ordinal
 
 _http_client = None
 log_path = "logs/katago_service.log"
@@ -207,29 +216,6 @@ def _color_letter_to_word(letter: Literal["B", "W"]) -> Literal["Black", "White"
     return "Black"
 
 
-# 3x3 grid of human-readable board regions, keyed by (vertical band, horizontal band).
-_REGION_NAMES: dict[tuple[str, str], str] = {
-    ("upper", "left"): "upper-left",
-    ("upper", "center"): "upper side",
-    ("upper", "right"): "upper-right",
-    ("center", "left"): "left side",
-    ("center", "center"): "center",
-    ("center", "right"): "right side",
-    ("lower", "left"): "lower-left",
-    ("lower", "center"): "lower side",
-    ("lower", "right"): "lower-right",
-}
-
-
-def _ordinal(n: int) -> str:
-    """Return the ordinal string for ``n`` (e.g. ``1`` -> ``"1st"``)."""
-    if 10 <= n % 100 <= 20:
-        suffix = "th"
-    else:
-        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
-    return f"{n}{suffix}"
-
-
 def _katago_point_to_display(point: str, board_size: int) -> tuple[int, int]:
     """Convert a KataGo point to ``(display_row, col)`` in ownership-array order.
 
@@ -262,7 +248,7 @@ def _region_name(display_row: int, col: int, board_size: int) -> str:
         horizontal = "right"
     else:
         horizontal = "center"
-    return _REGION_NAMES[(vertical, horizontal)]
+    return REGION_NAMES[(vertical, horizontal)]
 
 
 def _ownership_symbol(value: float) -> str:
@@ -381,7 +367,7 @@ def _generate_ownership_summary(
     region_stats: dict[str, dict[str, Any]] = {}
     for i, (r0, r1) in enumerate(bands):
         for j, (c0, c1) in enumerate(bands):
-            name = _REGION_NAMES[(row_labels[i], col_labels[j])]
+            name = REGION_NAMES[(row_labels[i], col_labels[j])]
             cells = [
                 (dr, c, ownership[dr * board_size + c])
                 for dr in range(r0, r1)
@@ -447,7 +433,7 @@ def _generate_ownership_summary(
     return "\n".join(bullets)
 
 
-def _markable_point(katago_point: str | None) -> tuple[int, int] | None:
+def _markable_point(katago_point: str | None, board_size: int) -> Point | None:
     """The point to mark on the diagram, or ``None`` if there is nothing to mark.
 
     A pass has no coordinates, and a coordinate the SGF got wrong should cost its
@@ -457,8 +443,8 @@ def _markable_point(katago_point: str | None) -> tuple[int, int] | None:
     if not katago_point or katago_point.lower() == "pass":
         return None
     try:
-        return _katago_point_to_sgfmill(katago_point)
-    except ValueError as exc:
+        return point_from_go_notation(katago_point, board_size)
+    except BoardError as exc:
         logger.warning("Not marking %s on the board: %s", katago_point, exc)
         return None
 
@@ -476,24 +462,30 @@ def _replay_for_display(
     Every skip is logged, which is how a genuinely broken game gets noticed rather
     than quietly producing odd-looking boards. In practice this should stay silent:
     a game whose moves KataGo refused never reaches prompt building at all.
+
+    Deliberately more forgiving than :func:`_detected_features_block`, which
+    abandons its whole block on the first bad move: this board is a visual aid, that
+    one tells the model it may state its contents as fact.
     """
     board = SgfmillBoard(board_size)
     for colour, katago_point in [*initial_stones, *moves]:
-        if katago_point.lower() == "pass":
+        move = _markable_point(katago_point, board_size)
+        if move is None:
             continue
         try:
-            row, col = _katago_point_to_sgfmill(katago_point)
-            board.play(row, col, colour.lower())
-        except (ValueError, IndexError) as exc:
+            board.play(move.row, move.col, colour.lower())
+        except ValueError as exc:
             logger.warning("Skipping %s %s while drawing the board: %s", colour, katago_point, exc)
     return board
 
 
-def _katago_move_to_point(katago_point: str) -> Move:
-    """Convert a KataGo move string to a board :class:`Move`, passes included."""
-    if katago_point.lower() == "pass":
-        return PASS
-    return Point(*_katago_point_to_sgfmill(katago_point))
+def _setup_points(initial_stones: list[list[str]], colour: str, board_size: int) -> list[Point]:
+    """Handicap and setup stones of one colour, as board points."""
+    return [
+        point_from_go_notation(point, board_size)
+        for stone_colour, point in initial_stones
+        if stone_colour == colour and point.lower() != "pass"
+    ]
 
 
 def _detected_features_block(
@@ -520,38 +512,29 @@ def _detected_features_block(
         return ""
     try:
         board = Board(board_size).place_setup_stones(
-            black=[
-                _katago_move_to_point(point)
-                for colour, point in initial_stones
-                if colour == "B" and point.lower() != "pass"
-            ],
-            white=[
-                _katago_move_to_point(point)
-                for colour, point in initial_stones
-                if colour == "W" and point.lower() != "pass"
-            ],
+            black=_setup_points(initial_stones, "B", board_size),
+            white=_setup_points(initial_stones, "W", board_size),
         )
         previous: Move | None = None
         for colour, katago_point in moves[: turn_number - 1]:
-            move = _katago_move_to_point(katago_point)
+            move = move_from_go_notation(katago_point, board_size)
             board = board.place_move(move, Color.from_letter(colour)).board
             previous = move
 
         colour, katago_point = moves[turn_number - 1]
-        result = board.place_move(_katago_move_to_point(katago_point), Color.from_letter(colour))
-        context = DetectorContext(
-            board_before=board,
-            result=result,
+        result = board.place_move(
+            move_from_go_notation(katago_point, board_size), Color.from_letter(colour)
+        )
+        context = DetectorContext.from_analysis(
+            board,
+            result,
             move_number=turn_number,
             previous_move=previous,
-            root_info=detail.get("rootInfo"),
-            move_infos=prev_detail.get("moveInfos"),
-            ownership=detail.get("ownership"),
-            root_info_before=prev_detail.get("rootInfo"),
-            ownership_before=prev_detail.get("ownership"),
+            detail=detail,
+            prev_detail=prev_detail,
         )
         return render_detected_features(run_detectors(context))
-    except (BoardError, OwnershipLengthError, ValueError) as exc:
+    except (BoardError, OwnershipLengthError) as exc:
         logger.warning("No detected-features block for turn %s: %s", turn_number, exc)
         return ""
 
@@ -665,9 +648,9 @@ def _generate_user_prompt(
     moves_through_turn = moves[:turn_number]
     last_move = moves_through_turn[-1][1] if moves_through_turn else None
     last_move_label = last_move.upper() if last_move else "(none)"
-    last_move_sgfmill = _markable_point(last_move)
+    last_move_sgfmill = _markable_point(last_move, board_size)
     top_suggestion = prev_detail["moveInfos"][0]["move"]
-    top_suggestion_sgfmill = _markable_point(top_suggestion)
+    top_suggestion_sgfmill = _markable_point(top_suggestion, board_size)
     board = _replay_for_display(board_size, initial_stones, moves_through_turn)
     ascii_board = list(render_board(board))
     count = 0
@@ -729,7 +712,7 @@ def _generate_user_prompt(
     prompt += f"Move quality of {last_move_label}:\n"
     if played_info is not None:
         rank = played_info["order"] + 1
-        prompt += f"  KataGo rank:  {_ordinal(rank)} best move (order: {played_info['order']})\n"
+        prompt += f"  KataGo rank:  {ordinal(rank)} best move (order: {played_info['order']})\n"
         prompt += (
             f"  Policy prior: {played_info['prior']:.3f}  "
             f"({_prior_descriptor(played_info['prior'])})\n\n"

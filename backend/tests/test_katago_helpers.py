@@ -13,6 +13,7 @@ import pytest
 from sgfmill import sgf
 
 from app.errors import InvalidSgfError
+from app.services.go_text import ordinal
 from app.services.katago import (
     _accumulate_usage,
     _black_winrate_pct,
@@ -32,7 +33,6 @@ from app.services.katago import (
     _katago_point_to_sgfmill,
     _mover_winrate_delta,
     _normalize_rules,
-    _ordinal,
     _ownership_symbol,
     _prior_descriptor,
     _region_name,
@@ -161,7 +161,7 @@ def test_region_names_cover_the_whole_board(display_row: int, col: int, expected
     ],
 )
 def test_ordinal_handles_the_teens(n: int, expected: str) -> None:
-    assert _ordinal(n) == expected
+    assert ordinal(n) == expected
 
 
 @pytest.mark.parametrize(
