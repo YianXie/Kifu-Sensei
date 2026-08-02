@@ -19,6 +19,7 @@ import {
     ListItem,
     ListItemButton,
     ListItemIcon,
+    ListItemText,
     Menu,
     MenuItem,
     Toolbar,
@@ -70,57 +71,39 @@ export default function Navbar() {
                             ("protected" in item ? !item.protected : false)
                     )
                     .map((item) => (
-                        <ListItem
-                            key={item.label}
-                            sx={{
-                                fontWeight: 500,
-                            }}
-                        >
-                            <ListItemButton>
+                        <ListItem key={item.label} disablePadding>
+                            <ListItemButton
+                                component={RouterLink}
+                                to={item.to}
+                                sx={{ fontWeight: 500 }}
+                            >
                                 <ListItemIcon>{item.icon}</ListItemIcon>
-                                <Link
-                                    component={RouterLink}
-                                    to={item.to}
-                                    underline="none"
-                                    color="inherit"
-                                >
-                                    {item.label}
-                                </Link>
+                                <ListItemText primary={item.label} />
                             </ListItemButton>
                         </ListItem>
                     ))}
-                <ListItem
-                    sx={{
-                        fontWeight: 500,
-                    }}
-                >
+                <ListItem disablePadding>
                     {isAuthenticated ? (
-                        <ListItemButton>
+                        <ListItemButton
+                            component={RouterLink}
+                            to="/logout"
+                            sx={{ fontWeight: 500 }}
+                        >
                             <ListItemIcon>
                                 <LogoutIcon fontSize="small" />
                             </ListItemIcon>
-                            <Link
-                                component={RouterLink}
-                                to="/logout"
-                                underline="none"
-                                color="inherit"
-                            >
-                                Logout
-                            </Link>
+                            <ListItemText primary="Logout" />
                         </ListItemButton>
                     ) : (
-                        <ListItemButton>
+                        <ListItemButton
+                            component={RouterLink}
+                            to="/login"
+                            sx={{ fontWeight: 500 }}
+                        >
                             <ListItemIcon>
                                 <LoginIcon fontSize="small" />
                             </ListItemIcon>
-                            <Link
-                                component={RouterLink}
-                                to="/login"
-                                underline="none"
-                                color="inherit"
-                            >
-                                Login
-                            </Link>
+                            <ListItemText primary="Login" />
                         </ListItemButton>
                     )}
                 </ListItem>
@@ -167,7 +150,10 @@ export default function Navbar() {
                 </Link>
                 {isMobile ? (
                     <>
-                        <IconButton onClick={() => setDrawerOpen(true)}>
+                        <IconButton
+                            onClick={() => setDrawerOpen(true)}
+                            aria-label="Open navigation menu"
+                        >
                             <MenuIcon
                                 sx={{
                                     color: "#fff",

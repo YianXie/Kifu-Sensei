@@ -111,3 +111,48 @@ def test_a_token_without_a_subject_is_rejected(client: TestClient) -> None:
 def test_the_challenge_header_is_advertised(client: TestClient) -> None:
     response = client.get(SETTINGS_URL)
     assert response.headers["www-authenticate"] == "Bearer"
+
+
+# ── Token revocation (token_version) ────────────────────────────────────────────
+
+
+def test_a_token_predating_a_version_bump_is_rejected(
+    client: TestClient, session: Session, user: User
+) -> None:
+    """Simulates a password change or logout happening after this token was issued —
+    see routers.auth.update_password / routers.auth.logout, which both bump it."""
+    headers = {"Authorization": f"Bearer {create_access_token(user.id, user.email, 0)}"}
+    user.token_version = 1
+    session.add(user)
+    session.commit()
+
+    assert client.get(SETTINGS_URL, headers=headers).status_code == 401
+
+
+def test_a_token_with_the_current_version_is_accepted(
+    client: TestClient, session: Session, user: User
+) -> None:
+    user.token_version = 5
+    session.add(user)
+    session.commit()
+    headers = {"Authorization": f"Bearer {create_access_token(user.id, user.email, 5)}"}
+
+    assert client.get(SETTINGS_URL, headers=headers).status_code == 200
+
+
+def test_a_token_with_no_token_version_claim_at_all_is_rejected(
+    client: TestClient, user: User
+) -> None:
+    """A token minted before this claim existed carries none at all — rejecting it
+    outright is the point: it must not be treated as an implicit version match."""
+    token = jwt.encode(
+        {
+            "sub": str(user.id),
+            "type": ACCESS_TOKEN_TYPE,
+            "exp": datetime.now(UTC) + timedelta(minutes=30),
+        },
+        settings.secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+    response = client.get(SETTINGS_URL, headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 401

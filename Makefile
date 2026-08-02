@@ -1,5 +1,5 @@
 .PHONY: install install-backend install-frontend install-extension \
-        run run-backend run-frontend \
+        run-backend run-frontend \
         format format-backend format-frontend format-extension \
         lint lint-backend lint-frontend lint-extension \
         test test-backend test-frontend test-extension \

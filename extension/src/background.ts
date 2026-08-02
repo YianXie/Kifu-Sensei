@@ -62,9 +62,18 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     void driveJob();
 });
 
-// Nothing is in flight across a browser restart — session storage is already gone —
-// but the alarm can outlive it, so tidy up.
-chrome.runtime.onStartup.addListener(() => void clearPollAlarm());
+// Nothing is in flight across a browser restart — chrome.storage.session (the full
+// job) is already gone — but the alarm and the chrome.storage.local status mirror
+// both outlive it. Leaving the mirror behind is what used to make the injected OGS
+// button show "Reviewing…" forever after a restart mid-run, with no poller left
+// alive to ever move it past that. clearJob() is the fast path for the common case;
+// PublicJobStatus.startedAt (checked in button/controller.ts) is the backstop for
+// however this event is missed — it does not fire for a manual reload of an
+// unpacked build, for instance.
+chrome.runtime.onStartup.addListener(() => {
+    void clearPollAlarm();
+    void clearJob();
+});
 
 type PanelMessage =
     | { type: "start-commentary"; gameId: number; config: CommentaryConfig }

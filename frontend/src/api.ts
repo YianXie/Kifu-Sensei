@@ -60,6 +60,15 @@ api.interceptors.response.use(
             });
             const newAccess: string = data.access;
             localStorage.setItem("access_token", newAccess);
+            // The backend rotates the refresh token on every use (see
+            // POST /auth/token/refresh/) — storing only the access token here left
+            // the original refresh token in place, so a session that refreshed
+            // continuously still hit a hard wall exactly 7 days after login instead
+            // of rolling forward with activity. Guarded on truthiness so a backend
+            // that ever stops rotating doesn't wipe out the still-valid stored token.
+            if (data.refresh) {
+                localStorage.setItem("refresh_token", data.refresh);
+            }
             api.defaults.headers.common.Authorization = `Bearer ${newAccess}`;
             processQueue(null, newAccess);
             originalRequest.headers.Authorization = `Bearer ${newAccess}`;

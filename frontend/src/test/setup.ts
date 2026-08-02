@@ -26,6 +26,17 @@ Object.defineProperty(window.HTMLMediaElement.prototype, "play", {
     value: vi.fn(() => Promise.resolve()),
 });
 
+// jsdom has no ResizeObserver; GameViewer uses one to size the board column.
+if (!window.ResizeObserver) {
+    class MockResizeObserver {
+        observe(): void {}
+        unobserve(): void {}
+        disconnect(): void {}
+    }
+    window.ResizeObserver =
+        MockResizeObserver as unknown as typeof ResizeObserver;
+}
+
 afterEach(() => {
     cleanup();
     localStorage.clear();

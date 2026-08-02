@@ -4,8 +4,11 @@ export const ENDPOINTS = {
     register: `${API_URL}/auth/register/`,
     tokenObtain: `${API_URL}/auth/token/`,
     tokenRefresh: `${API_URL}/auth/token/refresh/`,
+    logout: `${API_URL}/auth/logout/`,
     userSettings: `${API_URL}/auth/user/settings/`,
     userCommentaryHistory: `${API_URL}/auth/user/commentary-history/`,
+    userCommentaryHistoryDetail: (id: number) =>
+        `${API_URL}/auth/user/commentary-history/${id}/`,
     updateEmail: `${API_URL}/auth/user/update-email/`,
     updatePassword: `${API_URL}/auth/user/update-password/`,
     claudeApiKey: `${API_URL}/auth/user/claude-api-key/`,

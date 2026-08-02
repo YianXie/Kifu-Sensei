@@ -1,13 +1,14 @@
 import jwt
-from fastapi import APIRouter, HTTPException, Response, status
-from sqlmodel import select
+from fastapi import APIRouter, HTTPException, Query, Response, status
+from sqlmodel import delete, func, select
 
 from app.crypto import encrypt_secret
 from app.deps import CurrentUser, SessionDep
 from app.errors import FieldValidationError
-from app.models import Commentary, User
+from app.models import Commentary, CommentaryJob, User
 from app.schemas import (
     AccessTokenResponse,
+    CommentaryHistoryItemSchema,
     DeleteAccountRequest,
     DetailResponse,
     GenerateCommentaryResponse,
@@ -36,8 +37,8 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 def _token_pair(user: User) -> TokenPairResponse:
     return TokenPairResponse(
-        access=create_access_token(user.id, user.email),
-        refresh=create_refresh_token(user.id, user.email),
+        access=create_access_token(user.id, user.email, user.token_version),
+        refresh=create_refresh_token(user.id, user.email, user.token_version),
         user=UserPublic(
             id=user.id,
             email=user.email,
@@ -84,17 +85,36 @@ def token_refresh(payload: TokenRefreshRequest, session: SessionDep) -> AccessTo
     try:
         claims = decode_token(payload.refresh, REFRESH_TOKEN_TYPE)
         user_id = int(claims["sub"])
+        token_version = claims["token_version"]
     except (jwt.InvalidTokenError, KeyError, ValueError):
         raise invalid from None
 
     user = session.get(User, user_id)
-    if user is None:
+    # A version mismatch means this refresh token predates a password change or an
+    # explicit logout — reject it exactly like an unknown user, rather than minting a
+    # fresh pair from a token that was supposed to have been invalidated.
+    if user is None or token_version != user.token_version:
         raise invalid
 
     return AccessTokenResponse(
-        access=create_access_token(user.id, user.email),
-        refresh=create_refresh_token(user.id, user.email),
+        access=create_access_token(user.id, user.email, user.token_version),
+        refresh=create_refresh_token(user.id, user.email, user.token_version),
     )
+
+
+@router.post("/logout/", response_model=DetailResponse)
+def logout(user: CurrentUser, session: SessionDep) -> DetailResponse:
+    """Invalidate every access and refresh token issued to this account so far.
+
+    Bumping ``token_version`` does this in one step rather than tracking individual
+    tokens: every previously issued JWT — including the one authenticating this very
+    request — now fails the version check in ``get_current_user``/``token_refresh``,
+    while a freshly issued token (the next login) carries the new version and works.
+    """
+    user.token_version += 1
+    session.add(user)
+    session.commit()
+    return DetailResponse(detail="Logged out.")
 
 
 @router.get("/user/settings/", response_model=UserSettingsSchema)
@@ -172,6 +192,10 @@ def update_password(
         raise FieldValidationError({"current_password": ["Incorrect password."]})
 
     user.hashed_password = hash_password(payload.new_password)
+    # Invalidate every token issued before this change — otherwise a stolen token
+    # keeps working for the rest of its lifetime regardless of the password change
+    # the victim just made in response to noticing the theft.
+    user.token_version += 1
     session.add(user)
     session.commit()
     return DetailResponse(detail="Password updated.")
@@ -184,32 +208,85 @@ def delete_account(
     if not verify_password(payload.password, user.hashed_password):
         raise FieldValidationError({"password": ["Incorrect password."]})
 
+    # Both tables carry a foreign key to users.id (enforced on SQLite via the
+    # connect-time PRAGMA in app.database, and by Postgres natively), so these
+    # have to go before the user row or the delete below violates the constraint.
+    # Deleting explicitly rather than relying on ON DELETE CASCADE also means a
+    # deleted user's rows can never be handed to a future account that reuses the
+    # same id.
+    session.exec(delete(Commentary).where(Commentary.user_id == user.id))
+    session.exec(delete(CommentaryJob).where(CommentaryJob.user_id == user.id))
     session.delete(user)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/user/commentary-history/", response_model=UserCommentaryHistory)
-def get_commentary_history(user: CurrentUser, session: SessionDep) -> UserCommentaryHistory:
+def get_commentary_history(
+    user: CurrentUser,
+    session: SessionDep,
+    limit: int = Query(default=20, ge=1, le=50),
+    offset: int = Query(default=0, ge=0),
+) -> UserCommentaryHistory:
+    """List the user's saved reviews, newest first, as lightweight summaries.
+
+    Each row's full comment text and annotated SGF can run to tens of kilobytes;
+    returning every row a user has ever generated in one unbounded response does not
+    scale with history size. ``GET /user/commentary-history/{id}/`` serves one row in
+    full for when a specific entry is actually opened.
+    """
+    total = session.exec(
+        select(func.count()).select_from(Commentary).where(Commentary.user_id == user.id)
+    ).one()
+
     commentaries = session.exec(
         select(Commentary)
         .where(Commentary.user_id == user.id)
         .order_by(Commentary.created_at.desc())
+        .limit(limit)
+        .offset(offset)
     ).all()
 
     return UserCommentaryHistory(
         commentaries=[
-            GenerateCommentaryResponse(
+            CommentaryHistoryItemSchema(
+                id=commentary.id,
                 board_size=commentary.board_size,
                 sgf_file_name=commentary.sgf_file_name,
                 language=commentary.language,
                 model=commentary.model,
-                usage=commentary.usage,
+                created_at=commentary.created_at,
                 moves=commentary.moves,
                 initial_stones=commentary.initial_stones,
-                comments=commentary.comments,
-                annotated_sgf_content=commentary.annotated_sgf_content,
+                comment_count=len(commentary.comments),
             )
             for commentary in commentaries
-        ]
+        ],
+        total=total,
+    )
+
+
+@router.get("/user/commentary-history/{commentary_id}/", response_model=GenerateCommentaryResponse)
+def get_commentary_detail(
+    commentary_id: int, user: CurrentUser, session: SessionDep
+) -> GenerateCommentaryResponse:
+    """Fetch one saved review in full — the comment text and annotated SGF the list
+    endpoint omits. Scoped to the caller: someone else's entry is reported missing,
+    not forbidden, matching how commentary jobs are already treated."""
+    commentary = session.exec(
+        select(Commentary).where(Commentary.id == commentary_id, Commentary.user_id == user.id)
+    ).first()
+    if commentary is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Commentary not found.")
+
+    return GenerateCommentaryResponse(
+        board_size=commentary.board_size,
+        sgf_file_name=commentary.sgf_file_name,
+        language=commentary.language,
+        model=commentary.model,
+        usage=commentary.usage,
+        moves=commentary.moves,
+        initial_stones=commentary.initial_stones,
+        comments=commentary.comments,
+        annotated_sgf_content=commentary.annotated_sgf_content,
     )

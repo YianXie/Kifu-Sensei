@@ -1,6 +1,6 @@
 import { startButton } from "./button/controller";
 import { refreshTokens } from "./shared/api";
-import { ENDPOINTS } from "./shared/config";
+import { ENDPOINTS, FRONTEND_URL } from "./shared/config";
 import {
     AUTH_MESSAGE_SOURCE,
     AUTH_MESSAGE_TYPE,
@@ -9,6 +9,10 @@ import {
     REVOKED_AUTH_KEY,
 } from "./shared/constants";
 import type { ExtensionAuthObject } from "./shared/types";
+
+// This content script also runs on online-go.com (for the injected review button),
+// so the auth handoff below must only ever trust messages from the frontend itself.
+const FRONTEND_ORIGIN = new URL(FRONTEND_URL).origin;
 
 // The access token most recently persisted, used to skip re-validating an
 // identical update (checkStorage polls and can re-emit the same value).
@@ -142,7 +146,7 @@ async function handleAuthUpdate(
 }
 
 window.addEventListener("message", (event: MessageEvent) => {
-    if (event.source !== window) {
+    if (event.origin !== FRONTEND_ORIGIN || event.source !== window) {
         return;
     }
 
@@ -153,10 +157,13 @@ window.addEventListener("message", (event: MessageEvent) => {
     void handleAuthUpdate(event.data.detail);
 });
 
-injectPageScript();
-
-// The button belongs only on online-go.com. On the Kifu-Sensei frontend origins this
-// script exists solely for the auth handoff above.
-if (location.origin === OGS_ORIGIN) {
+// inject.ts's only job is relaying the frontend's own localStorage to the message
+// listener above, so it belongs only on the frontend origin — injecting it into
+// online-go.com would just be a script running there for no reason.
+if (location.origin === FRONTEND_ORIGIN) {
+    injectPageScript();
+} else if (location.origin === OGS_ORIGIN) {
+    // The button belongs only on online-go.com. On the Kifu-Sensei frontend origins
+    // this script exists solely for the auth handoff above.
     void startButton();
 }

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from sqlalchemy import JSON, Column, ForeignKey
+from sqlalchemy import JSON, Column, Index, text
 from sqlmodel import Field, SQLModel
 
 # How long a finished job row is kept before the next job created by that user prunes
@@ -36,6 +36,11 @@ class User(SQLModel, table=True):
     email: str = Field(index=True, unique=True)
     hashed_password: str
     claude_api: str | None = Field(default=None)
+    # Stamped into every JWT this user is issued and checked on every use (see
+    # deps.get_current_user, security.decode_token's callers). Bumping it — on
+    # password change or explicit logout — invalidates every token minted before the
+    # bump in one step, without keeping a denylist of individual tokens.
+    token_version: int = Field(default=0)
     preferences: dict = Field(
         default_factory=_default_preferences,
         sa_column=Column(JSON, nullable=False),
@@ -51,7 +56,8 @@ class Commentary(SQLModel, table=True):
     __tablename__ = "commentaries"
 
     id: int | None = Field(default=None, primary_key=True)
-    user_id: int = Field(ForeignKey("users.id"))
+    # Indexed for the ownership filter on every history read.
+    user_id: int = Field(foreign_key="users.id", index=True)
     board_size: int = Field(default=19)
     sgf_file_name: str = Field(default="")
     language: str = Field(default="english")
@@ -79,6 +85,20 @@ class CommentaryJob(SQLModel, table=True):
     """
 
     __tablename__ = "commentary_jobs"
+    __table_args__ = (
+        # At most one queued/running job per user, enforced by the database rather
+        # than a check-then-insert in the router — two near-simultaneous requests
+        # would both pass a plain SELECT and both start a pipeline run otherwise.
+        # Finished jobs (succeeded/failed) are unrestricted, since they no longer
+        # occupy the pipeline executor.
+        Index(
+            "ix_commentary_jobs_one_active_per_user",
+            "user_id",
+            unique=True,
+            sqlite_where=text("status IN ('queued', 'running')"),
+            postgresql_where=text("status IN ('queued', 'running')"),
+        ),
+    )
 
     id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
     # Indexed for the ownership check on every poll and for retention pruning.

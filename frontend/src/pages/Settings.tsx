@@ -128,6 +128,7 @@ export default function Settings() {
                     preferences: {
                         commentary_config: {
                             model,
+                            language,
                             num_comments: numComments,
                             max_token: maxToken,
                             custom_instruction: customInstruction,

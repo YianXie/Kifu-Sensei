@@ -141,12 +141,14 @@ export type CommentaryItem = {
     comment: string;
     /**
      * Win-rate change in percentage points from the mover's perspective; negative
-     * means the move lost win rate. Optional because commentaries saved before this
-     * field existed are replayed from the database without it.
+     * means the move lost win rate. Nullable because commentaries saved before this
+     * field existed are replayed from the database without it — the backend's
+     * `CommentaryItemSchema` always serialises the key, defaulting to `null` rather
+     * than omitting it.
      */
-    winrate_delta?: number;
-    /** Colour of the player who made this move. Optional for the same reason. */
-    color?: "B" | "W";
+    winrate_delta: number | null;
+    /** Colour of the player who made this move. Nullable for the same reason. */
+    color: "B" | "W" | null;
 };
 
 export type CommentaryUsage = {
@@ -171,4 +173,22 @@ export type CommentaryResponse = {
     initial_stones: GameMove[];
     comments: CommentaryItem[];
     annotated_sgf_content: string;
+};
+
+/**
+ * Summary shape returned by the history *list* endpoint — everything a
+ * `HistoryCard` needs to render a row and its board thumbnail, but not the full
+ * comment text or the annotated SGF. Fetch `ENDPOINTS.commentaryHistoryDetail(id)`
+ * for the rest of a specific entry.
+ */
+export type CommentaryHistoryItem = {
+    id: number;
+    board_size: number;
+    sgf_file_name: string;
+    language: CommentaryLanguage;
+    model?: ClaudeModel | null;
+    created_at: string;
+    moves: GameMove[];
+    initial_stones: GameMove[];
+    comment_count: number;
 };

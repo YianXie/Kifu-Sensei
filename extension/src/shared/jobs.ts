@@ -22,11 +22,11 @@ import type {
 } from "./types";
 
 /** Submitting is quick; anything slower than this is a failure, not a wait. */
-const SUBMIT_TIMEOUT_MS = 30_000;
+export const SUBMIT_TIMEOUT_MS = 30_000;
 /** Each poll is a small read. Kept far below the worker's 30s fetch limit. */
 const POLL_TIMEOUT_MS = 15_000;
 /** Gap between polls. Short enough that the worker's 30s idle timer keeps resetting. */
-const POLL_INTERVAL_MS = 3_000;
+export const POLL_INTERVAL_MS = 3_000;
 
 /**
  * How long a single run may take before the panel gives up on it.
@@ -65,6 +65,16 @@ export interface PublicJobStatus {
     status: JobStatus;
     done: number;
     total: number;
+    /**
+     * Epoch ms this job started. `chrome.storage.session` (and so `readJob`) is wiped
+     * on a browser restart, but this `chrome.storage.local` mirror is not — with
+     * nothing left alive to ever move it past "queued"/"running", a reader has to be
+     * able to tell a genuinely in-progress job from one orphaned by a worker that
+     * died before writing a terminal status. `background.ts` clears this on startup
+     * as the fast path; `startedAt` is the backstop for however that is missed (e.g.
+     * a manual reload of an unpacked build, which fires no startup event).
+     */
+    startedAt: number;
 }
 
 async function writeJob(job: StoredJob): Promise<void> {
@@ -73,6 +83,7 @@ async function writeJob(job: StoredJob): Promise<void> {
         status: job.status,
         done: job.progress.done,
         total: job.progress.total,
+        startedAt: job.startedAt,
     };
     await Promise.all([
         chrome.storage.session.set({ [JOB_SESSION_KEY]: job }),
@@ -95,15 +106,45 @@ function fail(job: StoredJob, error: CommentaryApiError): StoredJob {
     return { ...job, status: "failed", error };
 }
 
+/**
+ * Whether two job snapshots render the same. `pollOnce` returns a fresh object every
+ * tick even when nothing changed (e.g. still "running" between progress updates), so
+ * this compares the fields the panel and injected button actually display rather than
+ * relying on reference equality.
+ */
+function jobStatusUnchanged(a: StoredJob, b: StoredJob): boolean {
+    return (
+        a.status === b.status &&
+        a.progress.done === b.progress.done &&
+        a.progress.total === b.progress.total &&
+        a.result === b.result &&
+        a.error === b.error
+    );
+}
+
+/**
+ * `null` on a genuine network failure, `"timeout"` when the deadline was the cause.
+ *
+ * `authedFetch` catches every error `fetch()` can throw — including the AbortError
+ * this timeout raises — and already reports it as `null`, so it never leaves this
+ * function to be caught by a `try`/`catch` around the call. The two are told apart
+ * by the abort signal, not by an exception.
+ */
 async function fetchWithTimeout(
     url: string,
     init: RequestInit,
     timeoutMs: number
-): Promise<Response | null> {
+): Promise<Response | null | "timeout"> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-        return await authedFetch(url, { ...init, signal: controller.signal });
+        const response = await authedFetch(url, {
+            ...init,
+            signal: controller.signal,
+        });
+        return response === null && controller.signal.aborted
+            ? "timeout"
+            : response;
     } finally {
         clearTimeout(timer);
     }
@@ -160,22 +201,21 @@ export async function submitJob(job: StoredJob): Promise<StoredJob> {
     // cannot be too short for any real game id.
     const sgfFileName = `ogs-${job.gameId}.sgf`;
 
-    let response: Response | null;
-    try {
-        response = await fetchWithTimeout(
-            ENDPOINTS.commentaryJobs,
-            {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    sgf_content: job.sgf,
-                    sgf_file_name: sgfFileName,
-                    ...job.config,
-                }),
-            },
-            SUBMIT_TIMEOUT_MS
-        );
-    } catch {
+    const response = await fetchWithTimeout(
+        ENDPOINTS.commentaryJobs,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                sgf_content: job.sgf,
+                sgf_file_name: sgfFileName,
+                ...job.config,
+            }),
+        },
+        SUBMIT_TIMEOUT_MS
+    );
+
+    if (response === "timeout") {
         const failed = fail(job, {
             code: "timeout",
             detail: "Kifu-Sensei took too long to accept the game. Please try again.",
@@ -259,19 +299,16 @@ export async function resubmitJob(previous: StoredJob): Promise<StoredJob> {
 
 /** One poll. Returns the updated job, or null when the stored job has gone away. */
 async function pollOnce(job: StoredJob): Promise<StoredJob | null> {
-    let response: Response | null;
-    try {
-        response = await fetchWithTimeout(
-            ENDPOINTS.commentaryJob(job.jobId),
-            {},
-            POLL_TIMEOUT_MS
-        );
-    } catch {
-        return job; // A single slow poll is not fatal; try again next tick.
-    }
+    const response = await fetchWithTimeout(
+        ENDPOINTS.commentaryJob(job.jobId),
+        {},
+        POLL_TIMEOUT_MS
+    );
 
-    if (response === null) {
-        return job; // Offline for a moment. Keep polling until the deadline.
+    if (response === null || response === "timeout") {
+        // A single slow or offline poll is not fatal; try again next tick, up to
+        // the deadline in `runJobPoller`.
+        return job;
     }
     if (response.status === 401) {
         return fail(job, {
@@ -354,7 +391,9 @@ export async function runJobPoller(): Promise<void> {
             if (updated === null) {
                 return;
             }
-            await writeJob(updated);
+            if (!jobStatusUnchanged(job, updated)) {
+                await writeJob(updated);
+            }
             if (isTerminal(updated.status)) {
                 return;
             }

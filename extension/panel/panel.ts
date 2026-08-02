@@ -35,7 +35,11 @@ import {
     REVOKED_AUTH_KEY,
 } from "../src/shared/constants";
 import { type StoredJob, readJob } from "../src/shared/jobs";
-import { type OgsGameCheck, checkOgsGame } from "../src/shared/ogs";
+import {
+    type OgsGameCheck,
+    checkOgsGame,
+    parseOgsGameId,
+} from "../src/shared/ogs";
 import type {
     CommentaryItem,
     CommentaryResponse,
@@ -667,10 +671,13 @@ function showError(error: {
     detail: string;
     retryAfter: number | null;
 }): void {
+    // The backend's `detail` is written for this exact failure (e.g. why an SGF
+    // failed to parse); the canned copy below is only a fallback for when it is
+    // missing, not a replacement for it.
     let message =
-        error.code !== null
-            ? (ERROR_MESSAGES[error.code] ?? error.detail)
-            : error.detail;
+        error.detail ||
+        (error.code !== null ? ERROR_MESSAGES[error.code] : undefined) ||
+        "Something went wrong. Please try again.";
     if (error.code === "upstream_rate_limited" && error.retryAfter !== null) {
         message = `Anthropic is rate-limiting your API key. Try again in ${error.retryAfter}s.`;
     }
@@ -712,20 +719,48 @@ function renderJob(job: StoredJob): void {
 }
 
 /**
- * Re-evaluate the active tab. Only redraws the two game-dependent screens, so a
- * navigation cannot yank the user out of the API-key flow.
+ * Re-evaluate the active tab.
+ *
+ * Always redraws the three screens that have no game of their own yet (welcome,
+ * waiting, config) — nothing there to protect. Never touches the API-key screens: a
+ * navigation must not yank the user out of that flow. For the three screens bound to
+ * a specific game (commentary, generating, error), it only redraws when the tab has
+ * actually moved to a *different* game — otherwise a routine tab-update (OGS is a
+ * single-page app; onUpdated fires for reasons that have nothing to do with
+ * navigation) would redraw on top of a job's in-progress view for no reason, and
+ * without this check at all, moving to a second game left the panel permanently
+ * showing the first game's commentary even after a review for the new one finished.
  */
 async function refreshGameState(): Promise<void> {
-    if (
-        currentScreen !== "screen-welcome" &&
-        currentScreen !== "screen-waiting" &&
-        currentScreen !== "screen-config"
-    ) {
-        return;
-    }
     const auth = getCurrentAuth();
     if (auth === null) {
         return;
+    }
+
+    if (
+        currentScreen === "screen-welcome" ||
+        currentScreen === "screen-waiting" ||
+        currentScreen === "screen-config"
+    ) {
+        await renderSignedIn(auth);
+        return;
+    }
+
+    const isGameBoundScreen =
+        currentScreen === "screen-commentary" ||
+        currentScreen === "screen-generating" ||
+        currentScreen === "screen-error";
+    if (!isGameBoundScreen) {
+        return; // screen-demo, screen-api-key, screen-key-saved: untouched.
+    }
+
+    const [tab] = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+    });
+    const tabGameId = parseOgsGameId(tab?.url);
+    if (tabGameId === null || tabGameId === activeGameId) {
+        return; // Not on a game page, or still the same one — nothing to do.
     }
     await renderSignedIn(auth);
 }
@@ -839,8 +874,24 @@ async function clearWebsiteAuth(): Promise<void> {
 }
 
 async function signOut(): Promise<void> {
+    // Server-side revocation: bumps the account's token_version, invalidating every
+    // outstanding access/refresh token at once — including a copy the website's own
+    // localStorage is still holding, which the REVOKED_AUTH_KEY marker below cannot
+    // catch once it has rotated past what this panel last saw (the website never
+    // learns about a rotation the panel or worker did on its own). Best-effort:
+    // `authedFetch` never throws, and sign-out proceeds locally regardless of
+    // whether this reaches the server.
+    const response = await authedFetch(ENDPOINTS.logout, { method: "POST" });
+    if (response === null || !response.ok) {
+        console.warn(
+            "[Kifu-Sensei panel] Server-side logout did not complete; local sign-out still proceeds."
+        );
+    }
+
     // Record the session being revoked so the content script won't re-adopt it
-    // from any lingering website localStorage entry.
+    // from any lingering website localStorage entry — a fast client-side
+    // short-circuit for the common case. The server-side revocation above is what
+    // actually closes the gap for a stale token this marker doesn't cover.
     const stored = await chrome.storage.local.get(AUTH_STORAGE_KEY);
     const auth = stored[AUTH_STORAGE_KEY];
     if (isAuthObject(auth)) {
