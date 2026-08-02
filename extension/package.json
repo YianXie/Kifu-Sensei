@@ -5,15 +5,15 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
-        "build": "tsc && vite build && vite build --config vite.content.config.ts && vite build --config vite.inject.config.ts",
-        "build:dev": "tsc && vite build --mode development && vite build --config vite.content.config.ts --mode development && vite build --config vite.inject.config.ts --mode development",
+        "build": "node scripts/build-manifest.mjs production && tsc && vite build && vite build --config vite.content.config.ts && vite build --config vite.inject.config.ts",
+        "build:dev": "node scripts/build-manifest.mjs development && tsc && vite build --mode development && vite build --config vite.content.config.ts --mode development && vite build --config vite.inject.config.ts --mode development",
         "preview": "vite preview",
         "typecheck": "tsc",
         "lint": "eslint .",
         "test": "vitest run",
         "test:watch": "vitest",
-        "format": "prettier --write 'src/**/*.ts' 'panel/**/*.{ts,css}' '*.{ts,js,json}'",
-        "format:check": "prettier --check 'src/**/*.ts' 'panel/**/*.{ts,css}' '*.{ts,js,json}'"
+        "format": "prettier --write 'src/**/*.ts' 'panel/**/*.{ts,css}' 'scripts/**/*.mjs' '*.{ts,js,json}'",
+        "format:check": "prettier --check 'src/**/*.ts' 'panel/**/*.{ts,css}' 'scripts/**/*.mjs' '*.{ts,js,json}'"
     },
     "devDependencies": {
         "@eslint/js": "^10.0.1",

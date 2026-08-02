@@ -1,5 +1,6 @@
 dist
 node_modules
+manifest.json
 # npm owns the lockfile's formatting; reformatting it only creates churn that the
 # next `npm install` undoes.
 package-lock.json
