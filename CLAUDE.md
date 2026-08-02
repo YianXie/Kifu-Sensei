@@ -105,8 +105,8 @@ Key files:
 - `config.py` — Pydantic settings loaded from `.env`. **`API_ENDPOINT` must be set** (points to a running KataGo analysis HTTP server). `ENCRYPTION_KEY` and `SECRET_KEY` must be non-default in production.
 - `models.py` — Single `User` model. `claude_api` stores only Fernet ciphertext; plaintext never hits the DB.
 - `crypto.py` — `encrypt_secret` / `decrypt_secret` using Fernet derived from `ENCRYPTION_KEY`.
-- `routers/auth.py` — JWT token obtain/refresh, registration, account management, Claude API key CRUD.
-- `routers/go.py` — Single `POST /api/commentary/` endpoint that triggers the analysis pipeline.
+- `routers/auth.py` — registration (`POST /auth/register/`), JWT obtain/refresh (`POST /auth/token/`, `POST /auth/token/refresh/`), server-side revocation (`POST /auth/logout/`), settings and Claude API key CRUD (`GET`/`PUT /auth/user/settings/`, `PUT`/`DELETE /auth/user/claude-api-key/`), email/password update, account deletion (`DELETE /auth/user/delete/`), and paginated commentary history (`GET /auth/user/commentary-history/`, `GET /auth/user/commentary-history/{id}/` for one full record).
+- `routers/go.py` — `GET /api/health/`; the synchronous `POST /api/commentary/` used by the web app; and the async job pair the extension uses instead, since a Manifest V3 service worker cannot hold a fetch open for a multi-minute review — `POST /api/commentary/jobs/` (202, returns a job id) and `GET /api/commentary/jobs/{job_id}/` (poll for progress/result).
 - `services/katago.py` — **Core logic.** Two-pass KataGo analysis:
     1. Fast pass (`maxVisits=50`, no ownership/policy) across all turns to compute winrate diffs.
     2. Detailed pass (`maxVisits=500`, with ownership + policy) on the 20 worst moves and their preceding positions.
@@ -122,13 +122,19 @@ Key files:
 **Stack:** React 18 + TypeScript + Vite + MUI + axios
 
 - `api.ts` — Axios instance with JWT attach interceptor and auto-refresh queue on 401. Tokens in `localStorage`.
-- `contexts/AuthContext.tsx` — Auth state, `userSettings` (includes `has_claude_api_key`), login/logout helpers.
-- `pages/Commentary.tsx` — Main feature page: SGF file upload (drag-and-drop), calls `POST /api/commentary/`, renders the Go board and commentary panel.
-- `components/GoBoard.tsx` — Renders the board using `@sabaki/go-board`.
-- `components/Controls.tsx` + `ControlMoveButton.tsx` — Move navigation; jumps to commented turns.
+- `contexts/AuthContext.tsx` — Auth state, `userSettings` (includes `has_claude_api_key`), login/logout helpers. Hydrates from the stored access token on mount; only a decode failure or a genuine 401 from `/auth/user/settings/` logs the user out, not a transient network error.
+- `components/layout/Layout.tsx` + `Navbar.tsx` — Page chrome and top nav, including the mobile drawer.
+- `components/global/ProtectedRoute.tsx` — Route guard that redirects unauthenticated users to `/login`.
+- `pages/Commentary.tsx` — Main feature page: SGF file upload (drag-and-drop), calls `POST /api/commentary/`, renders the Go board and commentary panel via `GameViewer`. Also renders a result passed in via router `location.state` (see History below), in which case the API-key gate is skipped since there's nothing left to generate.
+- `components/game/GameViewer.tsx` — Composes the board, comment panel, and controls, and sizes them against each other with a `ResizeObserver`.
+- `components/game/GoBoard.tsx` — Renders the board on a `<canvas>` using `@sabaki/go-board`.
+- `components/game/CommentPanel.tsx` — The per-move commentary text, as an `aria-live` region.
+- `components/game/Controls.tsx` — Move navigation; jumps to commented turns.
 - `pages/SetupApiKey.tsx` — UI for entering/removing the user's Claude API key.
-- `constants.ts` — All API endpoint URLs (`ENDPOINTS`).
-- `types/` — `CommentaryResponse`, `GameMove` TypeScript types.
+- `pages/History.tsx` + `components/history/HistoryCard.tsx` / `MiniBoardThumb.tsx` — Paginated list of past commentary runs (`GET /auth/user/commentary-history/`); opening a card fetches the full record (`GET /auth/user/commentary-history/{id}/`) and hands it to `Commentary.tsx` to view.
+- `pages/ExtensionReady.tsx` — Writes `localStorage["extension_auth"]` after login, for the extension's auth handoff (see Extension Architecture below).
+- `constants/global/endpoints.ts` — All API endpoint URLs (`ENDPOINTS`).
+- `types/` — `CommentaryResponse`, `CommentaryHistoryItem`, `GameMove`, `AuthUser`/`JwtPayload` TypeScript types.
 
 ## Extension Architecture (`extension/`)
 
@@ -157,14 +163,20 @@ Config lives in `extension/src/shared/config.ts` (endpoints derived from `VITE_A
 
 ## Environment Variables (backend `.env`)
 
-| Variable         | Required | Notes                                                                                                                                           |
-| ---------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `API_ENDPOINT`   | Yes      | URL of the KataGo analysis HTTP server                                                                                                          |
-| `SECRET_KEY`     | Prod     | JWT signing key                                                                                                                                 |
-| `ENCRYPTION_KEY` | Prod     | Fernet key for Claude API key encryption. Generate: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
-| `DATABASE_URL`   | No       | Defaults to `sqlite:///./db.sqlite3`                                                                                                            |
-| `FRONTEND_URL`   | No       | Added to CORS allowlist in production                                                                                                           |
-| `API_TIMEOUT`    | No       | Seconds to wait for KataGo (default 120)                                                                                                        |
+| Variable                     | Required | Notes                                                                                                                                           |
+| ----------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `API_ENDPOINT`                | Yes      | URL of the KataGo analysis HTTP server                                                                                                          |
+| `ENVIRONMENT`                 | Prod     | Set to `production` to enable production checks (non-default secrets required, dev CORS origins dropped). Defaults to `development`.           |
+| `SECRET_KEY`                  | Prod     | JWT signing key                                                                                                                                 |
+| `ENCRYPTION_KEY`              | Prod     | Fernet key for Claude API key encryption. Generate: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
+| `ADMIN_USERNAME`              | Prod     | SQLAdmin dashboard login. Must be changed from the `dev-admin` default in production.                                                          |
+| `ADMIN_PASSWORD`              | Prod     | SQLAdmin dashboard password. Must be changed from the `dev-admin-password` default in production.                                              |
+| `ENABLE_ADMIN`                | No       | Mounts the SQLAdmin dashboard when `true`. Off by default — opt in deliberately, since it's full read/write access to the users table.          |
+| `DATABASE_URL`                | No       | Defaults to `sqlite:///./db.sqlite3`                                                                                                            |
+| `FRONTEND_URL`                | No       | Added to CORS allowlist in production                                                                                                           |
+| `API_TIMEOUT`                 | No       | Seconds to wait for KataGo (default 120)                                                                                                        |
+| `COMMENTARY_PIPELINE_WORKERS` | No       | Max concurrent commentary pipelines (KataGo + Anthropic calls) on the dedicated executor, separate from the request threadpool (default 4).     |
+| `MAX_REQUEST_BODY_BYTES`      | No       | Requests larger than this are rejected by `Content-Length` before the body is read (default 5,000,000 — headroom over the 2 MB SGF cap).        |
 
 ## IMPORTANT: Other things to note
 

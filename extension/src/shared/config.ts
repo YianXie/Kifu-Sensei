@@ -12,6 +12,7 @@ export const FRONTEND_URL =
 
 export const ENDPOINTS = {
     tokenRefresh: `${API_URL}/auth/token/refresh/`,
+    logout: `${API_URL}/auth/logout/`,
     userSettings: `${API_URL}/auth/user/settings/`,
     claudeApiKey: `${API_URL}/auth/user/claude-api-key/`,
 

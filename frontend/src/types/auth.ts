@@ -1,7 +1,8 @@
-import { CommentaryResponse } from "./commentary";
+import { CommentaryHistoryItem } from "./commentary";
 
 export interface JwtPayload {
-    user_id: number;
+    /** The user id, as a string — the backend issues it as the standard JWT `sub` claim. */
+    sub: string;
     email: string;
     exp: number;
     iat: number;
@@ -18,7 +19,8 @@ export interface UserSettings {
 }
 
 export interface UserCommentaryHistory {
-    commentaries: CommentaryResponse[];
+    commentaries: CommentaryHistoryItem[];
+    total: number;
 }
 
 export interface TokenResponse {

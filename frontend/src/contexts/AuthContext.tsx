@@ -6,6 +6,7 @@ import React, {
     useState,
 } from "react";
 
+import axios from "axios";
 import { jwtDecode } from "jwt-decode";
 
 import api from "@/api";
@@ -43,6 +44,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [isLoading, setIsLoading] = useState(true);
 
     const logout = useCallback(() => {
+        const token = localStorage.getItem("access_token");
+        if (token) {
+            // Best-effort server-side revocation (bumps the account's token_version,
+            // invalidating every outstanding access/refresh token, not just this
+            // one) — not awaited, since logging out must not hang on the network,
+            // and there is nothing more to do locally either way. The header is
+            // passed explicitly rather than left to the request interceptor, since
+            // the token is about to be removed from localStorage below and the
+            // interceptor reads it at request time.
+            void api
+                .post(
+                    ENDPOINTS.logout,
+                    {},
+                    { headers: { Authorization: `Bearer ${token}` } }
+                )
+                .catch(() => {});
+        }
         localStorage.removeItem("access_token");
         localStorage.removeItem("refresh_token");
         // Revoke the extension handoff too, so logging out of the website
@@ -69,13 +87,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                     return;
                 }
                 setUser({
-                    id: decoded.user_id,
+                    id: Number(decoded.sub),
                     email: decoded.email,
                 });
-                const { data } = await api.get<UserSettings>(
-                    ENDPOINTS.userSettings
-                );
-                setUserSettings(data);
+                try {
+                    const { data } = await api.get<UserSettings>(
+                        ENDPOINTS.userSettings
+                    );
+                    setUserSettings(data);
+                } catch (error) {
+                    // The token decoded fine and is not expired, so only a genuine
+                    // 401 (e.g. revoked server-side) means the session is dead. Any
+                    // other failure — offline, a 500, a timeout — is transient: keep
+                    // the session so the user isn't bounced to the login page for a
+                    // problem that isn't theirs to fix.
+                    if (
+                        axios.isAxiosError(error) &&
+                        error.response?.status === 401
+                    ) {
+                        logout();
+                    }
+                }
             } catch {
                 logout();
             } finally {

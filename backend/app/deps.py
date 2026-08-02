@@ -27,11 +27,15 @@ def get_current_user(
     try:
         payload = decode_token(credentials.credentials, ACCESS_TOKEN_TYPE)
         user_id = int(payload["sub"])
+        token_version = payload["token_version"]
     except (jwt.InvalidTokenError, KeyError, ValueError):
         raise _CREDENTIALS_EXCEPTION from None
 
     user = session.get(User, user_id)
-    if user is None:
+    # A version mismatch means this token predates a password change or an explicit
+    # logout (see routers.auth.logout) — reject it exactly like an unknown user,
+    # rather than authenticating a session the user asked to end.
+    if user is None or token_version != user.token_version:
         raise _CREDENTIALS_EXCEPTION
     return user
 

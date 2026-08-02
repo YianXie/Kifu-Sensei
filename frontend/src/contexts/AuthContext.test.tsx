@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import { AxiosError, type AxiosResponse } from "axios";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ENDPOINTS } from "@/constants/global/endpoints";
@@ -25,14 +26,14 @@ function fakeJwt(payload: Record<string, unknown>): string {
 }
 
 const VALID_TOKEN = fakeJwt({
-    user_id: 7,
+    sub: "7",
     email: "player@example.com",
     exp: Math.floor(Date.now() / 1000) + 3600,
     iat: Math.floor(Date.now() / 1000),
 });
 
 const EXPIRED_TOKEN = fakeJwt({
-    user_id: 7,
+    sub: "7",
     email: "player@example.com",
     exp: Math.floor(Date.now() / 1000) - 3600,
     iat: Math.floor(Date.now() / 1000) - 7200,
@@ -48,6 +49,7 @@ function Probe() {
             <span data-testid="loading">{String(isLoading)}</span>
             <span data-testid="authenticated">{String(isAuthenticated)}</span>
             <span data-testid="email">{user?.email ?? "-"}</span>
+            <span data-testid="user-id">{user?.id ?? "-"}</span>
             <span data-testid="has-key">
                 {String(userSettings?.has_claude_api_key ?? "-")}
             </span>
@@ -71,6 +73,10 @@ beforeEach(() => {
     localStorage.clear();
     api.get.mockReset();
     api.post.mockReset();
+    // Default so logout's best-effort revocation call (POST ENDPOINTS.logout) has a
+    // real promise to attach ``.catch`` to in every test, not just the ones that
+    // exercise logout directly; individual tests override this for their own needs.
+    api.post.mockResolvedValue({ data: {} });
 });
 
 describe("hydration on mount", () => {
@@ -98,6 +104,8 @@ describe("hydration on mount", () => {
         expect(api.get).toHaveBeenCalledWith(ENDPOINTS.userSettings);
         expect(screen.getByTestId("has-key")).toHaveTextContent("true");
         expect(screen.getByTestId("authenticated")).toHaveTextContent("true");
+        // The backend issues the id as the JWT's standard `sub` claim, not `user_id`.
+        expect(screen.getByTestId("user-id")).toHaveTextContent("7");
     });
 
     it("logs out rather than trusting an expired token", async () => {
@@ -126,9 +134,33 @@ describe("hydration on mount", () => {
         expect(localStorage.getItem("access_token")).toBeNull();
     });
 
-    it("logs out when the settings request fails", async () => {
+    it("keeps the session when the settings request fails for a transient reason", async () => {
+        // The token itself decoded fine and isn't expired — a network hiccup or a
+        // 500 fetching settings isn't proof the session is invalid, so it must not
+        // bounce the user to the login page.
         localStorage.setItem("access_token", VALID_TOKEN);
-        api.get.mockRejectedValue(new Error("401"));
+        api.get.mockRejectedValue(new Error("network error"));
+
+        renderProbe();
+
+        await waitFor(() =>
+            expect(screen.getByTestId("loading")).toHaveTextContent("false")
+        );
+        expect(screen.getByTestId("authenticated")).toHaveTextContent("true");
+        expect(localStorage.getItem("access_token")).toBe(VALID_TOKEN);
+    });
+
+    it("logs out when the settings request fails with a 401", async () => {
+        localStorage.setItem("access_token", VALID_TOKEN);
+        const unauthorized = new AxiosError("Unauthorized", "ERR_BAD_REQUEST");
+        unauthorized.response = {
+            status: 401,
+            statusText: "Unauthorized",
+            data: {},
+            headers: {},
+            config: {} as AxiosResponse["config"],
+        };
+        api.get.mockRejectedValue(unauthorized);
 
         renderProbe();
 
@@ -184,6 +216,7 @@ describe("logout", () => {
             JSON.stringify({ accessToken: "a", refreshToken: "b" })
         );
         api.get.mockResolvedValue({ data: SETTINGS });
+        api.post.mockResolvedValue({ data: { detail: "Logged out." } });
         renderProbe();
         await waitFor(() =>
             expect(screen.getByTestId("authenticated")).toHaveTextContent(
@@ -198,6 +231,43 @@ describe("logout", () => {
         expect(localStorage.getItem("extension_auth")).toBeNull();
         expect(screen.getByTestId("authenticated")).toHaveTextContent("false");
         expect(screen.getByTestId("email")).toHaveTextContent("-");
+    });
+
+    it("asks the backend to invalidate every outstanding token", async () => {
+        localStorage.setItem("access_token", VALID_TOKEN);
+        api.get.mockResolvedValue({ data: SETTINGS });
+        api.post.mockResolvedValue({ data: { detail: "Logged out." } });
+        renderProbe();
+        await waitFor(() =>
+            expect(screen.getByTestId("authenticated")).toHaveTextContent(
+                "true"
+            )
+        );
+
+        await userEvent.click(screen.getByRole("button", { name: "log out" }));
+
+        expect(api.post).toHaveBeenCalledWith(
+            ENDPOINTS.logout,
+            {},
+            { headers: { Authorization: `Bearer ${VALID_TOKEN}` } }
+        );
+    });
+
+    it("still clears the local session if the backend call fails", async () => {
+        localStorage.setItem("access_token", VALID_TOKEN);
+        api.get.mockResolvedValue({ data: SETTINGS });
+        api.post.mockRejectedValue(new Error("network error"));
+        renderProbe();
+        await waitFor(() =>
+            expect(screen.getByTestId("authenticated")).toHaveTextContent(
+                "true"
+            )
+        );
+
+        await userEvent.click(screen.getByRole("button", { name: "log out" }));
+
+        expect(localStorage.getItem("access_token")).toBeNull();
+        expect(screen.getByTestId("authenticated")).toHaveTextContent("false");
     });
 });
 

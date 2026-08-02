@@ -11,7 +11,7 @@ import {
     JOB_STATUS_KEY,
     OGS_ORIGIN,
 } from "../shared/constants";
-import type { PublicJobStatus } from "../shared/jobs";
+import { JOB_DEADLINE_MS, type PublicJobStatus } from "../shared/jobs";
 import { type OgsGameCheck, checkOgsGame } from "../shared/ogs";
 import { findMountPoint, watchForMount } from "./mount";
 import { type ButtonKind, createOgsButton } from "./ogs-button";
@@ -65,7 +65,14 @@ async function render(): Promise<void> {
     }
 
     const job = await readJobStatus();
-    if (job !== null && job.gameId === game.gameId) {
+    // A non-terminal mirror older than the worst-case job duration is not a job
+    // still in progress — it is one orphaned by a worker that died mid-run (a
+    // browser restart, crash, or extension reload) before it could write a
+    // terminal status. Nothing would ever move it past "queued"/"running"
+    // otherwise, and the button would say "Reviewing…" forever.
+    const isStale =
+        job !== null && Date.now() - job.startedAt > JOB_DEADLINE_MS;
+    if (job !== null && job.gameId === game.gameId && !isStale) {
         if (job.status === "queued" || job.status === "running") {
             button.setState({
                 kind: "running",

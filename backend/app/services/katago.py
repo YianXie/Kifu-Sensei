@@ -1,13 +1,14 @@
 import copy
 import logging
 import os
-import string
+import threading
 from collections import Counter
 from collections.abc import Callable
+from logging.handlers import RotatingFileHandler
 from typing import Any, Literal
 
 import httpx
-from anthropic import Anthropic
+from anthropic import Anthropic, APIError
 from sgfmill import sgf
 from sgfmill.ascii_boards import render_board
 from sgfmill.boards import Board as SgfmillBoard
@@ -35,6 +36,7 @@ from app.services.concepts import (
 from app.services.go_text import REGION_NAMES, ordinal
 
 _http_client = None
+_http_client_lock = threading.Lock()
 log_path = "logs/katago_service.log"
 
 logger = logging.getLogger("katago-service-logger")
@@ -50,7 +52,11 @@ logger.addHandler(c_handler)
 
 try:
     os.makedirs("logs", exist_ok=True)
-    f_handler = logging.FileHandler(log_path)
+    # Rotating rather than a bare FileHandler: the per-move prompt logged at DEBUG
+    # below (the full ASCII board and ownership map, repeated per move per run) would
+    # otherwise grow this file without bound as traffic accumulates. 10 MB * 5 backups
+    # is generous for a single-instance deployment while still bounding disk use.
+    f_handler = RotatingFileHandler(log_path, maxBytes=10_000_000, backupCount=5)
     f_handler.setLevel(logging.DEBUG)
     f_handler.setFormatter(f_format)
     logger.addHandler(f_handler)
@@ -124,21 +130,83 @@ ProgressCallback = Callable[[int, int], None]
 _CLAUDE_MODEL = "claude-sonnet-5"
 _COMMENTARY_LANGUAGE = "english"
 _MAX_TOKENS = 1024
+# Left in place of a single move's comment when the Anthropic call for it keeps
+# failing after the SDK's own retries — deliberately in plain English and clearly
+# marked as a system message rather than analysis, regardless of the requested
+# commentary language, since generating a translated placeholder would need another
+# call to the very API that just failed.
+_COMMENTARY_UNAVAILABLE_PLACEHOLDER = (
+    "_(Commentary for this move could not be generated after repeated attempts.)_"
+)
 
 
 def get_http_client() -> httpx.Client:
-    """Get or create a reusable HTTP client instance."""
+    """Get or create a reusable HTTP client instance.
+
+    The pipeline now runs several jobs concurrently on a dedicated executor (see
+    ``app.routers.go``), so two calls can race in here at once; without the lock, both
+    could see a stale client and each build their own, leaking whichever one loses.
+    """
     global _http_client
     if _http_client is None or _http_client.is_closed:
-        _http_client = httpx.Client(timeout=settings.api_timeout, base_url=settings.api_endpoint)  # type: ignore
+        with _http_client_lock:
+            if _http_client is None or _http_client.is_closed:  # re-check: lost the race
+                _http_client = httpx.Client(
+                    timeout=settings.api_timeout,
+                    base_url=settings.api_endpoint,  # type: ignore
+                )
     return _http_client
 
 
 def close_http_client() -> None:
     global _http_client
-    if _http_client is not None and not _http_client.is_closed:
-        _http_client.close()
-    _http_client = None
+    with _http_client_lock:
+        if _http_client is not None and not _http_client.is_closed:
+            _http_client.close()
+        _http_client = None
+
+
+def _post_analysis(client: httpx.Client, request: dict[str, Any], *, pass_name: str) -> Any:
+    """POST one analysis query and return the parsed result list.
+
+    ``raise_for_status`` alone reports only the status code, so an upstream rejection
+    arrives as a bare "422 Unprocessable Entity" with no way to tell which field the
+    analysis server objected to. The body carries that detail, and it is the only copy
+    — log it before the response is discarded.
+    """
+    response = client.post("/analyze", json=request)
+    if response.is_error:
+        logger.error(
+            "KataGo rejected the %s pass with HTTP %s: %s (request: %s)",
+            pass_name,
+            response.status_code,
+            _response_excerpt(response),
+            _request_summary(request),
+        )
+    response.raise_for_status()
+    return response.json()
+
+
+def _response_excerpt(response: httpx.Response, limit: int = 2000) -> str:
+    """Return the response body as text, truncated, for a log line."""
+    try:
+        body = response.text
+    except UnicodeDecodeError:  # pragma: no cover - upstream always sends JSON or text
+        return "<undecodable body>"
+    return body[:limit] + "…" if len(body) > limit else body
+
+
+def _request_summary(request: dict[str, Any]) -> str:
+    """Describe a request without dumping the whole move list into the log."""
+    analyze_turns = request.get("analyzeTurns", [])
+    return (
+        f"boardXSize={request.get('boardXSize')} boardYSize={request.get('boardYSize')} "
+        f"rules={request.get('rules')!r} komi={request.get('komi')!r} "
+        f"moves={len(request.get('moves', []))} "
+        f"initialStones={len(request.get('initialStones', []))} "
+        f"analyzeTurns={len(analyze_turns)} "
+        f"(min={min(analyze_turns, default=None)}, max={max(analyze_turns, default=None)})"
+    )
 
 
 def _normalize_rules(raw: str) -> tuple[str, bool]:
@@ -171,14 +239,22 @@ def _extract_rules(root: sgf.Tree_node) -> str:
 
 
 def _extract_komi(game: sgf.Sgf_game) -> float:
-    """Return the komi from the SGF, defaulting to 7.5 if missing or malformed."""
-    try:
-        komi = game.get_komi()
-    except ValueError:
+    """Return the komi from the SGF, defaulting to 7.5 only when KM is absent.
+
+    ``get_komi()`` returns 0.0 both when ``KM`` is genuinely absent from the SGF and
+    when it is explicitly set to ``KM[0]`` — the normal value for Chinese/Japanese
+    handicap play — so the two cases can only be told apart by checking for the
+    property directly. Without that check, every handicap game with an explicit zero
+    komi was silently rescored with 7.5 points that were never actually in play,
+    shifting every winrate and score-lead figure shown to the model.
+
+    A malformed ``KM`` (e.g. non-numeric) is not handled here: sgfmill validates and
+    converts every property eagerly when the SGF is parsed, so by the time a caller
+    has a ``game`` object to pass in, ``KM`` already parsed cleanly.
+    """
+    if not game.get_root().has_property("KM"):
         return 7.5
-    if komi is None or komi == 0.0:
-        return 7.5
-    return float(komi)
+    return float(game.get_komi())
 
 
 def _sgfmill_point_to_katago(point: tuple[int, int]) -> str:
@@ -556,7 +632,38 @@ def sgf_to_winrate_request(sgf_content: str) -> dict[str, Any]:
     board_size = game.get_size()
     root = game.get_root()
 
-    black_setup, white_setup, _empty = root.get_setup_stones()
+    # Setup stones (AB/AW/AE) usually live in the root node — the common handicap
+    # shape OGS, KGS, and Sabaki all emit — but FF[4] also allows them in a bare
+    # setup node between the root and the first move (e.g. a separate node just for
+    # a comment, or an editor that split the root from the handicap stones). Reading
+    # only ``root.get_setup_stones()`` silently drops those, so KataGo analyses a
+    # handicap game as if the handicap stones were never placed. Accumulate across
+    # every non-move node up to the first move instead. Setup encountered *after*
+    # the first move cannot be applied at all — KataGo's ``initialStones`` can only
+    # express one starting position — so it is logged and skipped rather than
+    # silently ignored or failing an upload that today produces usable output.
+    black_setup: set = set()
+    white_setup: set = set()
+    seen_first_move = False
+    for node in game.get_main_sequence():
+        color, _move = node.get_move()
+        if color is not None:
+            seen_first_move = True
+            continue
+        node_black, node_white, node_empty = node.get_setup_stones()
+        if not (node_black or node_white or node_empty):
+            continue
+        if seen_first_move:
+            logger.warning(
+                "Ignoring AB/AW/AE setup after the first move: KataGo's initialStones "
+                "cannot express a position change mid-game."
+            )
+            continue
+        black_setup |= node_black
+        white_setup |= node_white
+        black_setup -= node_empty
+        white_setup -= node_empty
+
     initial_stones: list[list[str]] = []
     for point in sorted(black_setup):
         initial_stones.append(["B", _sgfmill_point_to_katago(point)])
@@ -573,6 +680,13 @@ def sgf_to_winrate_request(sgf_content: str) -> dict[str, Any]:
             moves.append([katago_color, "pass"])
         else:
             moves.append([katago_color, _sgfmill_point_to_katago(move)])
+
+    if not moves:
+        # Caught here rather than left to the analysis server: the winrate pass would
+        # succeed on the empty position, and only the detailed pass — built from the
+        # then-empty list of impactful turns — would fail, blaming the engine for what
+        # is really an unusable upload (a position diagram or a problem file).
+        raise InvalidSgfError("This SGF contains no moves to comment on.")
 
     # analyzeTurns covers every position from before the first move through the
     # last move, i.e. turn 0 (initial position) up to turn len(moves) inclusive.
@@ -668,7 +782,16 @@ def _generate_user_prompt(
             ascii_board[i] = "*"
     ascii_board = "".join(ascii_board)
     prompt += f"[BOARD POSITION — after {color}'s move]\n"
-    prompt += f"Coordinates: columns A-{'T' if board_size == 19 else string.ascii_lowercase[board_size - 1]} (left to right{' , I skipped' if board_size == 19 else ''}), rows 1-{board_size} (bottom to top).\n"
+    # KataGo skips the column letter "I" on every board size, not just 19x19 — e.g. a
+    # 9x9 board's columns run A-H then J, not A-I — so both the last column and the
+    # note have to come from the same KataGo alphabet the rest of this module uses
+    # for move labels, rather than a plain unskipped a-z slice that only happened to
+    # be right for one specific board size.
+    last_column = _KATAGO_COLUMNS[board_size - 1]
+    prompt += (
+        f"Coordinates: columns A-{last_column} (left to right, I skipped), "
+        f"rows 1-{board_size} (bottom to top).\n"
+    )
     prompt += "Symbols: # = Black stone, o = White stone, . = empty\n"
     prompt += f"★ = the move {color} just played ({last_move_label})\n"
     prompt += f"* = KataGo's top suggestion ({top_suggestion})\n\n"
@@ -697,6 +820,17 @@ def _generate_user_prompt(
         winrate = 100 - winrate
     score_lead = _score_lead(detail)
 
+    # The CHANGE figures below are relative to the mover, exactly like the winrate
+    # values themselves above — mirroring the score-lead delta for White is what keeps
+    # it agreeing in sign with the winrate-CHANGE next to it. Without this, a White
+    # move that gained winrate and gained points on the board would show, say,
+    # "[CHANGE: +8.0%]" beside "[CHANGE: -5.0 pts]" for the same swing: the model
+    # reads that as contradictory data and its commentary follows suit. The absolute
+    # score-lead figures stay Black-relative, as the NOTE below documents.
+    score_lead_change = score_lead - prev_score_lead
+    if color == "White":
+        score_lead_change *= -1
+
     prompt += "[KATAGO ANALYSIS DATA]\n"
     prompt += "NOTE: A positive score lead means Black is ahead, while a negative score lead means White is ahead.\n\n"
     prompt += f"Before {color}'s move (position after move {turn_number - 1}):\n"
@@ -706,8 +840,8 @@ def _generate_user_prompt(
         f"({'Black' if prev_score_lead >= 0 else 'White'} ahead)\n\n"
     )
     prompt += f"After {color} played {last_move_label} (position after move {turn_number}):\n"
-    prompt += f"  {color} winrate:    {winrate:+.1f}%   [CHANGE: {winrate - prev_winrate:+.1f}%]\n"
-    prompt += f"  Score lead:       {score_lead:+.1f} pts [CHANGE: {score_lead - prev_score_lead:+.1f} pts]\n\n"
+    prompt += f"  {color} winrate:    {winrate:.1f}%   [CHANGE: {winrate - prev_winrate:+.1f}%]\n"
+    prompt += f"  Score lead:       {score_lead:+.1f} pts [CHANGE: {score_lead_change:+.1f} pts for {color}]\n\n"
 
     played_info = next(
         (info for info in prev_detail["moveInfos"] if info["move"] == last_move), None
@@ -837,27 +971,51 @@ def generate_commentary_with_claude(
     )
     comments: list[str] = []
     usage = _empty_usage()
+    failures = 0
+    last_error: APIError | None = None
     # Publish the total before the first call so a poller can show "0 of N" rather than
     # "0 of 0" for the length of the first request.
     if on_progress is not None:
         on_progress(0, len(prompts))
     for user_prompt in prompts:
-        message = client.messages.create(
-            model=model,
-            max_tokens=max_token,
-            system=system_prompt,
-            messages=[
-                {
-                    "role": "user",
-                    "content": user_prompt,
-                }
-            ],
-        )
+        try:
+            message = client.messages.create(
+                model=model,
+                max_tokens=max_token,
+                system=system_prompt,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": user_prompt,
+                    }
+                ],
+            )
+        except APIError as exc:
+            # The SDK already retries a single call across transient failures
+            # (rate limits, 5xx, connection errors) with backoff before this is ever
+            # raised, so losing one comment here is the last resort — but it is far
+            # better than discarding every comment already generated (and billed)
+            # in this run just because one move's call kept failing.
+            logger.warning("Anthropic call failed for one move; leaving a placeholder: %s", exc)
+            comments.append(_COMMENTARY_UNAVAILABLE_PLACEHOLDER)
+            failures += 1
+            last_error = exc
+            if on_progress is not None:
+                on_progress(len(comments), len(prompts))
+            continue
+
         text = "".join(block.text for block in message.content if block.type == "text")
         comments.append(text)
         _accumulate_usage(usage, message.usage)
         if on_progress is not None:
             on_progress(len(comments), len(prompts))
+
+    if prompts and failures == len(prompts):
+        # Every call failed — there is nothing to salvage, and returning here would
+        # report a run of nothing but placeholders as a success. Re-raise the last
+        # error so the caller classifies and reports it normally (e.g. a bad API key
+        # correctly surfaces as upstream_auth_failed rather than as silent placeholders).
+        raise last_error
 
     return comments, usage
 
@@ -885,8 +1043,11 @@ def _katago_moves_to_frontend(
 def _inject_comments_into_sgf(sgf_content: str, comments: list[dict[str, Any]]) -> str:
     """Return the SGF string with C[] comment properties inserted for each annotated move.
 
-    ``comments`` is a list of ``{"turn": int, "comment": str}`` dicts where
-    ``turn`` is 1-based (turn 1 = first move node, index 1 in the main sequence).
+    ``comments`` is a list of ``{"turn": int, "comment": str}`` dicts where ``turn`` is
+    1-based and counts *move* nodes only, exactly like ``sgf_to_winrate_request`` numbers
+    them. Counting main-sequence nodes instead (as this used to) desyncs the two the
+    moment a non-move node — a bare comment, or setup stones in their own node — appears
+    before or between moves, silently shifting every comment onto the wrong move.
     sgfmill handles escaping of ``]`` and ``\\`` inside property values automatically.
     """
     comment_map: dict[int, str] = {item["turn"]: item["comment"] for item in comments}
@@ -897,11 +1058,22 @@ def _inject_comments_into_sgf(sgf_content: str, comments: list[dict[str, Any]]) 
         game = sgf.Sgf_game.from_bytes(payload, override_encoding="utf-8")
     except ValueError as exc:
         raise InvalidSgfError(f"Could not re-parse the SGF file: {exc}") from exc
-    for idx, node in enumerate(game.get_main_sequence()):
-        if idx == 0:
-            continue  # root node is not a move
-        if idx in comment_map:
-            node.set("C", comment_map[idx])
+
+    turn = 0
+    for node in game.get_main_sequence()[1:]:
+        color, _move = node.get_move()
+        if color is None:
+            continue  # not a move node: skip without consuming a turn number
+        turn += 1
+        if turn not in comment_map:
+            continue
+        new_comment = comment_map[turn]
+        if node.has_property("C"):
+            # Preserve rather than clobber a comment already on this move (e.g. from
+            # the original SGF, or handicap setup sharing the node with the first move).
+            node.set("C", f"{node.get('C')}\n\n{new_comment}")
+        else:
+            node.set("C", new_comment)
     return game.serialise().decode("utf-8")
 
 
@@ -928,9 +1100,7 @@ def generate_commentary(
     client = get_http_client()
 
     winrate_request = sgf_to_winrate_request(sgf_content)
-    winrate_response = client.post("/analyze", json=winrate_request)
-    winrate_response.raise_for_status()
-    winrate_results = winrate_response.json()
+    winrate_results = _post_analysis(client, winrate_request, pass_name="winrate")
     winrate_results = sorted(winrate_results, key=lambda x: x["turnNumber"])
 
     winrate_diff = []
@@ -957,12 +1127,10 @@ def generate_commentary(
     detailed_prev_request = winrate_request_to_detailed_request(
         winrate_request, detailed_analyze_prev_turns
     )
-    detailed_response = client.post("/analyze", json=detailed_request)
-    detailed_response.raise_for_status()
-    detailed_results = detailed_response.json()
-    detailed_prev_response = client.post("/analyze", json=detailed_prev_request)
-    detailed_prev_response.raise_for_status()
-    detailed_prev_results = detailed_prev_response.json()
+    detailed_results = _post_analysis(client, detailed_request, pass_name="detailed")
+    detailed_prev_results = _post_analysis(
+        client, detailed_prev_request, pass_name="detailed-previous"
+    )
 
     detailed_results = sorted(detailed_results, key=lambda x: x["turnNumber"])
     detailed_prev_results = sorted(detailed_prev_results, key=lambda x: x["turnNumber"])
@@ -985,7 +1153,13 @@ def generate_commentary(
             moves=moves,
         )
         prompts.append(prompt)
-        logger.info("User prompt for move %d:\n%s\n", detailed_results[i]["turnNumber"], prompt)
+        # DEBUG, not INFO: the console handler is INFO-and-above, and on a hosted
+        # platform stdout typically ships straight to a log aggregator — logging the
+        # full prompt (ASCII board, ownership map) there on every move, for every
+        # run, sends it to a third-party log store for no operational benefit. The
+        # file handler is DEBUG-and-above, so it still lands in the rotated log file
+        # for local debugging.
+        logger.debug("User prompt for move %d:\n%s\n", detailed_results[i]["turnNumber"], prompt)
 
     comment_texts, usage = generate_commentary_with_claude(
         user,

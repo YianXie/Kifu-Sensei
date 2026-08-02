@@ -47,7 +47,10 @@ ignore = ["E501"]
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv"]
-skips = ["B101", "B105", "B601"]
+# B106: `_post_analysis`'s `pass_name` (the KataGo analysis pass being logged — "winrate",
+# "detailed", "detailed-previous") trips the hardcoded-password heuristic on the "pass"
+# substring; it is not a credential.
+skips = ["B101", "B105", "B106", "B601"]
 
 [tool.pytest.ini_options]
 # `pythonpath` puts the backend root on sys.path so `import app` works no matter

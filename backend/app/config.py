@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     secret_key: str = "dev-insecure-key-replace-in-production"
     admin_username: str = "dev-admin"
     admin_password: str = "dev-admin-password"
+    # The SQLAdmin dashboard is unauthenticated to the internet until this is set:
+    # off by default so a deploy does not silently expose full read/write access to
+    # the users table behind one password with no lockout. Opt in deliberately.
+    enable_admin: bool = False
     access_token_lifetime: timedelta = timedelta(minutes=30)
     refresh_token_lifetime: timedelta = timedelta(days=7)
     jwt_algorithm: str = "HS256"
@@ -33,6 +37,16 @@ class Settings(BaseSettings):
     # KataGo analysis engine
     api_endpoint: str | None = None
     api_timeout: int = 120
+    # Bounds how many commentary pipelines (KataGo + Anthropic calls) run at once, on
+    # a dedicated executor separate from Starlette's shared request threadpool. Keeps
+    # a burst of jobs from starving ordinary requests, and from overwhelming a single
+    # KataGo engine instance.
+    commentary_pipeline_workers: int = 4
+
+    # Requests larger than this are rejected by their Content-Length before the body
+    # is ever read (see MaxBodySizeMiddleware). Generous headroom over the largest
+    # legitimate payload — a commented SGF, capped at 2 MB by GenerateCommentaryRequest.
+    max_request_body_bytes: int = 5_000_000
 
     @property
     def is_production(self) -> bool:
@@ -40,7 +54,10 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins(self) -> list[str]:
-        origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+        # The dev servers are useful to allow only in development — in production
+        # they would let a page served from a developer's own machine read
+        # authenticated responses from the real API for no operational benefit.
+        origins = [] if self.is_production else ["http://localhost:5173", "http://127.0.0.1:5173"]
         if self.frontend_url:
             origins.append(self.frontend_url)
             origins = list(set(origins))

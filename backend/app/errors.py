@@ -1,6 +1,11 @@
+import logging
+
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+logger = logging.getLogger(__name__)
 
 
 class FieldValidationError(Exception):
@@ -69,6 +74,107 @@ class KatagoUnavailableError(CommentaryError):
 
     status_code = status.HTTP_502_BAD_GATEWAY
     code = "katago_unavailable"
+
+
+class ActiveJobExistsError(CommentaryError):
+    """The user already has a queued or running commentary job.
+
+    Enforced at the database level (a partial unique index on ``commentary_jobs``),
+    not just checked-then-inserted, so two near-simultaneous requests cannot both pass
+    a plain SELECT check and both start a run.
+    """
+
+    status_code = status.HTTP_409_CONFLICT
+    code = "job_already_running"
+
+
+class CatchUnhandledErrors:
+    """Turn an unhandled exception into a JSON 500 from *inside* the CORS middleware.
+
+    Starlette's own ``ServerErrorMiddleware`` wraps everything registered with
+    ``add_middleware``, so the bare 500 it produces on a crash never travels back out
+    through ``CORSMiddleware`` and carries no ``Access-Control-Allow-Origin``. The
+    browser then rejects the response as a cross-origin violation, and the console
+    reports a CORS error for what is really a server bug — the status, the body, and
+    the ``code`` are all invisible to the client, so the actual failure is impossible
+    to see from the front end.
+
+    Converting the exception here, underneath CORS, means the 500 is stamped like any
+    other response and the real error reaches the caller.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        response_started = False
+
+        async def send_wrapper(message: Message) -> None:
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        except Exception:
+            logger.exception(
+                "Unhandled error serving %s %s", scope.get("method"), scope.get("path")
+            )
+            if response_started:
+                # The status line is already on the wire; there is no response left to
+                # replace. Re-raise so the server tears the connection down rather than
+                # appending a second body to a half-sent one.
+                raise
+            response = JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"detail": "Internal server error.", "code": "internal_error"},
+            )
+            await response(scope, receive, send)
+
+
+class MaxBodySizeMiddleware:
+    """Reject a request whose declared ``Content-Length`` exceeds the configured cap.
+
+    ``Field(max_length=...)`` on a request schema (e.g.
+    ``GenerateCommentaryRequest.sgf_content``) only rejects *after* the whole body has
+    already been read into memory — Pydantic validates a fully-parsed object, not a
+    stream. Checking the header here, underneath everything else, means an honestly
+    reported oversized body is refused before it is ever buffered. A client that lies
+    about, or omits, ``Content-Length`` is not caught by this and falls back to the
+    schema-level check once the body is fully read.
+    """
+
+    def __init__(self, app: ASGIApp, max_bytes: int) -> None:
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        for name, value in scope.get("headers", []):
+            if name != b"content-length":
+                continue
+            try:
+                length = int(value)
+            except ValueError:
+                break
+            if length > self.max_bytes:
+                response = JSONResponse(
+                    status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                    content={"detail": "Request body is too large.", "code": "payload_too_large"},
+                )
+                await response(scope, receive, send)
+                return
+            break
+
+        await self.app(scope, receive, send)
 
 
 def _field_validation_handler(_: Request, exc: FieldValidationError) -> JSONResponse:

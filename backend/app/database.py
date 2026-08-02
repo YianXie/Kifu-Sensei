@@ -1,12 +1,46 @@
 from collections.abc import Generator
 
-from sqlalchemy import inspect, text
+from sqlalchemy import event, inspect, text
 from sqlmodel import Session, SQLModel, create_engine
 
 from app.config import settings
 
-connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
-engine = create_engine(settings.database_url, connect_args=connect_args)
+_is_sqlite = settings.database_url.startswith("sqlite")
+# ``timeout`` (pysqlite's busy-wait, not a SQLAlchemy pool setting) is raised from its
+# 5s default: several request handlers and the background job runner now write from
+# separate connections against the same file, and the default window is easy to blow
+# past under concurrent writes, surfacing as an unhandled "database is locked" 500.
+connect_args = {"check_same_thread": False, "timeout": 30} if _is_sqlite else {}
+# Explicit rather than SQLAlchemy's defaults (5 + 10): sized for the request
+# threadpool plus ``commentary_pipeline_workers`` concurrent pipeline runs, now that
+# nothing holds a connection for the run itself (see app.routers.go) — a connection is
+# only ever checked out for a short query. ``pool_pre_ping`` avoids surfacing a stale
+# connection (e.g. one a managed Postgres instance recycled while idle) as a request
+# failure; irrelevant for a local SQLite file, so scoped to the non-SQLite branch.
+pool_args = {} if _is_sqlite else {"pool_size": 10, "max_overflow": 20, "pool_pre_ping": True}
+engine = create_engine(settings.database_url, connect_args=connect_args, **pool_args)
+
+if _is_sqlite:
+
+    @event.listens_for(engine, "connect")
+    def _configure_sqlite_connection(dbapi_connection, _) -> None:
+        cursor = dbapi_connection.cursor()
+        # SQLite does not enforce foreign keys unless a connection turns it on for
+        # itself — pysqlite gives no other hook, so this runs on every new
+        # connection the pool opens.
+        cursor.execute("PRAGMA foreign_keys=ON")
+        # WAL lets readers and a writer proceed concurrently instead of the default
+        # rollback journal's exclusive write lock — the natural pairing with the
+        # raised busy timeout above, since with the default journal mode most
+        # concurrent-write contention would still end in "database is locked" long
+        # before 30s of waiting was of any use. A one-time, persistent change to the
+        # database file, not a per-connection setting, but cheap to repeat.
+        cursor.execute("PRAGMA journal_mode=WAL")
+        # NORMAL is the standard pairing with WAL: still durable across an
+        # application crash (what matters here), just not across an OS-level power
+        # loss the way FULL is — an acceptable trade for a self-hosted SQLite file.
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.close()
 
 
 def _ensure_columns() -> None:
@@ -22,6 +56,11 @@ def _ensure_columns() -> None:
     if "claude_api" not in existing:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE users ADD COLUMN claude_api VARCHAR"))
+    if "token_version" not in existing:
+        with engine.begin() as connection:
+            connection.execute(
+                text("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0")
+            )
 
 
 def init_db() -> None:

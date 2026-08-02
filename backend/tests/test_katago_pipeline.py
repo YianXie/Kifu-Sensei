@@ -7,8 +7,10 @@ position, and the shape of the returned payload.
 """
 
 import json
+import logging
 from typing import Any
 
+import anthropic
 import httpx
 import pytest
 import respx
@@ -108,6 +110,33 @@ def fake_anthropic(monkeypatch: pytest.MonkeyPatch):
     _FakeAnthropic.instances = []
     monkeypatch.setattr(katago_service, "Anthropic", _FakeAnthropic)
     return _FakeAnthropic
+
+
+class _FlakyFakeAnthropic(_FakeAnthropic):
+    """Like ``_FakeAnthropic``, but raises on specific 1-based call numbers."""
+
+    fail_on: set[int] = set()
+
+    def create(self, **kwargs) -> _FakeMessage:
+        call_number = len(self.calls) + 1
+        self.calls.append(kwargs)
+        if call_number in self.fail_on:
+            request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+            raise anthropic.APIConnectionError(request=request)
+        return _FakeMessage(f"Comment #{call_number}")
+
+
+@pytest.fixture
+def flaky_fake_anthropic(monkeypatch: pytest.MonkeyPatch):
+    """Returns a factory: ``flaky_fake_anthropic({1, 3})`` fails calls 1 and 3."""
+
+    def _install(fail_on: set[int]) -> type[_FlakyFakeAnthropic]:
+        _FlakyFakeAnthropic.instances = []
+        _FlakyFakeAnthropic.fail_on = fail_on
+        monkeypatch.setattr(katago_service, "Anthropic", _FlakyFakeAnthropic)
+        return _FlakyFakeAnthropic
+
+    return _install
 
 
 @pytest.fixture
@@ -376,6 +405,117 @@ def test_an_unparseable_sgf_fails_before_katago_is_called(
     assert katago_requests == []
 
 
+def test_an_sgf_without_moves_fails_before_katago_is_called(
+    keyed_user: User, katago_requests, fake_anthropic
+) -> None:
+    """A position diagram parses cleanly but has nothing to comment on."""
+    from app.errors import InvalidSgfError
+
+    with pytest.raises(InvalidSgfError):
+        generate_commentary(
+            "(;FF[4]GM[1]SZ[19]KM[7.5]AB[dd][pp]AW[dp][pd])",
+            keyed_user,
+            sgf_file_name="diagram.sgf",
+        )
+
+    assert katago_requests == []
+
+
+def test_a_katago_rejection_logs_the_upstream_body(
+    keyed_user: User, fake_anthropic, caplog
+) -> None:
+    """The status alone cannot say which field the engine objected to."""
+    with respx.mock(base_url="http://katago.invalid", assert_all_called=False) as router:
+        router.post("/analyze").mock(
+            return_value=httpx.Response(
+                422, json={"detail": [{"loc": ["body", "komi"], "msg": "not a valid float"}]}
+            )
+        )
+        with caplog.at_level(logging.ERROR, logger="katago-service-logger"):
+            with pytest.raises(httpx.HTTPStatusError):
+                _run(keyed_user)
+
+    logged = "\n".join(record.getMessage() for record in caplog.records)
+    assert "not a valid float" in logged
+    assert "422" in logged
+
+
+def test_one_failed_call_leaves_a_placeholder_but_keeps_the_rest(
+    keyed_user: User, katago_requests, flaky_fake_anthropic, caplog
+) -> None:
+    """Regression test: a single Anthropic call failing (after the SDK's own retries
+    already gave up) used to discard every comment already generated in the run —
+    including ones already paid for — rather than losing just the one."""
+    flaky_fake_anthropic({1})
+
+    with caplog.at_level(logging.WARNING, logger="katago-service-logger"):
+        result = _run(keyed_user)
+
+    comments = {c["turn"]: c["comment"] for c in result["comments"]}
+    assert len(comments) == 2
+    assert "could not be generated" in comments[1]
+    assert comments[2] == "Comment #2"
+    assert any("Anthropic call failed" in record.getMessage() for record in caplog.records)
+
+
+def test_a_placeholder_comment_still_reaches_the_annotated_sgf(
+    keyed_user: User, katago_requests, flaky_fake_anthropic
+) -> None:
+    flaky_fake_anthropic({1})
+    result = _run(keyed_user)
+    assert "could not be generated" in result["annotated_sgf_content"]
+
+
+def test_token_usage_only_counts_the_calls_that_succeeded(
+    keyed_user: User, katago_requests, flaky_fake_anthropic
+) -> None:
+    flaky_fake_anthropic({1})
+    result = _run(keyed_user)
+    # _FakeUsage reports 100 input / 40 output tokens per successful call; only one
+    # of the two calls succeeded.
+    assert result["usage"]["input_tokens"] == 100
+    assert result["usage"]["output_tokens"] == 40
+
+
+def test_progress_still_advances_past_a_failed_call(
+    keyed_user: User, katago_requests, flaky_fake_anthropic
+) -> None:
+    flaky_fake_anthropic({1})
+    seen: list[tuple[int, int]] = []
+    _run(keyed_user, on_progress=lambda done, total: seen.append((done, total)))
+    assert seen == [(0, 2), (1, 2), (2, 2)]
+
+
+def test_when_every_call_fails_the_original_error_propagates(
+    keyed_user: User, katago_requests, flaky_fake_anthropic
+) -> None:
+    """A run where nothing succeeded must fail outright — reporting it as a
+    successful job made entirely of placeholders would be worse than raising."""
+    flaky_fake_anthropic({1, 2})
+
+    with pytest.raises(anthropic.APIConnectionError):
+        _run(keyed_user)
+
+
+def test_generate_commentary_with_claude_raises_when_the_only_prompt_fails(
+    keyed_user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Called directly rather than through the full pipeline, with a single prompt."""
+
+    class _AlwaysFails:
+        def __init__(self, api_key: str) -> None:
+            self.messages = self
+
+        def create(self, **kwargs):
+            request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+            raise anthropic.APIConnectionError(request=request)
+
+    monkeypatch.setattr(katago_service, "Anthropic", _AlwaysFails)
+
+    with pytest.raises(anthropic.APIConnectionError):
+        generate_commentary_with_claude(keyed_user, ["a prompt"])
+
+
 # ── HTTP client lifecycle ─────────────────────────────────────────────────────
 
 
@@ -396,3 +536,33 @@ def test_closing_twice_is_safe() -> None:
     katago_service.get_http_client()
     katago_service.close_http_client()
     katago_service.close_http_client()
+
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+
+
+def test_the_file_handler_rotates_instead_of_growing_without_bound() -> None:
+    from logging.handlers import RotatingFileHandler
+
+    file_handlers = [
+        h for h in katago_service.logger.handlers if isinstance(h, RotatingFileHandler)
+    ]
+    assert len(file_handlers) == 1
+    assert file_handlers[0].maxBytes > 0
+    assert file_handlers[0].backupCount > 0
+
+
+def test_the_per_move_prompt_is_logged_at_debug_not_info(
+    keyed_user: User, katago_requests, fake_anthropic, caplog: pytest.LogCaptureFixture
+) -> None:
+    """INFO is what a hosted platform typically ships to a log aggregator — the full
+    prompt (ASCII board, ownership map) has no business going there on every move of
+    every run."""
+    with caplog.at_level(logging.INFO, logger="katago-service-logger"):
+        _run(keyed_user)
+    assert not any("User prompt for move" in r.getMessage() for r in caplog.records)
+
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG, logger="katago-service-logger"):
+        _run(keyed_user)
+    assert any("User prompt for move" in r.getMessage() for r in caplog.records)

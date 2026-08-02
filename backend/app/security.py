@@ -21,11 +21,12 @@ def verify_password(password: str, hashed: str) -> bool:
     return _password_hash.verify(password, hashed)
 
 
-def _create_token(user_id: int, email: str, token_type: str, lifetime) -> str:
+def _create_token(user_id: int, email: str, token_version: int, token_type: str, lifetime) -> str:
     now = datetime.now(UTC)
     payload = {
         "sub": str(user_id),
         "email": email,
+        "token_version": token_version,
         "type": token_type,
         "iat": now,
         "exp": now + lifetime,
@@ -34,12 +35,16 @@ def _create_token(user_id: int, email: str, token_type: str, lifetime) -> str:
     return jwt.encode(payload, settings.secret_key, algorithm=settings.jwt_algorithm)
 
 
-def create_access_token(user_id: int, email: str) -> str:
-    return _create_token(user_id, email, ACCESS_TOKEN_TYPE, settings.access_token_lifetime)
+def create_access_token(user_id: int, email: str, token_version: int = 0) -> str:
+    return _create_token(
+        user_id, email, token_version, ACCESS_TOKEN_TYPE, settings.access_token_lifetime
+    )
 
 
-def create_refresh_token(user_id: int, email: str) -> str:
-    return _create_token(user_id, email, REFRESH_TOKEN_TYPE, settings.refresh_token_lifetime)
+def create_refresh_token(user_id: int, email: str, token_version: int = 0) -> str:
+    return _create_token(
+        user_id, email, token_version, REFRESH_TOKEN_TYPE, settings.refresh_token_lifetime
+    )
 
 
 def decode_token(token: str, expected_type: str) -> dict:

@@ -44,7 +44,7 @@ def test_is_production_only_for_the_production_environment() -> None:
     assert Settings(environment="test").is_production is False
 
 
-def test_cors_origins_always_include_the_local_dev_server() -> None:
+def test_cors_origins_include_the_local_dev_server_outside_production() -> None:
     origins = Settings(frontend_url=None).cors_origins
     assert set(origins) == {"http://localhost:5173", "http://127.0.0.1:5173"}
 
@@ -59,6 +59,22 @@ def test_cors_origins_are_deduplicated() -> None:
     origins = Settings(frontend_url="http://localhost:5173").cors_origins
     assert len(origins) == len(set(origins))
     assert len(origins) == 2
+
+
+def test_cors_origins_exclude_the_dev_servers_in_production() -> None:
+    """A page served from a developer's own localhost:5173 has no business reading
+    responses from the deployed API — the dev origins buy nothing there."""
+    origins = Settings(
+        environment="production", frontend_url="https://kifu-sensei.example"
+    ).cors_origins
+    assert origins == ["https://kifu-sensei.example"]
+
+
+def test_cors_origins_in_production_with_no_frontend_url_configured() -> None:
+    """Documents the current behaviour rather than asserting it is ideal: with
+    ``FRONTEND_URL`` unset, production allows no origin at all rather than falling
+    back to a dev server that could never be the real frontend."""
+    assert Settings(environment="production", frontend_url=None).cors_origins == []
 
 
 def test_unknown_environment_variables_are_ignored() -> None:
@@ -113,3 +129,8 @@ def test_a_fully_configured_production_environment_starts(
 
 def test_get_settings_is_cached() -> None:
     assert get_settings() is get_settings()
+
+
+def test_admin_is_disabled_unless_explicitly_enabled() -> None:
+    assert Settings().enable_admin is False
+    assert Settings(enable_admin=True).enable_admin is True

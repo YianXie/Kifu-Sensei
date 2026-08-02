@@ -47,6 +47,8 @@ export default function CommentPanel({
                     Move {currentMoveIndex} / {moves.length}
                 </Typography>
                 <Box
+                    role="status"
+                    aria-live="polite"
                     sx={{
                         flex: 1,
                         minHeight: 0,

@@ -320,12 +320,25 @@ export default function GoBoard({
         };
     }, [onMoveChange, scrollKeyIsPressed]);
 
+    const lastMove = currentMoveIndex > 0 ? moves[currentMoveIndex - 1] : null;
+    const lastMoveDescription =
+        lastMove && isValidMove(lastMove)
+            ? (() => {
+                  const [color, [row, col]] = lastMove;
+                  const colLetter = GTP_LETTERS[col] ?? String(col + 1);
+                  return `${color.toUpperCase() === "B" ? "Black" : "White"} played ${colLetter}${row + 1}`;
+              })()
+            : "starting position";
+    const boardAriaLabel = `${boardSize}x${boardSize} Go board, move ${currentMoveIndex} of ${moves.length}: ${lastMoveDescription}. Click to advance a move, right-click to go back, or use the arrow keys.`;
+
     return (
         <Box sx={{ width: "100%", maxWidth: boardCanvasSize }}>
             <canvas
                 ref={canvasRef}
                 width={boardCanvasSize}
                 height={boardCanvasSize}
+                role="img"
+                aria-label={boardAriaLabel}
                 style={{
                     width: "100%",
                     height: "auto",

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { toast } from "react-toastify";
 
@@ -11,6 +11,8 @@ import {
     Container,
     Typography,
 } from "@mui/material";
+
+import axios from "axios";
 
 import api from "@/api";
 import CommentaryConfig from "@/components/commentary/CommentaryConfig";
@@ -57,6 +59,7 @@ export default function Commentary() {
     const [customInstruction, setCustomInstruction] = useState<string>(
         defaultConfig.custom_instruction
     );
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     const commentsByTurn = useMemo(() => {
         const map: Record<number, string> = {};
@@ -88,8 +91,10 @@ export default function Commentary() {
     function handleFile(uploadedFile: File | undefined) {
         if (!uploadedFile || !isSgfFile(uploadedFile)) {
             toast.error("Only .sgf file is supported!");
+            setError(true);
             return;
         }
+        setError(false);
         setFile(uploadedFile);
     }
 
@@ -130,7 +135,10 @@ export default function Commentary() {
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement("a");
         anchor.href = url;
-        const baseName = file?.name ?? "annotated.sgf";
+        // `result.sgf_file_name` is what the backend actually annotated — unlike
+        // `file`, it's also there when viewing a result loaded from History, where
+        // nothing was ever uploaded in this session.
+        const baseName = result.sgf_file_name || file?.name || "annotated.sgf";
         anchor.download = baseName.toLowerCase().endsWith(".sgf")
             ? baseName
             : `${baseName}.sgf`;
@@ -139,6 +147,8 @@ export default function Commentary() {
     }
 
     async function handleGenerate() {
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
         try {
             setIsLoading(true);
             const sgfContent = await file?.text();
@@ -153,21 +163,47 @@ export default function Commentary() {
                     num_comments: numComments,
                     max_token: maxToken,
                     custom_instruction: customInstruction,
-                }
+                },
+                { signal: controller.signal }
             );
             setResult(data);
         } catch (err) {
+            if (axios.isCancel(err)) {
+                // User-initiated: the request may still be running server-side
+                // (aborting the client fetch does not stop the pipeline once
+                // it's started), so the run could still land in History shortly.
+                toast.info(
+                    "Cancelled. If the review had already started, it may still finish — check History in a bit."
+                );
+                return;
+            }
             console.error("Error generating commentary:", err);
             const { code, message } = getCommentaryError(err);
-            toast.error(message);
             if (code === "no_api_key") {
+                toast.error(message);
                 // The key was removed after this page loaded, so the guard screen
                 // above didn't catch it — send them where they can fix it.
                 navigate("/setup-api-key");
+            } else if (code === null) {
+                // Unclassified — most often a dropped connection rather than a
+                // failure the backend reported. The pipeline runs to completion and
+                // saves its result server-side independent of whether this response
+                // ever arrives, so the run may already be sitting in History even
+                // though this request failed.
+                toast.error(
+                    `${message} If your review had already started, check History — it may already be there.`
+                );
+            } else {
+                toast.error(message);
             }
         } finally {
+            abortControllerRef.current = null;
             setIsLoading(false);
         }
+    }
+
+    function handleCancelGenerate() {
+        abortControllerRef.current?.abort();
     }
 
     function handleNewGame() {
@@ -196,12 +232,19 @@ export default function Commentary() {
                     <Typography variant="body2" color="text.secondary">
                         This may take a minute depending on game length.
                     </Typography>
+                    <Button
+                        variant="outlined"
+                        color="error"
+                        onClick={handleCancelGenerate}
+                    >
+                        Cancel
+                    </Button>
                 </Box>
             </Container>
         );
     }
 
-    if (!hasClaudeApiKey) {
+    if (!hasClaudeApiKey && !result) {
         return (
             <Container maxWidth="sm">
                 <Box
@@ -309,7 +352,7 @@ export default function Commentary() {
                             borderColor: isDragOver
                                 ? "primary.main"
                                 : error
-                                  ? "primary.error"
+                                  ? "error.main"
                                   : "divider",
                             bgcolor: isDragOver
                                 ? "action.hover"

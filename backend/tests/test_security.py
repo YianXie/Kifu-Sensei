@@ -38,14 +38,23 @@ def test_hashes_are_salted() -> None:
 
 
 def test_access_token_carries_the_expected_claims() -> None:
-    token = create_access_token(7, "player@example.com")
+    token = create_access_token(7, "player@example.com", 3)
     payload = jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
 
     assert payload["sub"] == "7"
     assert payload["email"] == "player@example.com"
+    assert payload["token_version"] == 3
     assert payload["type"] == ACCESS_TOKEN_TYPE
     assert payload["exp"] > payload["iat"]
     assert payload["jti"]
+
+
+def test_token_version_defaults_to_zero() -> None:
+    """Callers that don't care about revocation (most of the test suite) still mint a
+    token with a well-defined version rather than an absent claim."""
+    token = create_access_token(1, "a@b.com")
+    payload = jwt.decode(token, settings.secret_key, algorithms=[settings.jwt_algorithm])
+    assert payload["token_version"] == 0
 
 
 def test_refresh_token_is_tagged_as_a_refresh_token() -> None:

@@ -71,16 +71,19 @@ docs are at `http://localhost:8000/docs`; the admin dashboard is at
 | POST   | `/auth/register/`                | No   | Create an account                                 |
 | POST   | `/auth/token/`                   | No   | Log in → `{access, refresh, user}`                |
 | POST   | `/auth/token/refresh/`           | No   | Exchange a refresh token → `{access, refresh}`    |
+| POST   | `/auth/logout/`                  | Yes  | Invalidate every outstanding access/refresh token  |
 | GET    | `/auth/user/settings/`           | Yes  | Read preferences + `has_claude_api_key`           |
 | PUT    | `/auth/user/settings/`           | Yes  | Update preferences                                |
 | PUT    | `/auth/user/claude-api-key/`     | Yes  | Set/replace the Claude API key (stored encrypted) |
 | DELETE | `/auth/user/claude-api-key/`     | Yes  | Remove the stored Claude API key                  |
 | POST   | `/auth/user/update-email/`       | Yes  | Change email (requires password)                  |
-| POST   | `/auth/user/update-password/`    | Yes  | Change password (requires current password)       |
+| POST   | `/auth/user/update-password/`    | Yes  | Change password (requires current password), invalidates other tokens |
 | GET    | `/auth/user/commentary-history/` | Yes  | List the user's saved reviews                     |
 | DELETE | `/auth/user/delete/`             | Yes  | Delete the current account                        |
 | GET    | `/api/health/`                   | No   | Health check                                      |
-| POST   | `/api/commentary/`               | Yes  | Generate KataGo + Claude commentary from an SGF   |
+| POST   | `/api/commentary/`               | Yes  | Generate KataGo + Claude commentary from an SGF, synchronously |
+| POST   | `/api/commentary/jobs/`          | Yes  | Queue a commentary run, returns a job id to poll (for clients that cannot hold a multi-minute request open, e.g. the extension) |
+| GET    | `/api/commentary/jobs/{job_id}/` | Yes  | Poll a queued/running job's status, progress, and result |
 
 Authenticated requests use the `Authorization: Bearer <access_token>` header. The
 `CurrentUser` dependency (`deps.py`) validates the access JWT and loads the user.
@@ -94,10 +97,13 @@ see `GenerateCommentaryRequest` in `schemas.py`.
 ## Admin dashboard
 
 `main.py` mounts **SQLAdmin** at `/admin` with a session-based
-`AuthenticationBackend` (`admin_auth.py`). Log in with `ADMIN_USERNAME` /
-`ADMIN_PASSWORD`. `UserAdmin` hides the password hash and encrypted API key;
-`CommentaryAdmin` lists saved reviews. In production the admin credentials must be
-changed from their dev defaults (enforced in `config.py`).
+`AuthenticationBackend` (`admin_auth.py`), but only when `ENABLE_ADMIN=true` — it is
+off by default, so a deploy does not expose it by accident. Log in with
+`ADMIN_USERNAME` / `ADMIN_PASSWORD`. `UserAdmin` hides the password hash and
+encrypted API key from both the forms and the details view, and cannot edit or
+delete rows; `CommentaryAdmin` lists saved reviews read-only. In production the
+admin credentials must be changed from their dev defaults (enforced in
+`config.py`).
 
 ## Authentication
 
@@ -130,11 +136,14 @@ changed from their dev defaults (enforced in `config.py`).
 | `ENVIRONMENT`    | No            | `development` (default) or `production`. Production toggles the guards below.                                                            |
 | `SECRET_KEY`     | Prod          | JWT signing key. Must be non-default in production.                                                                                      |
 | `ENCRYPTION_KEY` | Prod          | Fernet key for API-key encryption. Generate: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
-| `ADMIN_USERNAME` | Prod          | SQLAdmin login. Must be non-default in production.                                                                                       |
-| `ADMIN_PASSWORD` | Prod          | SQLAdmin password. Must be non-default in production.                                                                                    |
+| `ENABLE_ADMIN`   | No            | `false` (default) or `true`. The `/admin` dashboard is not mounted at all unless this is set.                                            |
+| `ADMIN_USERNAME` | Prod if enabled | SQLAdmin login. Must be non-default in production.                                                                                     |
+| `ADMIN_PASSWORD` | Prod if enabled | SQLAdmin password. Must be non-default in production.                                                                                  |
 | `DATABASE_URL`   | No            | Defaults to `sqlite:///./db.sqlite3`. Use a PostgreSQL URL in production.                                                                |
-| `FRONTEND_URL`   | No (prod rec) | Added to the CORS allowlist (localhost:5173 is always allowed).                                                                          |
+| `FRONTEND_URL`   | Prod          | Added to the CORS allowlist. `localhost:5173`/`127.0.0.1:5173` are allowed automatically outside production only — in production this is the *only* allowed origin, so the real frontend cannot reach the API without it set. |
 | `API_TIMEOUT`    | No            | Seconds to wait for KataGo (default 120).                                                                                                |
+| `COMMENTARY_PIPELINE_WORKERS` | No | Concurrent commentary pipelines on the dedicated executor (default 4).                                                        |
+| `MAX_REQUEST_BODY_BYTES` | No    | Requests with a larger declared `Content-Length` are rejected before the body is read (default 5,000,000).                              |
 
 In `production`, `config.py` raises at startup if `SECRET_KEY`, `ENCRYPTION_KEY`, or the
 admin credentials are still their insecure dev defaults, and always requires

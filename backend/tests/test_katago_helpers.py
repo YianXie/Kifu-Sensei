@@ -370,8 +370,10 @@ def test_extract_rules(sgf_text: str, expected: str) -> None:
     ("sgf_text", "expected"),
     [
         ("(;FF[4]SZ[19]KM[6.5])", 6.5),
-        ("(;FF[4]SZ[19]KM[0])", 7.5),  # a zero komi is treated as unset
-        ("(;FF[4]SZ[19])", 7.5),
+        # An explicit KM[0] is the normal value for Chinese/Japanese handicap play —
+        # it must be preserved, not treated as if komi were unset.
+        ("(;FF[4]SZ[19]KM[0])", 0.0),
+        ("(;FF[4]SZ[19])", 7.5),  # KM genuinely absent: this is the only unset case
         ("(;FF[4]SZ[19]KM[-2.5])", -2.5),
     ],
 )
@@ -404,6 +406,53 @@ def test_sgf_to_winrate_request_keeps_handicap_stones_out_of_the_move_list() -> 
     assert request["initialStones"] == [["B", "Q4"], ["B", "D16"]]
     assert request["moves"] == [["W", "D4"]]
     assert request["analyzeTurns"] == [0, 1]
+
+
+def test_sgf_to_winrate_request_reads_setup_stones_from_a_node_after_the_root() -> None:
+    """FF[4] allows AB/AW in any node before the first move, not only the root — a
+    bare setup node (here separated by a comment-only node) must not be dropped."""
+    handicap = "(;FF[4]GM[1]SZ[19]HA[2];C[Handicap 2];AB[dd][pp];W[dp])"
+    request = sgf_to_winrate_request(handicap)
+
+    assert request["initialStones"] == [["B", "Q4"], ["B", "D16"]]
+    assert request["moves"] == [["W", "D4"]]
+
+
+def test_sgf_to_winrate_request_accumulates_setup_across_several_nodes() -> None:
+    handicap = "(;FF[4]GM[1]SZ[19];AB[dd];AB[pp];W[dp])"
+    request = sgf_to_winrate_request(handicap)
+
+    assert sorted(request["initialStones"]) == sorted([["B", "Q4"], ["B", "D16"]])
+
+
+def test_sgf_to_winrate_request_honours_ae_before_the_first_move() -> None:
+    """AE (add empty) removes a stone from a not-yet-final starting position."""
+    handicap = "(;FF[4]GM[1]SZ[19];AB[dd][pp];AE[dd];W[dp])"
+    request = sgf_to_winrate_request(handicap)
+
+    assert request["initialStones"] == [["B", "Q4"]]
+
+
+def test_sgf_to_winrate_request_ignores_setup_placed_after_the_first_move(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """KataGo's initialStones is a single starting position — setup stones added
+    mid-game have no way to be expressed, so they are dropped with a warning rather
+    than silently taken as if they were part of the start (or failing the upload)."""
+    mid_game_setup = "(;FF[4]GM[1]SZ[19];B[dd];W[pp];AB[cc];B[qq])"
+    with caplog.at_level(logging.WARNING, logger="katago-service-logger"):
+        request = sgf_to_winrate_request(mid_game_setup)
+
+    assert request["initialStones"] == []
+    assert request["moves"] == [["B", "D16"], ["W", "Q4"], ["B", "R3"]]
+    assert any("after the first move" in record.getMessage() for record in caplog.records)
+
+
+def test_sgf_to_winrate_request_preserves_an_explicit_zero_komi() -> None:
+    """KM[0] is the normal value for a handicap game — must not be rescored to 7.5."""
+    handicap = "(;FF[4]GM[1]SZ[19]HA[2]KM[0]AB[dd][pp];W[dp])"
+    request = sgf_to_winrate_request(handicap)
+    assert request["komi"] == 0.0
 
 
 def test_sgf_to_winrate_request_supports_non_square_board_sizes() -> None:
@@ -499,6 +548,33 @@ def test_injection_with_no_comments_leaves_the_moves_intact() -> None:
 def test_injection_rejects_an_unparseable_sgf() -> None:
     with pytest.raises(InvalidSgfError):
         _inject_comments_into_sgf("nonsense", [])
+
+
+def test_comments_land_on_the_right_move_despite_a_non_move_node() -> None:
+    """Turn numbers count moves only, exactly like ``sgf_to_winrate_request`` — a
+    bare comment node before the first move must not shift every later turn."""
+    sgf_with_comment_node = "(;FF[4]GM[1]SZ[19]KM[6.5];C[Game start];B[dd];W[pp];B[dp])"
+    annotated = _inject_comments_into_sgf(
+        sgf_with_comment_node,
+        [{"turn": 1, "comment": "About B dd."}, {"turn": 2, "comment": "About W pp."}],
+    )
+    game = sgf.Sgf_game.from_bytes(annotated.encode(), override_encoding="utf-8")
+    nodes = game.get_main_sequence()
+
+    assert nodes[1].get("C") == "Game start"  # the comment-only node is untouched
+    assert nodes[2].get("C") == "About B dd."
+    assert nodes[3].get("C") == "About W pp."
+    assert not nodes[4].has_property("C")
+
+
+def test_injection_preserves_an_existing_comment_on_the_target_node() -> None:
+    sgf_with_comment = "(;FF[4]GM[1]SZ[19]KM[6.5];B[dd]C[existing];W[pp])"
+    annotated = _inject_comments_into_sgf(sgf_with_comment, [{"turn": 1, "comment": "new"}])
+    game = sgf.Sgf_game.from_bytes(annotated.encode(), override_encoding="utf-8")
+
+    comment = game.get_main_sequence()[1].get("C")
+    assert "existing" in comment
+    assert "new" in comment
 
 
 # ── Token usage ───────────────────────────────────────────────────────────────
@@ -632,6 +708,37 @@ def test_the_user_prompt_states_the_game_setup() -> None:
     assert "19*19, komi 6.5, japanese rules" in _prompt_fixture()
 
 
+def test_the_coordinate_legend_matches_the_katago_alphabet_on_a_19x19_board() -> None:
+    assert "Coordinates: columns A-T (left to right, I skipped)" in _prompt_fixture()
+
+
+def test_the_coordinate_legend_is_correct_on_a_smaller_board() -> None:
+    """KataGo skips "I" on every board size, not only 19x19 — a 9x9 board's columns
+    run A-H then J, so the last column is J, not (as the buggy version rendered) a
+    plain unskipped ninth letter, "i"."""
+    prompt = _generate_user_prompt(
+        {
+            "turnNumber": 1,
+            "rootInfo": {"winrate": 0.5, "scoreLead": 0.0, "currentPlayer": "W"},
+            "moveInfos": [],
+        },
+        {
+            "turnNumber": 0,
+            "rootInfo": {"winrate": 0.5, "scoreLead": 0.0, "currentPlayer": "B"},
+            "moveInfos": [
+                {"move": "E5", "order": 0, "prior": 0.3, "winrate": 0.5, "scoreLead": 0.0}
+            ],
+        },
+        board_size=9,
+        komi=6.5,
+        rules="japanese",
+        initial_stones=[],
+        moves=[["B", "E5"]],
+    )
+    assert "Coordinates: columns A-J (left to right, I skipped)" in prompt
+    assert "A-i" not in prompt
+
+
 def test_the_user_prompt_marks_the_played_move_and_the_suggestion() -> None:
     prompt = _prompt_fixture()
     assert "★ = the move White just played (Q4)" in prompt
@@ -643,6 +750,44 @@ def test_the_user_prompt_reports_the_winrate_change_from_the_movers_side() -> No
     """Black is on 42%, so White is on 58% — up from 50% before the move."""
     prompt = _prompt_fixture()
     assert "[CHANGE: +8.0%]" in prompt
+
+
+def test_the_user_prompt_mirrors_the_score_lead_change_for_white_too() -> None:
+    """Black's score lead drops from +0.5 to -4.5 — Black lost 5 points on the board,
+    so White *gained* 5, the same direction as White's +8.0% winrate gain above. The
+    score-lead CHANGE must agree in sign with the winrate CHANGE, or the two figures
+    shown side by side contradict each other on every White move."""
+    prompt = _prompt_fixture()
+    assert "[CHANGE: +5.0 pts for White]" in prompt
+    # The absolute score-lead figures stay Black-relative, as the NOTE documents.
+    assert "Score lead:       +0.5 pts (Black ahead)" in prompt
+    assert "Score lead:       -4.5 pts [CHANGE: +5.0 pts for White]" in prompt
+
+
+def test_the_user_prompt_does_not_mirror_the_score_lead_change_for_black() -> None:
+    """For a Black move, mover-relative and Black-relative are the same thing, so the
+    score-lead CHANGE must equal the plain before/after difference, unflipped."""
+    request = sgf_to_winrate_request(SGF)
+    prompt = _generate_user_prompt(
+        {
+            "turnNumber": 1,
+            "rootInfo": {"winrate": 0.55, "scoreLead": 3.0, "currentPlayer": "W"},
+            "moveInfos": [],
+        },
+        {
+            "turnNumber": 0,
+            "rootInfo": {"winrate": 0.50, "scoreLead": 0.5, "currentPlayer": "B"},
+            "moveInfos": [
+                {"move": "D16", "order": 0, "prior": 0.3, "winrate": 0.55, "scoreLead": 3.0}
+            ],
+        },
+        board_size=request["boardXSize"],
+        komi=request["komi"],
+        rules=request["rules"],
+        initial_stones=request["initialStones"],
+        moves=request["moves"],
+    )
+    assert "[CHANGE: +2.5 pts for Black]" in prompt
 
 
 def test_the_user_prompt_ranks_the_played_move_when_katago_considered_it() -> None:

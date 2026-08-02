@@ -1,16 +1,32 @@
-from typing import Literal
+from datetime import datetime
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field
+
+
+def _reject_passwords_too_long_for_bcrypt(password: str) -> str:
+    """bcrypt (via pwdlib) raises ``ValueError`` on any input over 72 *bytes* — encoded
+    as UTF-8, since a password with multi-byte characters can exceed that well under 72
+    characters. Every field that reaches ``hash_password``/``verify_password`` needs
+    this, or an over-length password turns into an unhandled 500 instead of a normal
+    field error.
+    """
+    if len(password.encode("utf-8")) > 72:
+        raise ValueError("Password must be at most 72 bytes long.")
+    return password
+
+
+_BcryptSafe = AfterValidator(_reject_passwords_too_long_for_bcrypt)
 
 
 class RegisterRequest(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=8)
+    password: Annotated[str, Field(min_length=8), _BcryptSafe]
 
 
 class TokenObtainRequest(BaseModel):
     email: EmailStr
-    password: str
+    password: Annotated[str, _BcryptSafe]
 
 
 class TokenRefreshRequest(BaseModel):
@@ -51,16 +67,16 @@ class UpdateClaudeApiKeyRequest(BaseModel):
 
 class UpdateEmailRequest(BaseModel):
     email: EmailStr
-    password: str
+    password: Annotated[str, _BcryptSafe]
 
 
 class UpdatePasswordRequest(BaseModel):
-    current_password: str
-    new_password: str = Field(min_length=8)
+    current_password: Annotated[str, _BcryptSafe]
+    new_password: Annotated[str, Field(min_length=8), _BcryptSafe]
 
 
 class DeleteAccountRequest(BaseModel):
-    password: str
+    password: Annotated[str, _BcryptSafe]
 
 
 class DetailResponse(BaseModel):
@@ -82,13 +98,20 @@ class CommentaryErrorResponse(BaseModel):
         "upstream_auth_failed",
         "upstream_error",
         "katago_unavailable",
+        "job_already_running",
+        "job_abandoned",
         "internal_error",
     ]
     retry_after: int | None = None
 
 
 class GenerateCommentaryRequest(BaseModel):
-    sgf_content: str = Field(min_length=1)
+    # A 19x19 SGF with commentary already attached is well under 1 MB; 2 MB leaves
+    # generous room for a long game with verbose comments while still bounding the
+    # worst case. (A request this large is also rejected before being buffered at
+    # all — see MaxBodySizeMiddleware — this is the fallback for a client that
+    # reports an honest but oversized Content-Length, or none.)
+    sgf_content: str = Field(min_length=1, max_length=2_000_000)
     sgf_file_name: str = Field(min_length=5)
     model: Literal["claude-fable-5", "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"] = (
         "claude-sonnet-5"
@@ -145,8 +168,29 @@ class GenerateCommentaryResponse(BaseModel):
     annotated_sgf_content: str
 
 
+class CommentaryHistoryItemSchema(BaseModel):
+    """Summary shape for the history *list* — everything ``HistoryCard`` needs to
+    render a row and its board thumbnail, but not the full comment text or the
+    annotated SGF, which can each be tens of kilobytes and are only needed once a
+    specific entry is opened (``GET /user/commentary-history/{id}/``).
+    """
+
+    id: int
+    board_size: int
+    sgf_file_name: str
+    language: Literal["english", "chinese (simplified)", "japanese", "korean"]
+    model: str | None = None
+    created_at: datetime
+    moves: list[list]
+    initial_stones: list[list]
+    comment_count: int
+
+
 class UserCommentaryHistory(BaseModel):
-    commentaries: list[GenerateCommentaryResponse]
+    commentaries: list[CommentaryHistoryItemSchema]
+    # Total rows the user has, independent of how many this page returned — the
+    # client needs it to know whether a "Load more" makes sense.
+    total: int
 
 
 CommentaryJobStatus = Literal["queued", "running", "succeeded", "failed"]

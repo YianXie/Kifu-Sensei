@@ -163,6 +163,32 @@ describe("response interceptor", () => {
         expect(localStorage.getItem("access_token")).toBe("fresh-access");
     });
 
+    it("stores the rotated refresh token too", async () => {
+        // The backend rotates the refresh token on every use — losing it here
+        // capped every session at a hard 7 days from login regardless of activity.
+        localStorage.setItem("refresh_token", "stored-refresh");
+        vi.spyOn(axios, "post").mockResolvedValue({
+            data: { access: "fresh-access", refresh: "fresh-refresh" },
+        });
+        installAdapter(1);
+
+        await api.get("/anything");
+
+        expect(localStorage.getItem("refresh_token")).toBe("fresh-refresh");
+    });
+
+    it("leaves the stored refresh token alone if the response omits one", async () => {
+        localStorage.setItem("refresh_token", "stored-refresh");
+        vi.spyOn(axios, "post").mockResolvedValue({
+            data: { access: "fresh-access" },
+        });
+        installAdapter(1);
+
+        await api.get("/anything");
+
+        expect(localStorage.getItem("refresh_token")).toBe("stored-refresh");
+    });
+
     it("retries only once, so a still-401 replay does not loop", async () => {
         localStorage.setItem("refresh_token", "stored-refresh");
         vi.spyOn(axios, "post").mockResolvedValue({
