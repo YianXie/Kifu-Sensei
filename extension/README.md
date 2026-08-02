@@ -24,12 +24,18 @@ website, and the session is handed off to the extension so it can call the same 
 cd extension
 npm install
 cp .env.example .env    # set VITE_API_URL (backend); also set VITE_FRONTEND_URL (see below)
-npm run build           # tsc + three vite builds → extension/dist/
+npm run build:dev       # generates manifest.json (dev) + tsc + three vite builds → extension/dist/
 ```
 
 Then in Chrome: **`chrome://extensions` → enable Developer mode → Load unpacked →
 select the `extension/` folder** (the one containing `manifest.json`; the manifest
 points at the built `dist/` files).
+
+`manifest.json` is generated, not committed — see
+[Manifest highlights](#manifest-highlights-manifestjson) below — so a build must run
+at least once before there's anything to load. `npm run build:dev` additionally grants
+the localhost host permissions the extension needs to talk to a local backend/frontend;
+`npm run build` (no localhost permissions) is what a real distribution build uses.
 
 ```bash
 npm run dev   # vite watch — rebuilds dist/ on change (reload the extension in Chrome to pick up changes)
@@ -65,22 +71,26 @@ reaching the spies requires a cast.
 
 Covered today:
 
-| File                     | Covers                                                                       |
-| ------------------------ | ---------------------------------------------------------------------------- |
-| `shared/ogs.test.ts`     | Game-URL parsing and both live-game guards (`phase` check, SGF 403)           |
-| `shared/api.test.ts`     | `authedFetch` refresh-on-401, offline vs. dead session, error normalisation   |
-| `shared/commentary.test.ts` | Config validation and clamping, severity tiers, handicap-safe move colours |
-| `shared/config.test.ts`  | Endpoint derivation and job-id escaping                                      |
-| `shared/auth.test.ts`    | Reading the website's handoff entry out of `localStorage`                     |
+| File                        | Covers                                                                      |
+| --------------------------- | --------------------------------------------------------------------------- |
+| `shared/ogs.test.ts`        | Game-URL parsing and both live-game guards (`phase` check, SGF 403)         |
+| `shared/api.test.ts`        | `authedFetch` refresh-on-401, offline vs. dead session, error normalisation |
+| `shared/commentary.test.ts` | Config validation and clamping, severity tiers, handicap-safe move colours  |
+| `shared/config.test.ts`     | Endpoint derivation and job-id escaping                                     |
+| `shared/auth.test.ts`       | Reading the website's handoff entry out of `localStorage`                   |
 
 ### Environment variables
 
 Config is derived from env vars at build time (Vite inlines `import.meta.env.*`):
 
-| Variable            | Used by     | Purpose                                                        |
-| ------------------- | ----------- | -------------------------------------------------------------- |
-| `VITE_API_URL`      | `config.ts` | Base URL of the backend (token refresh + settings validation). |
-| `VITE_FRONTEND_URL` | `panel.ts`  | Frontend origin the panel opens for login/register.            |
+| Variable            | Used by                                         | Purpose                                                        |
+| ------------------- | ----------------------------------------------- | -------------------------------------------------------------- |
+| `VITE_API_URL`      | `config.ts`, `build-manifest.mjs` (`build:dev`) | Base URL of the backend (token refresh + settings validation). |
+| `VITE_FRONTEND_URL` | `panel.ts`, `build-manifest.mjs` (`build:dev`)  | Frontend origin the panel opens for login/register.            |
+
+`build-manifest.mjs` reads these straight out of `.env.development` (not `import.meta.env`,
+since it runs in Node before Vite does) to derive the dev-only `manifest.json` permissions
+— see [Manifest highlights](#manifest-highlights-manifestjson).
 
 > **Note:** `.env.example` currently only lists `VITE_API_URL`, but `panel.ts` also
 > reads `VITE_FRONTEND_URL` to open the login/register tabs. Add it to your `.env`:
@@ -92,11 +102,25 @@ Config is derived from env vars at build time (Vite inlines `import.meta.env.*`)
 
 ## Manifest highlights (`manifest.json`)
 
-- **`permissions`**: `storage`, `sidePanel`, `activeTab`, `tabs`, `scripting`.
-- **`host_permissions`** / **content-script matches**: `localhost:5173`, `localhost:8000`,
-  `online-go.com/*`, and `kifu-sensei.ai/*`.
+`manifest.json` is **generated, not committed** — `manifest.template.json` is the
+source of truth. `scripts/build-manifest.mjs` copies it to `manifest.json`, and for a
+development build additionally merges in the localhost origins read straight out of
+`.env.development` (`VITE_API_URL`, `VITE_FRONTEND_URL`), so those permissions can't
+drift from the URLs the extension actually uses:
+
+| Mode                           | `npm run` script | `host_permissions`                                                          | content-script / web-accessible-resource matches                                  |
+| ------------------------------ | ---------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Development                    | `build:dev`      | `online-go.com`, `kifu-sensei.ai`, **+ `localhost:5173`, `localhost:8000`** | **+ `localhost:5173`** (the backend is only ever `fetch()`ed, never navigated to) |
+| Production (real distribution) | `build`          | `online-go.com`, `kifu-sensei.ai`                                           | `online-go.com`, `kifu-sensei.ai`                                                 |
+
+This keeps a real distribution build from shipping host permissions for arbitrary
+local servers on those ports — see `scripts/build-manifest.mjs` for the merge logic.
+
+Everything else in the manifest is mode-independent:
+
+- **`permissions`**: `storage`, `sidePanel`, `activeTab`, `tabs`, `scripting`, `alarms`.
 - **`background`**: `dist/background.js` (service worker, ES module).
-- **`content_scripts`**: `dist/content.js` runs on the frontend origins and on
+- **`content_scripts`**: `dist/content.js` runs on the frontend origin(s) and on
   `online-go.com/game/*`.
 - **`web_accessible_resources`**: `dist/inject.js`, so the content script can inject it
   into the page's own JS world.
@@ -131,7 +155,10 @@ The panel and the service worker are genuinely ES modules, so they may share a c
 
 ```
 extension/
-├── manifest.json            # MV3 manifest (references dist/ files)
+├── manifest.template.json   # MV3 manifest source of truth (references dist/ files)
+├── manifest.json            # generated by scripts/build-manifest.mjs — gitignored
+├── scripts/
+│   └── build-manifest.mjs   # renders manifest.template.json → manifest.json per mode
 ├── vite.config.ts           # ESM entries (panel, background)
 ├── vite.content.config.ts   # content.ts as a self-contained IIFE
 ├── vite.inject.config.ts    # inject.ts as a self-contained IIFE
