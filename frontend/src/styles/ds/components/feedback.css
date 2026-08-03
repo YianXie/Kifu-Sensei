@@ -1,0 +1,250 @@
+/* ── Feedback ────────────────────────────────────────────────────────────── */
+.ks-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-6);
+    padding: var(--space-7) var(--space-8);
+    border-radius: var(--radius-md);
+    border: var(--border-width) solid;
+    font-size: var(--text-xs);
+    line-height: var(--leading-relaxed);
+}
+.ks-alert .ks-icon {
+    font-size: var(--icon-sm);
+    margin-top: 1px;
+    flex-shrink: 0;
+}
+.ks-alert__title {
+    font-weight: var(--weight-semibold);
+    display: block;
+    margin-bottom: 2px;
+}
+.ks-alert__body {
+    flex: 1;
+    min-width: 0;
+}
+.ks-alert--error {
+    color: var(--danger);
+    background: var(--danger-soft);
+    border-color: var(--danger-border);
+}
+.ks-alert--warning {
+    color: var(--warning);
+    background: var(--warning-soft);
+    border-color: var(--warning-border);
+}
+.ks-alert--success {
+    color: var(--success);
+    background: var(--success-soft);
+    border-color: var(--success-border);
+}
+.ks-alert--info {
+    color: var(--text-body);
+    background: var(--accent-soft);
+    border-color: var(--accent-soft-border);
+}
+
+/* Toast — bottom-right, coloured, same vocabulary as the alerts.
+   The product's toasts come from react-toastify; `toastify.css` maps its
+   container and item classes onto the rules below. */
+.ks-toast-region {
+    position: fixed;
+    right: var(--space-12);
+    bottom: var(--space-12);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+    z-index: 60;
+}
+.ks-toast {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-6);
+    min-width: 280px;
+    max-width: 380px;
+    padding: var(--space-8) var(--space-9);
+    border-radius: var(--radius-md);
+    border: var(--border-width) solid var(--border-default);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-3);
+    font-size: var(--text-xs);
+    line-height: var(--leading-normal);
+    color: var(--text-body);
+    animation: ks-fade-up var(--duration-slow) var(--ease-out) both;
+}
+.ks-toast .ks-icon {
+    font-size: var(--icon-sm);
+    flex-shrink: 0;
+}
+.ks-toast--error {
+    border-color: var(--danger-border);
+}
+.ks-toast--error .ks-icon {
+    color: var(--danger);
+}
+.ks-toast--success {
+    border-color: var(--success-border);
+}
+.ks-toast--success .ks-icon {
+    color: var(--success);
+}
+.ks-toast--warning {
+    border-color: var(--warning-border);
+}
+.ks-toast--warning .ks-icon {
+    color: var(--warning);
+}
+.ks-toast--info .ks-icon {
+    color: var(--text-accent);
+}
+.ks-toast__close {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: var(--text-muted);
+    cursor: pointer;
+    line-height: 1;
+}
+.ks-toast__close:hover {
+    color: var(--text-body);
+}
+
+/* Spinner */
+.ks-spinner {
+    display: inline-block;
+    border-radius: var(--radius-circle);
+    border: 2px solid var(--border-default);
+    border-top-color: var(--accent);
+    animation: ks-spin 0.9s var(--ease-linear) infinite;
+}
+
+/* Progress bar — from the extension's generating screen */
+.ks-progress {
+    height: 6px;
+    border-radius: var(--radius-xs);
+    background: var(--surface-hover);
+    overflow: hidden;
+}
+.ks-progress__fill {
+    height: 100%;
+    border-radius: var(--radius-xs);
+    background: linear-gradient(
+        90deg,
+        var(--kaya-500) 0%,
+        var(--kaya-400) 100%
+    );
+    transition: width 0.4s var(--ease-standard);
+}
+.ks-progress--indeterminate .ks-progress__fill {
+    width: 35%;
+    animation: ks-progress-slide 1.4s var(--ease-standard) infinite;
+}
+@keyframes ks-progress-slide {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(320%);
+    }
+}
+
+/* Tooltip */
+.ks-tooltip {
+    position: relative;
+    display: inline-flex;
+}
+.ks-tooltip__bubble {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    padding: var(--space-2) var(--space-6);
+    border-radius: var(--radius-xs);
+    background: var(--ink-700);
+    color: var(--paper-050);
+    font-size: var(--text-3xs);
+    line-height: 1.5;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+    z-index: 40;
+    box-shadow: var(--shadow-2);
+}
+.ks-tooltip__bubble::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -4px;
+    border: 4px solid transparent;
+    border-top-color: var(--ink-700);
+}
+.ks-tooltip:hover .ks-tooltip__bubble,
+.ks-tooltip:focus-within .ks-tooltip__bubble {
+    opacity: 1;
+}
+
+/* Dialog */
+.ks-dialog-scrim {
+    position: fixed;
+    inset: 0;
+    background: var(--surface-scrim);
+    backdrop-filter: blur(2px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-12);
+    z-index: 80;
+    animation: ks-scrim-in var(--duration-base) var(--ease-out) both;
+}
+@keyframes ks-scrim-in {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+.ks-dialog {
+    width: 100%;
+    max-width: 460px;
+    background: var(--surface-card);
+    border: var(--border-width) solid var(--border-default);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-4);
+    overflow: hidden;
+    animation: ks-fade-up var(--duration-slow) var(--ease-out) both;
+}
+.ks-dialog--sm {
+    max-width: 360px;
+}
+.ks-dialog--lg {
+    max-width: 620px;
+}
+.ks-dialog__title {
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    font-weight: var(--weight-semibold);
+    color: var(--text-heading);
+    margin: 0;
+    padding: var(--space-12) var(--space-12) var(--space-6);
+}
+.ks-dialog__body {
+    padding: 0 var(--space-12) var(--space-12);
+    font-size: var(--text-xs);
+    line-height: var(--leading-relaxed);
+    color: var(--text-secondary);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+}
+.ks-dialog__footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-6);
+    padding: var(--space-8) var(--space-12);
+    border-top: var(--border-width) solid var(--border-subtle);
+    background: var(--surface-sunken);
+}

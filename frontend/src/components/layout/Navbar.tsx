@@ -1,301 +1,194 @@
-import { useState } from "react";
-import { Link as RouterLink, useNavigate } from "react-router";
+import { useEffect, useRef, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router";
 
-import { AccountCircle } from "@mui/icons-material";
-import CommentIcon from "@mui/icons-material/Comment";
-import HistoryIcon from "@mui/icons-material/History";
-import LoginIcon from "@mui/icons-material/Login";
-import LogoutIcon from "@mui/icons-material/Logout";
-import MenuIcon from "@mui/icons-material/Menu";
-import PolicyIcon from "@mui/icons-material/Policy";
-import SettingsIcon from "@mui/icons-material/Settings";
 import {
-    AppBar,
-    Box,
     Button,
     Drawer,
     IconButton,
-    Link,
-    List,
-    ListItem,
-    ListItemButton,
-    ListItemIcon,
-    ListItemText,
     Menu,
-    MenuItem,
-    Toolbar,
-    Typography,
-    useMediaQuery,
-    useTheme,
-} from "@mui/material";
-
+    type MenuEntry,
+    NavList,
+    type NavListItem,
+} from "@/components/ui";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTheme } from "@/contexts/ThemeContext";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+
+/** The links that sit directly in the bar. Signed-out visitors get none of
+ *  them — everything else lives behind the account menu. */
+const PRIVATE_LINKS: NavListItem[] = [
+    { label: "Commentary", to: "/commentary", icon: "comment" },
+    { label: "History", to: "/history", icon: "history" },
+];
+
+const PRIVACY_LINK: NavListItem = {
+    label: "Privacy",
+    to: "/privacy",
+    icon: "policy",
+};
+
+/** The account dropdown. History is deliberately absent — it is already a
+ *  first-class link in the bar. */
+const ACCOUNT_MENU: MenuEntry[] = [
+    { label: "Settings", icon: "settings" },
+    { label: "Privacy", icon: "policy" },
+    "divider",
+    { label: "Logout", icon: "logout", danger: true },
+];
+
+const MENU_TARGETS: Record<string, string> = {
+    Settings: "/settings",
+    Privacy: "/privacy",
+    Logout: "/logout",
+};
 
 export default function Navbar() {
     const { isAuthenticated } = useAuth();
+    const { resolved, toggle } = useTheme();
     const navigate = useNavigate();
+    const { pathname } = useLocation();
+    const isMobile = useMediaQuery("(max-width: 768px)");
 
     const [drawerOpen, setDrawerOpen] = useState(false);
-    const [authAnchorEl, setAuthAnchorEl] = useState<HTMLElement | null>(null);
+    const [menuOpen, setMenuOpen] = useState(false);
+    const accountRef = useRef<HTMLDivElement>(null);
 
-    const theme = useTheme();
-    const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-
-    const navItems = [
-        {
-            label: "Commentary",
-            to: "/commentary",
-            protected: true,
-            icon: <CommentIcon fontSize="small" />,
-        },
-        {
-            label: "Privacy",
-            to: "/privacy",
-            protected: false,
-            icon: <PolicyIcon fontSize="small" />,
-        },
-    ];
-    const authItems = [
-        {
-            label: "Settings",
-            to: "/settings",
-            icon: <SettingsIcon fontSize="small" />,
-        },
-        {
-            label: "History",
-            to: "/history",
-            icon: <HistoryIcon fontSize="small" />,
-        },
+    const links = isAuthenticated ? PRIVATE_LINKS : [];
+    const drawerItems: NavListItem[] = [
+        ...links,
+        PRIVACY_LINK,
+        ...(isAuthenticated
+            ? [
+                  {
+                      label: "Settings",
+                      to: "/settings",
+                      icon: "settings",
+                  } as const,
+                  { label: "Logout", to: "/logout", icon: "logout" } as const,
+              ]
+            : [{ label: "Login", to: "/login", icon: "login" } as const]),
     ];
 
-    const drawerContent = (
-        <Box>
-            <List sx={{ px: 2 }}>
-                {[...navItems, ...authItems]
-                    .filter(
-                        (item) =>
-                            isAuthenticated ||
-                            ("protected" in item ? !item.protected : false)
-                    )
-                    .map((item) => (
-                        <ListItem key={item.label} disablePadding>
-                            <ListItemButton
-                                component={RouterLink}
-                                to={item.to}
-                                sx={{ fontWeight: 500 }}
-                            >
-                                <ListItemIcon>{item.icon}</ListItemIcon>
-                                <ListItemText primary={item.label} />
-                            </ListItemButton>
-                        </ListItem>
-                    ))}
-                <ListItem disablePadding>
-                    {isAuthenticated ? (
-                        <ListItemButton
-                            component={RouterLink}
-                            to="/logout"
-                            sx={{ fontWeight: 500 }}
-                        >
-                            <ListItemIcon>
-                                <LogoutIcon fontSize="small" />
-                            </ListItemIcon>
-                            <ListItemText primary="Logout" />
-                        </ListItemButton>
-                    ) : (
-                        <ListItemButton
-                            component={RouterLink}
-                            to="/login"
-                            sx={{ fontWeight: 500 }}
-                        >
-                            <ListItemIcon>
-                                <LoginIcon fontSize="small" />
-                            </ListItemIcon>
-                            <ListItemText primary="Login" />
-                        </ListItemButton>
-                    )}
-                </ListItem>
-            </List>
-        </Box>
-    );
-
-    const handleAuthMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-        setAuthAnchorEl(event.currentTarget);
-    };
-
-    const handleAuthMenuClose = () => {
-        setAuthAnchorEl(null);
-    };
+    // The account dropdown is positioned, not portalled, so a click anywhere
+    // else has to close it explicitly. `accountRef` wraps the trigger *and* the
+    // dropdown: if it covered only the trigger, mousedown on a menu item would
+    // unmount the menu before the click landed, and the item would never fire.
+    useEffect(() => {
+        if (!menuOpen) return;
+        function handlePointerDown(event: MouseEvent) {
+            if (!accountRef.current?.contains(event.target as Node)) {
+                setMenuOpen(false);
+            }
+        }
+        function handleKeyDown(event: KeyboardEvent) {
+            if (event.key === "Escape") setMenuOpen(false);
+        }
+        document.addEventListener("mousedown", handlePointerDown);
+        document.addEventListener("keydown", handleKeyDown);
+        return () => {
+            document.removeEventListener("mousedown", handlePointerDown);
+            document.removeEventListener("keydown", handleKeyDown);
+        };
+    }, [menuOpen]);
 
     return (
-        <AppBar
-            position="static"
-            sx={{
-                px: 2,
-                py: 1,
-                userSelect: "none",
-            }}
-        >
-            <Toolbar variant="dense">
-                <Link
-                    to="/"
-                    component={RouterLink}
-                    sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 1,
-                        cursor: "pointer",
-                        mr: 4,
-                        flexGrow: isMobile ? 1 : "initial",
-                    }}
-                    underline="none"
-                    color="inherit"
-                >
-                    <img src="/logo.png" alt="Kifu-Sensei" height={32} />
-                    <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                        Kifu-Sensei
-                    </Typography>
+        <div style={{ position: "relative", zIndex: 40 }}>
+            <header className="ks-navbar">
+                <Link className="ks-navbar__brand" to="/">
+                    <img
+                        className="ks-navbar__logo"
+                        src="/logo.png"
+                        alt=""
+                        width={30}
+                        height={30}
+                    />
+                    <span className="ks-navbar__wordmark">Kifu-Sensei</span>
                 </Link>
-                {isMobile ? (
-                    <>
-                        <IconButton
-                            onClick={() => setDrawerOpen(true)}
-                            aria-label="Open navigation menu"
-                        >
-                            <MenuIcon
-                                sx={{
-                                    color: "#fff",
-                                }}
-                            />
-                        </IconButton>
-                        <Drawer
-                            anchor="right"
-                            open={drawerOpen}
-                            onClick={() => setDrawerOpen(false)}
-                            onClose={() => setDrawerOpen(false)}
-                        >
-                            {drawerContent}
-                        </Drawer>
-                    </>
-                ) : (
-                    <>
-                        <Box
-                            sx={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 2,
-                                flexGrow: 1,
-                            }}
-                        >
-                            {navItems
-                                .filter(
-                                    (item) => isAuthenticated || !item.protected
-                                )
-                                .map((item) => (
-                                    <Link
-                                        key={item.label}
-                                        to={item.to}
-                                        component={RouterLink}
-                                        color="inherit"
-                                        underline="hover"
-                                    >
-                                        {item.label}
-                                    </Link>
-                                ))}
-                        </Box>
-                        <Box
-                            sx={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 2,
-                            }}
-                        >
-                            {isAuthenticated ? (
-                                <Box>
-                                    <IconButton
-                                        size="medium"
-                                        aria-label="account"
-                                        aria-controls="auth-menu"
-                                        aria-haspopup="true"
-                                        onClick={handleAuthMenuOpen}
-                                        color="inherit"
-                                    >
-                                        <AccountCircle fontSize="large" />
-                                    </IconButton>
-                                    <Menu
-                                        id="auth-menu"
-                                        anchorEl={authAnchorEl}
-                                        anchorOrigin={{
-                                            vertical: "bottom",
-                                            horizontal: "right",
-                                        }}
-                                        keepMounted
-                                        transformOrigin={{
-                                            vertical: "top",
-                                            horizontal: "right",
-                                        }}
-                                        open={Boolean(authAnchorEl)}
-                                        onClose={handleAuthMenuClose}
-                                    >
-                                        {authItems.map((item) => (
-                                            <MenuItem
-                                                key={item.label}
-                                                onClick={() => {
-                                                    navigate(item.to);
-                                                    handleAuthMenuClose();
-                                                }}
-                                            >
-                                                <Box
-                                                    sx={{
-                                                        display: "flex",
-                                                        alignItems: "center",
-                                                        gap: 1,
-                                                    }}
-                                                >
-                                                    {item.icon}
-                                                    <Typography>
-                                                        {item.label}
-                                                    </Typography>
-                                                </Box>
-                                            </MenuItem>
-                                        ))}
-                                        <MenuItem
-                                            onClick={() => {
-                                                navigate("/logout");
-                                                handleAuthMenuClose();
-                                            }}
-                                        >
-                                            <Box
-                                                sx={{
-                                                    display: "flex",
-                                                    alignItems: "center",
-                                                    gap: 1,
-                                                }}
-                                            >
-                                                <LogoutIcon fontSize="small" />
-                                                <Typography>Logout</Typography>
-                                            </Box>
-                                        </MenuItem>
-                                    </Menu>
-                                </Box>
-                            ) : (
-                                <Link
-                                    to="/login"
-                                    component={RouterLink}
-                                    color="inherit"
-                                    underline="hover"
-                                >
-                                    <Button
-                                        variant="contained"
-                                        color="secondary"
-                                    >
-                                        Login
-                                    </Button>
-                                </Link>
-                            )}
-                        </Box>
-                    </>
+
+                {!isMobile && (
+                    <nav className="ks-navbar__links">
+                        {links.map((link) => (
+                            <Link
+                                key={link.label}
+                                className="ks-navbar__link"
+                                to={link.to}
+                                aria-current={
+                                    pathname === link.to ? "page" : undefined
+                                }
+                            >
+                                {link.label}
+                            </Link>
+                        ))}
+                    </nav>
                 )}
-            </Toolbar>
-        </AppBar>
+
+                <div className="ks-navbar__actions">
+                    <IconButton
+                        icon={resolved === "dark" ? "light_mode" : "dark_mode"}
+                        label={
+                            resolved === "dark"
+                                ? "Switch to light theme"
+                                : "Switch to dark theme"
+                        }
+                        onClick={toggle}
+                    />
+
+                    {isMobile ? (
+                        <IconButton
+                            icon="menu"
+                            label="Open navigation menu"
+                            onClick={() => setDrawerOpen(true)}
+                        />
+                    ) : isAuthenticated ? (
+                        <div ref={accountRef} style={{ position: "relative" }}>
+                            <IconButton
+                                icon="account_circle"
+                                label="Account"
+                                size="lg"
+                                aria-haspopup="menu"
+                                aria-expanded={menuOpen}
+                                onClick={() => setMenuOpen((open) => !open)}
+                            />
+                            {menuOpen && (
+                                <div
+                                    style={{
+                                        position: "absolute",
+                                        right: 0,
+                                        top: "calc(100% + 8px)",
+                                        zIndex: 60,
+                                    }}
+                                >
+                                    <Menu
+                                        items={ACCOUNT_MENU}
+                                        onSelect={(item) => {
+                                            setMenuOpen(false);
+                                            navigate(
+                                                MENU_TARGETS[item.label] ?? "/"
+                                            );
+                                        }}
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <Button size="sm" onClick={() => navigate("/login")}>
+                            Log in
+                        </Button>
+                    )}
+                </div>
+            </header>
+
+            <Drawer
+                open={drawerOpen}
+                title="Kifu-Sensei"
+                onClose={() => setDrawerOpen(false)}
+            >
+                <NavList
+                    items={drawerItems}
+                    current={pathname}
+                    onSelect={() => setDrawerOpen(false)}
+                />
+            </Drawer>
+        </div>
     );
 }

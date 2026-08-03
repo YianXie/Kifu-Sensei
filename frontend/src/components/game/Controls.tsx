@@ -1,19 +1,6 @@
-import type { ReactNode } from "react";
-
-import ArrowBackIosIcon from "@mui/icons-material/ArrowBackIos";
-import ArrowForwardIosIcon from "@mui/icons-material/ArrowForwardIos";
-import FastForwardIcon from "@mui/icons-material/FastForward";
-import FastRewindIcon from "@mui/icons-material/FastRewind";
-import SkipNextIcon from "@mui/icons-material/SkipNext";
-import SkipPreviousIcon from "@mui/icons-material/SkipPrevious";
-import IconButton from "@mui/material/IconButton";
-import Paper from "@mui/material/Paper";
-import Stack from "@mui/material/Stack";
-import Tooltip from "@mui/material/Tooltip";
-import Typography from "@mui/material/Typography";
-import type { SxProps, Theme } from "@mui/material/styles";
-
 import placeStoneSoundInstance from "@/assets/sounds/placeStoneSoundInstance";
+import { IconButton, Tooltip } from "@/components/ui";
+import type { IconName } from "@/components/ui";
 import { FAST_FORWARD_AMOUNT } from "@/constants/game/controls";
 
 function ControlMoveButton({
@@ -22,30 +9,38 @@ function ControlMoveButton({
     amount,
     onMoveChange,
     disabled,
+    soundEnabled,
+    tone = "neutral",
 }: {
-    icon: ReactNode;
+    icon: IconName;
     label: string;
     amount: number;
     onMoveChange: (amount: number) => void;
     disabled: boolean;
+    soundEnabled: boolean;
+    tone?: "neutral" | "accent";
 }) {
     return (
-        <span>
-            <IconButton
-                disabled={disabled}
-                aria-label={label}
-                onClick={() => {
+        <IconButton
+            icon={icon}
+            label={label}
+            tone={tone}
+            disabled={disabled}
+            onClick={() => {
+                if (soundEnabled) {
                     placeStoneSoundInstance.currentTime = 0;
                     void placeStoneSoundInstance.play();
-                    onMoveChange(amount);
-                }}
-            >
-                {icon}
-            </IconButton>
-        </span>
+                }
+                onMoveChange(amount);
+            }}
+        />
     );
 }
 
+/**
+ * The dock beneath the board: first / rewind 5 / back / jump-to-comment, the
+ * move counter, then the mirrored forward set.
+ */
 export default function Controls({
     maxMove,
     currentMoveIndex,
@@ -54,7 +49,7 @@ export default function Controls({
     onJumpToNextComment,
     hasPreviousCommentMove = false,
     hasNextCommentMove = false,
-    sx: sxOverride,
+    soundEnabled = true,
 }: {
     maxMove: number;
     currentMoveIndex: number;
@@ -63,158 +58,93 @@ export default function Controls({
     onJumpToNextComment?: () => void;
     hasPreviousCommentMove?: boolean;
     hasNextCommentMove?: boolean;
-    sx?: SxProps<Theme>;
+    /** The user's "play a stone sound when stepping through moves" preference. */
+    soundEnabled?: boolean;
 }) {
+    const atStart = currentMoveIndex <= 0;
+    const atEnd = currentMoveIndex >= maxMove;
+
     return (
-        <Paper
-            sx={[
-                {
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    containerType: "inline-size",
-                    gap: "clamp(1px, 1cqw, 8px)",
-                    p: "clamp(3px, 1.5cqw, 8px)",
-                    borderRadius: "0 0 12px 12px",
-                    flexWrap: "nowrap",
-                    overflow: "hidden",
-                    "& .MuiIconButton-root": {
-                        width: "clamp(20px, 9cqw, 40px)",
-                        height: "clamp(20px, 9cqw, 40px)",
-                        p: 0,
-                    },
-                    "& .MuiSvgIcon-root": {
-                        fontSize: "clamp(0.875rem, 5cqw, 1.5rem)",
-                    },
-                },
-                ...(Array.isArray(sxOverride)
-                    ? sxOverride
-                    : sxOverride
-                      ? [sxOverride]
-                      : []),
-            ]}
-        >
-            <Stack
-                direction="row"
-                sx={{
-                    gap: "clamp(1px, 1cqw, 4px)",
-                    ml: "auto",
-                    minWidth: 0,
-                }}
-            >
+        <div className="ks-controls">
+            <div className="ks-controls__group ks-controls__group--start">
                 <ControlMoveButton
-                    amount={-maxMove}
-                    icon={<SkipPreviousIcon />}
+                    icon="skip_previous"
                     label="Move to the beginning"
+                    amount={-maxMove}
                     onMoveChange={onMoveChange}
-                    disabled={currentMoveIndex <= 0}
+                    disabled={atStart}
+                    soundEnabled={soundEnabled}
                 />
                 <ControlMoveButton
-                    amount={-FAST_FORWARD_AMOUNT}
-                    icon={<FastRewindIcon />}
+                    icon="fast_rewind"
                     label={`Rewind ${FAST_FORWARD_AMOUNT} moves`}
+                    amount={-FAST_FORWARD_AMOUNT}
                     onMoveChange={onMoveChange}
-                    disabled={currentMoveIndex <= 0}
+                    disabled={atStart}
+                    soundEnabled={soundEnabled}
                 />
                 <ControlMoveButton
-                    amount={-1}
-                    icon={<ArrowBackIosIcon />}
+                    icon="arrow_back_ios"
                     label="Move backward 1 move"
+                    amount={-1}
                     onMoveChange={onMoveChange}
-                    disabled={currentMoveIndex <= 0}
+                    disabled={atStart}
+                    soundEnabled={soundEnabled}
                 />
-                <Tooltip
-                    title="Jump to previous move with commentary"
-                    placement="top"
-                    arrow
-                >
-                    <span>
-                        <ControlMoveButton
-                            amount={0}
-                            icon={
-                                <ArrowBackIosIcon
-                                    sx={{
-                                        color: hasPreviousCommentMove
-                                            ? "warning.main"
-                                            : "default",
-                                    }}
-                                />
-                            }
-                            label="Jump to previous move with commentary"
-                            onMoveChange={() => onJumpToPreviousComment?.()}
-                            disabled={!hasPreviousCommentMove}
-                        />
-                    </span>
+                <Tooltip title="Jump to previous move with commentary">
+                    <ControlMoveButton
+                        icon="chevron_left"
+                        label="Jump to previous move with commentary"
+                        amount={0}
+                        tone={hasPreviousCommentMove ? "accent" : "neutral"}
+                        onMoveChange={() => onJumpToPreviousComment?.()}
+                        disabled={!hasPreviousCommentMove}
+                        soundEnabled={soundEnabled}
+                    />
                 </Tooltip>
-            </Stack>
+            </div>
 
-            <Typography
-                variant="body2"
-                sx={{
-                    minWidth: "clamp(20px, 8cqw, 40px)",
-                    textAlign: "center",
-                    fontWeight: 500,
-                    flexShrink: 0,
-                }}
-            >
-                {currentMoveIndex}
-            </Typography>
+            <span className="ks-controls__counter">
+                {currentMoveIndex}/{maxMove}
+            </span>
 
-            <Stack
-                direction="row"
-                sx={{
-                    gap: "clamp(1px, 1cqw, 4px)",
-                    mr: "auto",
-                    minWidth: 0,
-                }}
-            >
-                <Tooltip
-                    title="Jump to next move with commentary"
-                    placement="top"
-                    arrow
-                >
-                    <span>
-                        <ControlMoveButton
-                            amount={0}
-                            icon={
-                                <ArrowForwardIosIcon
-                                    fontSize="small"
-                                    sx={{
-                                        color: hasNextCommentMove
-                                            ? "warning.main"
-                                            : "default",
-                                    }}
-                                />
-                            }
-                            label="Jump to next move with commentary"
-                            onMoveChange={() => onJumpToNextComment?.()}
-                            disabled={!hasNextCommentMove}
-                        />
-                    </span>
+            <div className="ks-controls__group ks-controls__group--end">
+                <Tooltip title="Jump to next move with commentary">
+                    <ControlMoveButton
+                        icon="chevron_right"
+                        label="Jump to next move with commentary"
+                        amount={0}
+                        tone={hasNextCommentMove ? "accent" : "neutral"}
+                        onMoveChange={() => onJumpToNextComment?.()}
+                        disabled={!hasNextCommentMove}
+                        soundEnabled={soundEnabled}
+                    />
                 </Tooltip>
                 <ControlMoveButton
-                    amount={1}
-                    icon={<ArrowForwardIosIcon fontSize="small" />}
+                    icon="arrow_forward_ios"
                     label="Move forward 1 move"
+                    amount={1}
                     onMoveChange={onMoveChange}
-                    disabled={currentMoveIndex >= maxMove}
+                    disabled={atEnd}
+                    soundEnabled={soundEnabled}
                 />
-
                 <ControlMoveButton
-                    amount={FAST_FORWARD_AMOUNT}
-                    icon={<FastForwardIcon />}
+                    icon="fast_forward"
                     label={`Fast forward ${FAST_FORWARD_AMOUNT} moves`}
+                    amount={FAST_FORWARD_AMOUNT}
                     onMoveChange={onMoveChange}
-                    disabled={currentMoveIndex >= maxMove}
+                    disabled={atEnd}
+                    soundEnabled={soundEnabled}
                 />
                 <ControlMoveButton
-                    amount={maxMove}
-                    icon={<SkipNextIcon />}
+                    icon="skip_next"
                     label="Move to the end"
+                    amount={maxMove}
                     onMoveChange={onMoveChange}
-                    disabled={currentMoveIndex >= maxMove}
+                    disabled={atEnd}
+                    soundEnabled={soundEnabled}
                 />
-            </Stack>
-        </Paper>
+            </div>
+        </div>
     );
 }

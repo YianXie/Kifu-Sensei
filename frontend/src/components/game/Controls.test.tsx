@@ -24,9 +24,9 @@ function setup(overrides: Partial<Parameters<typeof Controls>[0]> = {}) {
 }
 
 describe("Controls", () => {
-    it("shows the current move number", () => {
-        setup({ currentMoveIndex: 42 });
-        expect(screen.getByText("42")).toBeInTheDocument();
+    it("shows the current move number against the total", () => {
+        setup({ currentMoveIndex: 42, maxMove: 100 });
+        expect(screen.getByText("42/100")).toBeInTheDocument();
     });
 
     it.each([

@@ -2,16 +2,8 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { toast } from "react-toastify";
 
-import {
-    Alert,
-    Box,
-    Button,
-    Container,
-    TextField,
-    Typography,
-} from "@mui/material";
-
 import api from "@/api";
+import { Alert, Button, Field, Input } from "@/components/ui";
 import { ENDPOINTS } from "@/constants/global/endpoints";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
@@ -39,6 +31,8 @@ export default function Register() {
     const [confirm, setConfirm] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+
+    const mismatch = confirm.length > 0 && password !== confirm;
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
@@ -71,97 +65,74 @@ export default function Register() {
     }
 
     return (
-        <Container maxWidth="sm">
-            <Box
-                sx={{
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "center",
-                    gap: 3,
-                    minHeight: "80vh",
-                }}
-            >
-                <Typography
-                    variant="h4"
-                    sx={{ fontWeight: 700, textAlign: "center" }}
-                >
-                    Create an Account
-                </Typography>
+        <div className="ks-auth">
+            <div className="ks-auth__head">
+                <img src="/logo.png" width={56} height={56} alt="" />
+                <h1 className="ks-auth__title">Create an account</h1>
+                <p className="ks-auth__lead">
+                    You&apos;ll add your own Claude API key next. It stays
+                    encrypted.
+                </p>
+            </div>
 
-                {error && <Alert severity="error">{error}</Alert>}
+            {error && <Alert severity="error">{error}</Alert>}
 
-                <Box
-                    component="form"
-                    onSubmit={handleSubmit}
-                    sx={{ display: "flex", flexDirection: "column", gap: 2 }}
-                >
-                    <TextField
-                        label="Email"
+            <form onSubmit={handleSubmit} className="ks-auth__form">
+                <Field label="Email" htmlFor="reg-email">
+                    <Input
+                        id="reg-email"
                         type="email"
+                        placeholder="you@example.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         required
-                        fullWidth
                         autoFocus
                         autoComplete="email"
                     />
-                    <TextField
-                        label="Password"
+                </Field>
+                <Field
+                    label="Password"
+                    htmlFor="reg-pw"
+                    hint="At least 8 characters."
+                >
+                    <Input
+                        id="reg-pw"
                         type="password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required
-                        fullWidth
-                        slotProps={{ htmlInput: { minLength: 8 } }}
+                        minLength={8}
                         autoComplete="new-password"
                     />
-                    <TextField
-                        label="Confirm Password"
+                </Field>
+                <Field
+                    label="Confirm password"
+                    htmlFor="reg-pw2"
+                    error={mismatch ? "Passwords do not match." : undefined}
+                >
+                    <Input
+                        id="reg-pw2"
                         type="password"
                         value={confirm}
                         onChange={(e) => setConfirm(e.target.value)}
                         required
-                        fullWidth
+                        invalid={mismatch}
                         autoComplete="new-password"
                     />
-                    <Button
-                        type="submit"
-                        variant="contained"
-                        size="large"
-                        fullWidth
-                        disabled={loading}
-                    >
-                        {loading ? "Creating account…" : "Register"}
-                    </Button>
-                </Box>
+                </Field>
+                <Button type="submit" size="lg" block disabled={loading}>
+                    {loading ? "Creating account…" : "Register"}
+                </Button>
+            </form>
 
-                <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ textAlign: "center" }}
-                >
-                    Already have an account?{" "}
-                    <Link
-                        to="/login"
-                        style={{ color: "inherit", fontWeight: 600 }}
-                    >
-                        Log In
-                    </Link>
-                </Typography>
-
-                <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ textAlign: "center" }}
-                >
-                    <Link
-                        to="/privacy"
-                        style={{ color: "inherit", fontWeight: 600 }}
-                    >
-                        Privacy Policy
-                    </Link>
-                </Typography>
-            </Box>
-        </Container>
+            <div className="ks-auth__foot">
+                <span>
+                    Already have an account? <Link to="/login">Log in</Link>
+                </span>
+                <span>
+                    <Link to="/privacy">Privacy policy</Link>
+                </span>
+            </div>
+        </div>
     );
 }

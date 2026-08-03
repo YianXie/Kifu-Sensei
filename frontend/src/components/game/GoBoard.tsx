@@ -2,8 +2,6 @@ import Board from "@sabaki/go-board";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import Box from "@mui/material/Box";
-
 import { GTP_LETTERS } from "@/constants/game/go";
 import { DEFAULT_BOARD_CANVAS_SIZE } from "@/constants/game/goBoard";
 import { type GameMove, isValidMove } from "@/types/game";
@@ -116,7 +114,14 @@ export default function GoBoard({
 
     const drawCoords = useCallback(
         (canvasContext: CanvasRenderingContext2D) => {
-            canvasContext.font = `${fontSize}px Arial`;
+            // The board's own coordinates are board data, so they take the
+            // design system's mono face. Read off <body>, since a canvas cannot
+            // resolve a CSS custom property itself.
+            const mono =
+                getComputedStyle(document.body).getPropertyValue(
+                    "--font-mono"
+                ) || "monospace";
+            canvasContext.font = `${fontSize}px ${mono}`;
             canvasContext.textBaseline = "middle";
             canvasContext.textAlign = "center";
             canvasContext.fillStyle = "#222";
@@ -332,21 +337,14 @@ export default function GoBoard({
     const boardAriaLabel = `${boardSize}x${boardSize} Go board, move ${currentMoveIndex} of ${moves.length}: ${lastMoveDescription}. Click to advance a move, right-click to go back, or use the arrow keys.`;
 
     return (
-        <Box sx={{ width: "100%", maxWidth: boardCanvasSize }}>
-            <canvas
-                ref={canvasRef}
-                width={boardCanvasSize}
-                height={boardCanvasSize}
-                role="img"
-                aria-label={boardAriaLabel}
-                style={{
-                    width: "100%",
-                    height: "auto",
-                    display: "block",
-                    maxWidth: `${boardCanvasSize}px`,
-                    cursor: "pointer",
-                }}
-            />
-        </Box>
+        <canvas
+            ref={canvasRef}
+            className="ks-board"
+            width={boardCanvasSize}
+            height={boardCanvasSize}
+            role="img"
+            aria-label={boardAriaLabel}
+            style={{ maxWidth: boardCanvasSize }}
+        />
     );
 }

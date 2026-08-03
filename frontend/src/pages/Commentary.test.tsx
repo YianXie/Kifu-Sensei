@@ -93,7 +93,7 @@ describe("generating commentary", () => {
         renderPage();
         await uploadFile();
 
-        await userEvent.click(screen.getByRole("button", { name: "GENERATE" }));
+        await userEvent.click(screen.getByRole("button", { name: "Generate" }));
 
         expect(
             await screen.findByRole("button", { name: "Cancel" })
@@ -118,7 +118,7 @@ describe("generating commentary", () => {
         );
         renderPage();
         await uploadFile();
-        await userEvent.click(screen.getByRole("button", { name: "GENERATE" }));
+        await userEvent.click(screen.getByRole("button", { name: "Generate" }));
 
         await userEvent.click(
             await screen.findByRole("button", { name: "Cancel" })
@@ -126,7 +126,7 @@ describe("generating commentary", () => {
 
         expect(capturedSignal?.aborted).toBe(true);
         expect(
-            await screen.findByRole("button", { name: "GENERATE" })
+            await screen.findByRole("button", { name: "Generate" })
         ).toBeInTheDocument();
     });
 
@@ -135,9 +135,9 @@ describe("generating commentary", () => {
         renderPage();
         await uploadFile();
 
-        await userEvent.click(screen.getByRole("button", { name: "GENERATE" }));
+        await userEvent.click(screen.getByRole("button", { name: "Generate" }));
 
-        await screen.findByRole("button", { name: "GENERATE" });
+        await screen.findByRole("button", { name: "Generate" });
         expect(toast.error).toHaveBeenCalledWith(
             expect.stringContaining("History")
         );

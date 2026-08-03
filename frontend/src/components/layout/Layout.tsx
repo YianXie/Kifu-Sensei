@@ -1,31 +1,21 @@
 import { Outlet } from "react-router";
 import { ToastContainer } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
 
-import { Box } from "@mui/material";
-
+import Footer from "./Footer";
 import Navbar from "./Navbar";
 
 export default function Layout() {
     return (
-        <Box sx={{ minHeight: "100vh" }}>
+        <div className="ks-app">
             <Navbar />
-            <Box
-                component="main"
-                sx={{
-                    p: 3,
-                    overflow: "auto",
-                    mt: 7,
-                }}
-            >
+            <main className="ks-app__main">
                 <Outlet />
-            </Box>
+            </main>
+            <Footer />
 
-            <ToastContainer
-                position="bottom-right"
-                autoClose={3000}
-                theme="colored"
-            />
-        </Box>
+            {/* react-toastify's stylesheet and the design system's skin for it
+                are both imported from `src/index.css`, in that order. */}
+            <ToastContainer position="bottom-right" autoClose={3800} />
+        </div>
     );
 }

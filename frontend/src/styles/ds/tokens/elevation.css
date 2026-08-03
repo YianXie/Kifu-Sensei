@@ -1,0 +1,26 @@
+/* ── Elevation ────────────────────────────────────────────────────────────
+   Shadows are scarce. Most separation is done with a 1px border; shadow is
+   reserved for things that float over content (menus, dialogs, the download
+   dock) and for the board-thumbnail lift. Level 2 is the extension's exact
+   `0 2px 8px rgba(26,26,26,.16)`. */
+:root {
+    --shadow-0: none;
+    --shadow-1: 0 1px 2px rgba(11, 11, 12, 0.28);
+    --shadow-2: 0 2px 8px rgba(11, 11, 12, 0.36);
+    --shadow-3: 0 6px 20px rgba(11, 11, 12, 0.44);
+    --shadow-4: 0 18px 48px rgba(11, 11, 12, 0.56);
+    --shadow-focus: 0 0 0 3px var(--accent-soft);
+
+    /* The 48px grid wash behind the hero */
+    --pattern-grid-size: 48px;
+    --pattern-grid:
+        linear-gradient(var(--border-subtle) 1px, transparent 1px),
+        linear-gradient(90deg, var(--border-subtle) 1px, transparent 1px);
+}
+
+[data-theme="light"] {
+    --shadow-1: 0 1px 2px rgba(19, 19, 21, 0.08);
+    --shadow-2: 0 2px 8px rgba(26, 26, 26, 0.16);
+    --shadow-3: 0 6px 20px rgba(19, 19, 21, 0.12);
+    --shadow-4: 0 18px 48px rgba(19, 19, 21, 0.18);
+}

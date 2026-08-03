@@ -55,6 +55,13 @@
             content="Kifu-Sensei — KataGo-backed Go game analysis with Claude-generated commentary."
         />
 
+        <!-- The design system's type (IBM Plex Serif / Sans / Mono) is fetched
+             from Google Fonts by src/styles/ds/tokens/fonts.css. Warming both
+             hosts here saves the connection setup that @import would otherwise
+             serialise behind the stylesheet request. -->
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
         <!-- Icons / PWA -->
         <link rel="icon" href="/favicon.ico" sizes="32x32" />
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />

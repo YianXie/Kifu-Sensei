@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from "react";
-
-import { Box } from "@mui/material";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { DEFAULT_BOARD_CANVAS_SIZE } from "@/constants/game/goBoard";
 import { GameMove } from "@/types/game";
+import { type CommentarySeverity, colorForTurn } from "@/utils/commentary";
 
 import CommentPanel from "./CommentPanel";
 import Controls from "./Controls";
@@ -15,19 +14,35 @@ export default function GameViewer({
     moves,
     initialStones = [],
     comments,
+    severityByTurn,
     currentMoveIndex,
     setCurrentMoveIndex,
+    soundEnabled = true,
+    commentPanelHeight,
+    compact = false,
+    children,
 }: {
     boardSize: number;
     boardCanvasSize?: number;
     moves: GameMove[];
     initialStones?: GameMove[];
     comments: Record<number, string>;
+    severityByTurn?: Record<number, CommentarySeverity>;
     currentMoveIndex: number;
     setCurrentMoveIndex: (index: number) => void;
+    soundEnabled?: boolean;
+    /**
+     * Fixed height for the comment panel. Set it when `children` fill the rest
+     * of the side column; leave it off and the panel takes the whole column.
+     */
+    commentPanelHeight?: number;
+    /** Narrower board/panel proportions, for the home page's inline demo. */
+    compact?: boolean;
+    /** Rendered under the comment panel — the review screen's card list. */
+    children?: ReactNode;
 }) {
     const commentedTurns = Object.keys(comments).map((turn) => parseInt(turn));
-    const currentComment = comments[currentMoveIndex] ?? null;
+    const currentComment = comments[currentMoveIndex] ?? "";
 
     const onMoveChange = (amount: number) => {
         const next = currentMoveIndex + amount;
@@ -61,22 +76,11 @@ export default function GameViewer({
     }, []);
 
     return (
-        <Box
-            sx={{
-                display: "flex",
-                flexDirection: { xs: "column", md: "row" },
-                gap: 2,
-                alignItems: { xs: "center", md: "flex-start" },
-                width: "100%",
-            }}
-        >
-            <Box
+        <div className={`ks-review${compact ? " ks-review--compact" : ""}`}>
+            <div
+                className="ks-review__board"
                 ref={boardColumnRef}
-                sx={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 1,
-                }}
+                style={{ width: boardCanvasSize }}
             >
                 <GoBoard
                     boardSize={boardSize}
@@ -99,21 +103,37 @@ export default function GameViewer({
                     hasNextCommentMove={commentedTurns.some(
                         (turn) => turn > currentMoveIndex
                     )}
-                    sx={{
-                        borderRadius: 2,
-                        mt: 1,
-                        width: "100%",
-                        maxWidth: boardCanvasSize,
-                    }}
+                    soundEnabled={soundEnabled}
                 />
-            </Box>
-            <CommentPanel
-                boardCanvasSize={boardCanvasSize}
-                moves={moves}
-                currentMoveIndex={currentMoveIndex}
-                currentComment={currentComment}
-                panelHeight={boardColumnHeight}
-            />
-        </Box>
+            </div>
+            <div
+                className="ks-review__side"
+                // Matching the board column keeps the two edges aligned and gives
+                // the comment list a bounded box to scroll inside.
+                style={
+                    boardColumnHeight
+                        ? { height: boardColumnHeight }
+                        : undefined
+                }
+            >
+                <CommentPanel
+                    moves={moves}
+                    currentMoveIndex={currentMoveIndex}
+                    currentComment={currentComment}
+                    color={
+                        currentMoveIndex > 0
+                            ? colorForTurn(moves, currentMoveIndex)
+                            : null
+                    }
+                    severity={
+                        currentComment
+                            ? (severityByTurn?.[currentMoveIndex] ?? null)
+                            : null
+                    }
+                    panelHeight={children ? commentPanelHeight : undefined}
+                />
+                {children}
+            </div>
+        </div>
     );
 }

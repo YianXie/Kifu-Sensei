@@ -1,0 +1,284 @@
+/* ── Core primitives ─────────────────────────────────────────────────────── */
+
+/* Button */
+.ks-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    font-family: var(--font-sans);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-snug);
+    border: var(--border-width) solid transparent;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: var(--transition-colors), var(--transition-transform);
+}
+.ks-btn:hover {
+    text-decoration: none;
+}
+.ks-btn:active:not(:disabled) {
+    transform: translateY(1px);
+}
+.ks-btn:disabled,
+.ks-btn[aria-disabled="true"] {
+    cursor: not-allowed;
+    opacity: 0.45;
+    transform: none;
+}
+.ks-btn--sm {
+    height: var(--control-sm);
+    padding: 0 var(--space-8);
+    font-size: var(--text-2xs);
+}
+/* A 20px glyph overpowers 12px text, so small buttons take a smaller one. */
+.ks-btn--sm .ks-icon {
+    font-size: 16px;
+}
+.ks-btn--md {
+    height: var(--control-md);
+    padding: 0 var(--space-9);
+    font-size: var(--text-sm);
+}
+.ks-btn--lg {
+    height: var(--control-lg);
+    padding: 0 var(--space-11);
+    font-size: var(--text-md);
+}
+.ks-btn--block {
+    width: 100%;
+}
+
+.ks-btn--primary {
+    background: var(--accent);
+    color: var(--accent-contrast);
+}
+.ks-btn--primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+}
+.ks-btn--primary.ks-btn--danger {
+    background: var(--danger);
+    color: var(--paper-000);
+}
+.ks-btn--primary.ks-btn--neutral {
+    background: var(--text-body);
+    color: var(--text-inverse);
+}
+
+.ks-btn--outline {
+    background: transparent;
+    color: var(--text-body);
+    border-color: var(--border-default);
+}
+.ks-btn--outline:hover:not(:disabled) {
+    border-color: var(--border-strong);
+    background: var(--surface-hover);
+}
+.ks-btn--outline.ks-btn--accent {
+    color: var(--text-accent);
+    border-color: var(--accent-soft-border);
+}
+.ks-btn--outline.ks-btn--danger {
+    color: var(--danger);
+    border-color: var(--danger-border);
+}
+
+.ks-btn--ghost {
+    background: transparent;
+    color: var(--text-secondary);
+}
+.ks-btn--ghost:hover:not(:disabled) {
+    background: var(--surface-hover);
+    color: var(--text-body);
+}
+.ks-btn--ghost.ks-btn--danger {
+    color: var(--danger);
+}
+
+.ks-btn--link {
+    height: auto;
+    padding: 0;
+    background: none;
+    color: var(--text-link);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    font-size: var(--text-2xs);
+}
+.ks-btn--link:hover:not(:disabled) {
+    color: var(--text-link-hover);
+}
+
+/* IconButton */
+.ks-iconbtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    padding: 0;
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: var(--transition-colors);
+}
+.ks-iconbtn:hover:not(:disabled) {
+    background: var(--surface-hover);
+    color: var(--text-body);
+}
+.ks-iconbtn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+.ks-iconbtn--sm {
+    width: 28px;
+    height: 28px;
+}
+.ks-iconbtn--sm .ks-icon {
+    font-size: var(--icon-sm);
+}
+.ks-iconbtn--md {
+    width: var(--control-md);
+    height: var(--control-md);
+}
+.ks-iconbtn--lg {
+    width: var(--control-lg);
+    height: var(--control-lg);
+}
+.ks-iconbtn--lg .ks-icon {
+    font-size: var(--icon-lg);
+}
+.ks-iconbtn--accent {
+    color: var(--text-accent);
+}
+.ks-iconbtn--danger {
+    color: var(--danger);
+}
+.ks-iconbtn--solid {
+    background: var(--surface-raised);
+    border: var(--border-width) solid var(--border-subtle);
+}
+
+/* Badge — severity + stone colour markers, from the extension panel */
+.ks-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-family: var(--font-sans);
+    font-size: var(--text-3xs);
+    font-weight: var(--weight-semibold);
+    line-height: 1.4;
+    padding: 2px var(--space-3);
+    border-radius: var(--radius-xs);
+    border: var(--border-width) solid transparent;
+    white-space: nowrap;
+}
+.ks-badge--black {
+    background: var(--stone-black);
+    color: var(--paper-000);
+    border-color: var(--border-default);
+}
+.ks-badge--white {
+    background: var(--paper-000);
+    color: var(--ink-900);
+}
+.ks-badge--blunder {
+    background: var(--severity-blunder-bg);
+    color: var(--severity-blunder-fg);
+    border-color: var(--severity-blunder-rail);
+}
+.ks-badge--mistake {
+    background: var(--severity-mistake-bg);
+    color: var(--severity-mistake-fg);
+    border-color: var(--severity-mistake-rail);
+}
+.ks-badge--notable {
+    background: var(--severity-notable-bg);
+    color: var(--severity-notable-fg);
+    border-color: var(--severity-notable-rail);
+}
+.ks-badge--accent {
+    background: var(--accent-soft);
+    color: var(--text-accent);
+    border-color: var(--accent-soft-border);
+}
+.ks-badge--neutral {
+    background: var(--surface-hover);
+    color: var(--text-secondary);
+    border-color: var(--border-subtle);
+}
+
+/* Chip — the outlined "KataGo · Claude · SGF" marker */
+.ks-chip {
+    display: inline-flex;
+    align-self: flex-start;
+    width: fit-content;
+    align-items: center;
+    gap: var(--space-3);
+    height: 26px;
+    padding: 0 var(--space-6);
+    border-radius: var(--radius-pill);
+    border: var(--border-width) solid var(--border-default);
+    background: transparent;
+    font-family: var(--font-mono);
+    font-size: var(--text-3xs);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+.ks-chip--accent {
+    border-color: var(--accent-soft-border);
+    color: var(--text-accent);
+}
+.ks-chip--filled {
+    background: var(--surface-hover);
+    border-color: transparent;
+}
+.ks-chip__dismiss {
+    display: inline-flex;
+    background: none;
+    border: 0;
+    padding: 0;
+    color: inherit;
+    cursor: pointer;
+    opacity: 0.7;
+}
+.ks-chip__dismiss:hover {
+    opacity: 1;
+}
+.ks-chip__dismiss .ks-icon {
+    font-size: 14px;
+}
+
+/* Divider */
+.ks-divider {
+    border: 0;
+    background: var(--border-subtle);
+    flex-shrink: 0;
+}
+.ks-divider--horizontal {
+    height: 1px;
+    width: 100%;
+}
+.ks-divider--vertical {
+    width: 1px;
+    align-self: stretch;
+}
+.ks-divider__label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-3xs);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+}
+.ks-divider__label::before,
+.ks-divider__label::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--border-subtle);
+}

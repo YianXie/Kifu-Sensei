@@ -1,0 +1,18 @@
+/* ── Corner radii ─────────────────────────────────────────────────────────
+   Small and deliberate. 6px is the workhorse (extension buttons, cards,
+   inputs); 3px only on the board thumbnail; 12px on the controls dock. */
+:root {
+    --radius-2xs: 3px;
+    --radius-xs: 4px;
+    --radius-sm: 5px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --radius-xl: 12px;
+    --radius-2xl: 16px;
+    --radius-pill: 999px;
+    --radius-circle: 50%;
+
+    --border-width: 1px;
+    --border-rail: 3px;
+    --border-focus-width: 2px;
+}

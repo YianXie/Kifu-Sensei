@@ -1,0 +1,46 @@
+/* ── Base ─────────────────────────────────────────────────────────────────
+   Minimal reset, carried over from the product's index.css and the extension
+   panel reset. Nothing opinionated beyond the brand defaults. */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: var(--leading-relaxed);
+    color: var(--text-body);
+    background: var(--surface-page);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+a {
+    color: var(--text-link);
+    text-decoration: none;
+    transition: var(--transition-colors);
+}
+a:hover {
+    color: var(--text-link-hover);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+:focus-visible {
+    outline: var(--border-focus-width) solid var(--border-focus);
+    outline-offset: 2px;
+}
+
+::selection {
+    background: var(--accent-soft);
+    color: var(--text-heading);
+}
+
+hr {
+    border: 0;
+    border-top: var(--border-width) solid var(--border-subtle);
+    margin: 0;
+}

@@ -1,27 +1,9 @@
 import { useState } from "react";
 import { toast } from "react-toastify";
 
-import DeleteOutlinedIcon from "@mui/icons-material/DeleteOutlined";
-import DownloadIcon from "@mui/icons-material/Download";
-import OpenInNewIcon from "@mui/icons-material/OpenInNew";
-import Alert from "@mui/material/Alert";
-import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
-import Card from "@mui/material/Card";
-import CardActions from "@mui/material/CardActions";
-import CardContent from "@mui/material/CardContent";
-import CircularProgress from "@mui/material/CircularProgress";
-import Dialog from "@mui/material/Dialog";
-import DialogActions from "@mui/material/DialogActions";
-import DialogContent from "@mui/material/DialogContent";
-import DialogContentText from "@mui/material/DialogContentText";
-import DialogTitle from "@mui/material/DialogTitle";
-import Divider from "@mui/material/Divider";
-import IconButton from "@mui/material/IconButton";
-import Tooltip from "@mui/material/Tooltip";
-import Typography from "@mui/material/Typography";
-
 import api from "@/api";
+import { Alert, Badge, Button, Card, IconButton } from "@/components/ui";
+import Dialog from "@/components/ui/Dialog";
 import { ENDPOINTS } from "@/constants/global/endpoints";
 import { CommentaryHistoryItem, CommentaryResponse } from "@/types/commentary";
 import { getErrorMessage } from "@/utils/errorFormatting";
@@ -122,150 +104,95 @@ export default function HistoryCard({
     }
 
     return (
-        <Card variant="outlined">
-            <CardContent
-                sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 2,
-                    "&:last-child": { pb: "14px" },
-                    pb: "14px",
-                }}
+        <>
+            <Card
+                variant="sm"
+                actions={
+                    <>
+                        <IconButton
+                            icon="delete"
+                            label="Delete session"
+                            size="sm"
+                            tone="danger"
+                            disabled={busy}
+                            onClick={() => setDeleteDialogOpen(true)}
+                        />
+                        <span className="ks-history__spacer" />
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            startIcon="download"
+                            onClick={handleDownload}
+                            disabled={busy}
+                        >
+                            {isDownloading ? "Downloading…" : "Download .sgf"}
+                        </Button>
+                        <Button
+                            size="sm"
+                            endIcon="open_in_new"
+                            onClick={handleOpen}
+                            disabled={busy}
+                        >
+                            {isOpening ? "Opening…" : "Open"}
+                        </Button>
+                    </>
+                }
             >
-                {/* Mini board thumbnail */}
-                <Box
-                    sx={{
-                        flexShrink: 0,
-                        borderRadius: "3px",
-                        overflow: "hidden",
-                        lineHeight: 0,
-                        boxShadow: 1,
-                    }}
-                >
+                <div className="ks-history__row">
                     <MiniBoardThumb
                         boardSize={board_size}
                         moves={moves}
                         initialStones={initial_stones}
                         size={88}
                     />
-                </Box>
-
-                {/* Metadata */}
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography
-                        variant="subtitle2"
-                        noWrap
-                        title={sgf_file_name}
-                        sx={{ fontWeight: 600 }}
-                    >
-                        {sgf_file_name}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                        {board_size}×{board_size} &nbsp;·&nbsp; {moves.length}{" "}
-                        moves &nbsp;·&nbsp; {comment_count} comments
-                        &nbsp;·&nbsp; {toTitleCase(language)}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                        {new Date(created_at).toLocaleString()}
-                    </Typography>
-                </Box>
-            </CardContent>
-
-            <Divider />
-
-            <CardActions sx={{ px: 1, py: 0.75 }}>
-                <Tooltip title="Delete session">
-                    {/* The span keeps the tooltip working while the button is disabled. */}
-                    <span>
-                        <IconButton
-                            size="small"
-                            color="error"
-                            aria-label="Delete session"
-                            onClick={() => setDeleteDialogOpen(true)}
-                            disabled={busy}
-                        >
-                            {isDeleting ? (
-                                <CircularProgress size={18} color="error" />
-                            ) : (
-                                <DeleteOutlinedIcon fontSize="small" />
-                            )}
-                        </IconButton>
-                    </span>
-                </Tooltip>
-
-                <Box sx={{ flex: 1 }} />
-
-                <Button
-                    size="small"
-                    startIcon={
-                        isDownloading ? (
-                            <CircularProgress size={14} />
-                        ) : (
-                            <DownloadIcon />
-                        )
-                    }
-                    onClick={handleDownload}
-                    disabled={busy}
-                >
-                    Download .sgf
-                </Button>
-                <Button
-                    size="small"
-                    variant="contained"
-                    disableElevation
-                    endIcon={
-                        isOpening ? (
-                            <CircularProgress
-                                size={14}
-                                sx={{ color: "inherit" }}
-                            />
-                        ) : (
-                            <OpenInNewIcon
-                                sx={{ fontSize: "14px !important" }}
-                            />
-                        )
-                    }
-                    onClick={handleOpen}
-                    disabled={busy}
-                >
-                    Open
-                </Button>
-            </CardActions>
+                    <div className="ks-history__meta">
+                        <div className="ks-history__name" title={sgf_file_name}>
+                            {sgf_file_name}
+                        </div>
+                        <div className="ks-history__sub">
+                            {board_size}×{board_size} · {moves.length} moves ·{" "}
+                            {comment_count} comments · {toTitleCase(language)}
+                        </div>
+                        <div className="ks-history__badges">
+                            <Badge tone="neutral">
+                                {new Date(created_at).toLocaleString()}
+                            </Badge>
+                        </div>
+                    </div>
+                </div>
+            </Card>
 
             <Dialog
                 open={deleteDialogOpen}
+                size="sm"
+                title="Delete this session?"
                 onClose={closeDeleteDialog}
-                fullWidth
-                maxWidth="sm"
+                actions={
+                    <>
+                        <Button
+                            variant="ghost"
+                            onClick={closeDeleteDialog}
+                            disabled={isDeleting}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            tone="danger"
+                            onClick={handleDelete}
+                            disabled={isDeleting}
+                        >
+                            {isDeleting ? "Deleting…" : "Delete"}
+                        </Button>
+                    </>
+                }
             >
-                <DialogTitle>Delete this session?</DialogTitle>
-                <DialogContent>
-                    <DialogContentText sx={{ mb: 2 }}>
-                        The commentary for <strong>{sgf_file_name}</strong> will
-                        be permanently removed from your history. This cannot be
-                        undone.
-                    </DialogContentText>
-                    {deleteError && (
-                        <Alert severity="error">{deleteError}</Alert>
-                    )}
-                </DialogContent>
-                <DialogActions>
-                    <Button
-                        variant="contained"
-                        onClick={closeDeleteDialog}
-                        disabled={isDeleting}
-                    >
-                        Cancel
-                    </Button>
-                    <Button
-                        color="error"
-                        onClick={handleDelete}
-                        disabled={isDeleting}
-                    >
-                        {isDeleting ? "Deleting…" : "Delete"}
-                    </Button>
-                </DialogActions>
+                <span>
+                    The commentary for <strong>{sgf_file_name}</strong> will be
+                    permanently removed from your history. This cannot be
+                    undone.
+                </span>
+                {deleteError && <Alert severity="error">{deleteError}</Alert>}
             </Dialog>
-        </Card>
+        </>
     );
 }

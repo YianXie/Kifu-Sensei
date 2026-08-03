@@ -119,22 +119,66 @@ Key files:
 
 ## Frontend Architecture (`frontend/src/`)
 
-**Stack:** React 18 + TypeScript + Vite + MUI + axios
+**Stack:** React 19 + TypeScript + Vite + axios, styled with the Kifu-Sensei
+design system (plain CSS, no component framework).
+
+### Design system
+
+The UI is the Claude Design project `Kifu-Sensei.dc.html`, implemented here.
+`styles/ds/` is a near-verbatim copy of that project's CSS — tokens
+(`tokens/*.css`) and component layers (`components/{core,forms,surfaces,feedback,navigation,game}.css`),
+all keyed on `ks-` class names. Two files are ours rather than the design's:
+`components/app.css` (page composition — the design expresses these as inline
+styles per screen) and `components/toastify.css` (re-skins react-toastify's
+markup as the design's Toast). `src/index.css` imports the lot, in order.
+
+**Colour comes only from the tokens.** Dark is the default; `<html data-theme="light">`
+switches. Never hard-code a hex value in a component — every surface, border and
+accent has a semantic alias in `tokens/colors.css`.
+
+`components/ui/` holds one React component per design-system component, each
+rendering exactly the markup its CSS expects. Compose screens from these rather
+than writing new `ks-` classes:
+
+- Core — `Button`, `IconButton`, `Icon`, `Badge`, `Chip`, `Divider`
+- Forms — `Field`, `Input`, `Select`, `Textarea`, `Switch`, `SegmentedControl`
+- Surfaces — `Card`, `Panel`, `EmptyState`
+- Feedback — `Alert`, `Dialog`, `Spinner`, `Tooltip`
+- Navigation — `Menu`, `NavList`, `Tabs`, `Drawer`
+
+`Icon` is the one place that touches MUI: the design specifies Material Symbols
+Rounded, and `@mui/icons-material` ships the same glyphs as SVG, so there is no
+icon-font CDN request and no flash of raw ligature text. Icons are addressed by
+Material ligature name (`<Icon name="history" />`) — add an entry to the `GLYPHS`
+map in `Icon.tsx` before using a new one. Nothing else imports `@mui/material`;
+it stays in `package.json` only because `@mui/icons-material` needs it.
+
+### Files
 
 - `api.ts` — Axios instance with JWT attach interceptor and auto-refresh queue on 401. Tokens in `localStorage`.
 - `contexts/AuthContext.tsx` — Auth state, `userSettings` (includes `has_claude_api_key`), login/logout helpers. Hydrates from the stored access token on mount; only a decode failure or a genuine 401 from `/auth/user/settings/` logs the user out, not a transient network error.
-- `components/layout/Layout.tsx` + `Navbar.tsx` — Page chrome and top nav, including the mobile drawer.
+- `contexts/ThemeContext.tsx` — Owns the light/dark preference and writes `<html data-theme>`. The navbar toggle and the Settings segmented control both call `setPreference` (immediate, remembered in `localStorage["ks_theme"]`); the signed-in account preference wins whenever the *server's* value changes, so a local toggle is never clobbered by a re-render.
+- `components/layout/Layout.tsx` + `Navbar.tsx` + `Footer.tsx` — Page chrome: top nav (with the account menu and the mobile drawer) and the site footer.
 - `components/global/ProtectedRoute.tsx` — Route guard that redirects unauthenticated users to `/login`.
-- `pages/Commentary.tsx` — Main feature page: SGF file upload (drag-and-drop), calls `POST /api/commentary/`, renders the Go board and commentary panel via `GameViewer`. Also renders a result passed in via router `location.state` (see History below), in which case the API-key gate is skipped since there's nothing left to generate.
-- `components/game/GameViewer.tsx` — Composes the board, comment panel, and controls, and sizes them against each other with a `ResizeObserver`.
+- `pages/Commentary.tsx` — Main feature page, four states: API-key gate, upload, generating, review. Uploads an SGF, calls `POST /api/commentary/`, then renders the board plus the scrollable list of `CommentaryCard`s. Also renders a result passed in via router `location.state` (see History below), in which case the API-key gate is skipped since there's nothing left to generate.
+- `components/game/GameViewer.tsx` — Composes the board, controls and comment panel, sizing the side column against the board column with a `ResizeObserver`. `children` fill the rest of that column (the review screen's card list); `compact` gives the home-page demo its narrower proportions.
 - `components/game/GoBoard.tsx` — Renders the board on a `<canvas>` using `@sabaki/go-board`.
-- `components/game/CommentPanel.tsx` — The per-move commentary text, as an `aria-live` region.
-- `components/game/Controls.tsx` — Move navigation; jumps to commented turns.
+- `components/game/CommentPanel.tsx` — The per-move commentary text, as an `aria-live` region, with stone-colour and severity badges.
+- `components/game/CommentaryCard.tsx` — One commented move in the review list; severity rail on the left, matching the extension panel.
+- `components/game/Controls.tsx` — Move navigation; jumps to commented turns. Honours the `play_stone_sound` preference.
+- `components/commentary/SgfDropzone.tsx` — The `.sgf` upload target.
 - `pages/SetupApiKey.tsx` — UI for entering/removing the user's Claude API key.
 - `pages/History.tsx` + `components/history/HistoryCard.tsx` / `MiniBoardThumb.tsx` — Paginated list of past commentary runs (`GET /auth/user/commentary-history/`); opening a card fetches the full record (`GET /auth/user/commentary-history/{id}/`) and hands it to `Commentary.tsx` to view.
 - `pages/ExtensionReady.tsx` — Writes `localStorage["extension_auth"]` after login, for the extension's auth handoff (see Extension Architecture below).
 - `constants/global/endpoints.ts` — All API endpoint URLs (`ENDPOINTS`).
-- `types/` — `CommentaryResponse`, `CommentaryHistoryItem`, `GameMove`, `AuthUser`/`JwtPayload` TypeScript types.
+- `utils/commentary.ts` — `severityForDelta` / `colorForTurn` / `coordinateForTurn`. The severity thresholds are a display concern and are duplicated in `extension/src/shared/commentary.ts` (separate build) — change both together.
+- `utils/preferences.ts` — Reads free-form `preferences` keys that have no dedicated type, currently `play_stone_sound`.
+- `types/` — `CommentaryResponse`, `CommentaryHistoryItem`, `GameMove`, `AuthUser`/`JwtPayload`, `ThemePreference`.
+
+**User preferences** live in one free-form JSON blob (`PUT /auth/user/settings/`,
+which shallow-merges), so each screen may send only its own section: `theme` and
+`play_stone_sound` from Settings → Miscellaneous, `commentary_config` from
+Settings → Default commentary config.
 
 ## Extension Architecture (`extension/`)
 
@@ -184,7 +228,7 @@ This project is for Kifu-Sensei — a web-application + browser extension tool f
 
 Tech stack:
 
-- Frontend: React and Material UI
+- Frontend: React and the Kifu-Sensei design system (plain CSS, no component framework)
 - Backend: FastAPI, Alembic, and SQLAlchemy
 - Database: SQLite3 (local) and PostgreSQL (production)
 - GitHub Action:

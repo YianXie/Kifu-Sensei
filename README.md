@@ -15,7 +15,7 @@ Kifu-Sensei is a monorepo with three top-level components, all talking to the sa
 | Component     | Directory    | What it is                                                                                         | Status                  |
 | ------------- | ------------ | -------------------------------------------------------------------------------------------------- | ----------------------- |
 | **Backend**   | `backend/`   | FastAPI service: JWT auth, encrypted API-key storage, and the KataGo → Claude commentary pipeline. | Active                  |
-| **Frontend**  | `frontend/`  | React + MUI web app: upload an SGF, view the board, read/download commentary, manage your account. | Active                  |
+| **Frontend**  | `frontend/`  | React web app: upload an SGF, view the board, read/download commentary, manage your account.        | Active                  |
 | **Extension** | `extension/` | Manifest V3 Chrome side-panel extension that overlays commentary on online-go.com games.           | ⚠️ **Work in progress** |
 
 > ⚠️ **The browser extension is a work in progress and is NOT ready for production use.** The authentication handoff between the web app and the extension works, but the in-panel commentary generation flow is still being built out. Load it unpacked for development only. See [`extension/README.md`](./extension/README.md) for details.
@@ -23,7 +23,7 @@ Kifu-Sensei is a monorepo with three top-level components, all talking to the sa
 Each component has its own README with an in-depth walkthrough:
 
 - [`backend/README.md`](./backend/README.md) — API reference, architecture, environment variables
-- [`frontend/README.md`](./frontend/README.md) — React structure, MUI theming, routing, auth
+- [`frontend/README.md`](./frontend/README.md) — React structure, the design system, routing, auth
 - [`extension/README.md`](./extension/README.md) — file structure, the four-context auth handoff, and the roadmap
 
 ---
@@ -59,7 +59,7 @@ LLM cost per game review is well under $0.10 with prompt caching. You supply you
 | Analysis engine    | KataGo (self-hosted HTTP API)                                                      |
 | Commentary         | Claude (`claude-sonnet-5` by default; Fable/Opus/Haiku selectable) via Anthropic   |
 | Backend            | FastAPI, SQLModel, SQLite/PostgreSQL, JWT auth, Fernet encryption, SQLAdmin        |
-| Frontend           | React 18, TypeScript, Vite, MUI, `@sabaki/go-board`                                |
+| Frontend           | React 19, TypeScript, Vite, the Kifu-Sensei design system, `@sabaki/go-board`      |
 | Extension          | Manifest V3, TypeScript, Vite (no UI framework)                                    |
 | Package management | `uv` (backend), `npm` (frontend & extension)                                       |
 

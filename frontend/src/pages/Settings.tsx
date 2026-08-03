@@ -1,29 +1,22 @@
 import { useEffect, useState } from "react";
 import { toast } from "react-toastify";
 
-import {
-    Alert,
-    Box,
-    Button,
-    Dialog,
-    DialogActions,
-    DialogContent,
-    DialogContentText,
-    DialogTitle,
-    Divider,
-    MenuItem,
-    Select,
-    Stack,
-    Tab,
-    Tabs,
-    TextField,
-    Typography,
-} from "@mui/material";
-
 import api from "@/api";
 import CommentaryConfig from "@/components/commentary/CommentaryConfig";
+import {
+    Alert,
+    Button,
+    Dialog,
+    Divider,
+    Field,
+    Input,
+    SegmentedControl,
+    Switch,
+    Tabs,
+} from "@/components/ui";
 import { ENDPOINTS } from "@/constants/global/endpoints";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTheme } from "@/contexts/ThemeContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import type { UserSettings } from "@/types/auth";
 import {
@@ -31,16 +24,33 @@ import {
     CommentaryLanguage,
     readCommentaryConfig,
 } from "@/types/commentary";
+import { type ThemePreference, isThemePreference } from "@/types/theme";
 import { getErrorMessage } from "@/utils/errorFormatting";
+import { readPlayStoneSound } from "@/utils/preferences";
+
+const TABS = ["Account", "Default commentary config", "Miscellaneous"] as const;
+type SettingsTab = (typeof TABS)[number];
+
+const THEME_OPTIONS = [
+    { value: "system", label: "System", icon: "contrast" },
+    { value: "light", label: "Light", icon: "light_mode" },
+    { value: "dark", label: "Dark", icon: "dark_mode" },
+] as const satisfies readonly {
+    value: ThemePreference;
+    label: string;
+    icon: "contrast" | "light_mode" | "dark_mode";
+}[];
 
 export default function Settings() {
     usePageTitle("Settings");
 
     const { user, userSettings, updateUserSettings, logout } = useAuth();
+    const { preference: themePreference, setPreference: setThemePreference } =
+        useTheme();
 
     const prefs = userSettings?.preferences ?? {};
 
-    const [tab, setTab] = useState(0);
+    const [tab, setTab] = useState<SettingsTab>("Account");
 
     const [newEmail, setNewEmail] = useState("");
     const [emailPassword, setEmailPassword] = useState("");
@@ -56,6 +66,8 @@ export default function Settings() {
     const [deletePassword, setDeletePassword] = useState("");
     const [deleteError, setDeleteError] = useState<string | null>(null);
     const [deleteLoading, setDeleteLoading] = useState(false);
+    const [deleteAccountDialogOpen, setDeleteAccountDialogOpen] =
+        useState(false);
 
     const savedConfig = readCommentaryConfig(prefs);
     const [model, setModel] = useState<ClaudeModel>(savedConfig.model);
@@ -72,8 +84,8 @@ export default function Settings() {
     const [configError, setConfigError] = useState<string | null>(null);
     const [configLoading, setConfigLoading] = useState(false);
 
-    const [theme, setTheme] = useState<string>(
-        (prefs.theme as string) ?? "system"
+    const [playStoneSound, setPlayStoneSound] = useState(() =>
+        readPlayStoneSound(prefs)
     );
     const [themeError, setThemeError] = useState<string | null>(null);
     const [themeLoading, setThemeLoading] = useState(false);
@@ -89,15 +101,14 @@ export default function Settings() {
     const [deleteApiKeyLoading, setDeleteApiKeyLoading] = useState(false);
     const hasClaudeApiKey = userSettings?.has_claude_api_key ?? false;
 
+    const passwordMismatch =
+        confirmPassword.length > 0 && newPassword !== confirmPassword;
+
+    // Adopt the stored sound preference once settings arrive. The theme is
+    // hydrated the same way, inside ThemeProvider.
     useEffect(() => {
-        const nextTheme =
-            prefs.theme === "light" ||
-            prefs.theme === "dark" ||
-            prefs.theme === "system"
-                ? prefs.theme
-                : "system";
-        setTheme(nextTheme);
-    }, [prefs.theme]);
+        setPlayStoneSound(readPlayStoneSound(prefs));
+    }, [prefs.play_stone_sound]); // eslint-disable-line react-hooks/exhaustive-deps
 
     async function handleUpdateTheme() {
         setThemeLoading(true);
@@ -106,7 +117,10 @@ export default function Settings() {
             const { data } = await api.put<UserSettings>(
                 ENDPOINTS.userSettings,
                 {
-                    preferences: { theme },
+                    preferences: {
+                        theme: themePreference,
+                        play_stone_sound: playStoneSound,
+                    },
                 }
             );
             updateUserSettings(data);
@@ -244,18 +258,13 @@ export default function Settings() {
     }
 
     async function handleDeleteAccount() {
-        if (
-            !window.confirm(
-                "This will permanently delete your account. Are you sure?"
-            )
-        )
-            return;
         setDeleteError(null);
         setDeleteLoading(true);
         try {
             await api.delete(ENDPOINTS.deleteAccount, {
                 data: { password: deletePassword },
             });
+            setDeleteAccountDialogOpen(false);
             logout();
         } catch (err) {
             setDeleteError(getErrorMessage(err, "Failed to delete account."));
@@ -265,170 +274,218 @@ export default function Settings() {
     }
 
     return (
-        <Box sx={{ maxWidth: 560 }}>
-            <Typography variant="h4" sx={{ mb: 1, fontWeight: 700 }}>
-                Settings
-            </Typography>
-            <Typography color="text.secondary" sx={{ mb: 3 }}>
-                {user?.email}
-            </Typography>
-
-            <Tabs
-                value={tab}
-                onChange={(_, value) => setTab(value)}
-                sx={{ mb: 4, borderBottom: 1, borderColor: "divider" }}
+        <div className="ks-container ks-container--lg ks-page">
+            <span className="ks-eyebrow">Account</span>
+            <h1 className="ks-page__title">Settings</h1>
+            <p
+                className="ks-page__meta"
+                style={{ marginBottom: "var(--space-12)" }}
             >
-                <Tab label="Account" />
-                <Tab label="Default Commentary Config" />
-                <Tab label="Miscellaneous" />
-            </Tabs>
+                {user?.email}
+            </p>
 
-            {/* Account */}
-            {tab === 0 && (
-                <Box>
-                    <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-                        Update Email
-                    </Typography>
-                    {emailError && (
-                        <Alert severity="error" sx={{ mb: 2 }}>
-                            {emailError}
-                        </Alert>
-                    )}
-                    <Box
-                        component="form"
-                        onSubmit={handleUpdateEmail}
-                        sx={{
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 1.5,
-                            mb: 3,
-                        }}
-                    >
-                        <TextField
-                            label="New Email"
-                            type="email"
-                            value={newEmail}
-                            onChange={(e) => setNewEmail(e.target.value)}
-                            required
-                            fullWidth
-                        />
-                        <TextField
-                            label="Current Password"
-                            type="password"
-                            value={emailPassword}
-                            onChange={(e) => setEmailPassword(e.target.value)}
-                            required
-                            fullWidth
-                        />
-                        <Button
-                            type="submit"
-                            variant="outlined"
-                            disabled={emailLoading}
+            <Tabs tabs={TABS} value={tab} onChange={setTab} />
+
+            {/* ── Account ──────────────────────────────────────────────── */}
+            {tab === "Account" && (
+                <div
+                    className="ks-stack"
+                    style={{
+                        marginTop: "var(--space-13)",
+                        gap: "var(--space-12)",
+                        maxWidth: 480,
+                    }}
+                >
+                    <section className="ks-form-stack">
+                        <h2 className="ks-heading" style={{ margin: 0 }}>
+                            Update email
+                        </h2>
+                        {emailError && (
+                            <Alert severity="error">{emailError}</Alert>
+                        )}
+                        <form
+                            className="ks-form-stack"
+                            onSubmit={handleUpdateEmail}
                         >
-                            {emailLoading ? "Updating…" : "Update Email"}
-                        </Button>
-                    </Box>
+                            <Field label="New email" htmlFor="s-email">
+                                <Input
+                                    id="s-email"
+                                    type="email"
+                                    placeholder="you@example.com"
+                                    value={newEmail}
+                                    onChange={(e) =>
+                                        setNewEmail(e.target.value)
+                                    }
+                                    required
+                                />
+                            </Field>
+                            <Field label="Current password" htmlFor="s-pw1">
+                                <Input
+                                    id="s-pw1"
+                                    type="password"
+                                    value={emailPassword}
+                                    onChange={(e) =>
+                                        setEmailPassword(e.target.value)
+                                    }
+                                    required
+                                    autoComplete="current-password"
+                                />
+                            </Field>
+                            <div style={{ alignSelf: "flex-start" }}>
+                                <Button
+                                    type="submit"
+                                    variant="outline"
+                                    disabled={emailLoading}
+                                >
+                                    {emailLoading
+                                        ? "Updating…"
+                                        : "Update email"}
+                                </Button>
+                            </div>
+                        </form>
+                    </section>
 
-                    <Divider sx={{ my: 4 }} />
+                    <Divider spacing="8px" />
 
-                    <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-                        Update Password
-                    </Typography>
-                    {passwordError && (
-                        <Alert severity="error" sx={{ mb: 2 }}>
-                            {passwordError}
-                        </Alert>
-                    )}
-                    <Box
-                        component="form"
-                        onSubmit={handleUpdatePassword}
-                        sx={{
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 1.5,
-                            mb: 3,
-                        }}
-                    >
-                        <TextField
-                            label="Current Password"
-                            type="password"
-                            value={currentPassword}
-                            onChange={(e) => setCurrentPassword(e.target.value)}
-                            required
-                            fullWidth
-                        />
-                        <TextField
-                            label="New Password"
-                            type="password"
-                            value={newPassword}
-                            onChange={(e) => setNewPassword(e.target.value)}
-                            required
-                            fullWidth
-                            slotProps={{ htmlInput: { minLength: 8 } }}
-                        />
-                        <TextField
-                            label="Confirm New Password"
-                            type="password"
-                            value={confirmPassword}
-                            onChange={(e) => setConfirmPassword(e.target.value)}
-                            required
-                            fullWidth
-                        />
-                        <Button
-                            type="submit"
-                            variant="outlined"
-                            disabled={passwordLoading}
+                    <section className="ks-form-stack">
+                        <h2 className="ks-heading" style={{ margin: 0 }}>
+                            Update password
+                        </h2>
+                        {passwordError && (
+                            <Alert severity="error">{passwordError}</Alert>
+                        )}
+                        <form
+                            className="ks-form-stack"
+                            onSubmit={handleUpdatePassword}
                         >
-                            {passwordLoading ? "Updating…" : "Update Password"}
-                        </Button>
-                    </Box>
+                            <Field label="Current password" htmlFor="s-pw2">
+                                <Input
+                                    id="s-pw2"
+                                    type="password"
+                                    value={currentPassword}
+                                    onChange={(e) =>
+                                        setCurrentPassword(e.target.value)
+                                    }
+                                    required
+                                    autoComplete="current-password"
+                                />
+                            </Field>
+                            <Field
+                                label="New password"
+                                htmlFor="s-pw3"
+                                hint="At least 8 characters."
+                            >
+                                <Input
+                                    id="s-pw3"
+                                    type="password"
+                                    value={newPassword}
+                                    onChange={(e) =>
+                                        setNewPassword(e.target.value)
+                                    }
+                                    required
+                                    minLength={8}
+                                    autoComplete="new-password"
+                                />
+                            </Field>
+                            <Field
+                                label="Confirm new password"
+                                htmlFor="s-pw4"
+                                error={
+                                    passwordMismatch
+                                        ? "New passwords do not match."
+                                        : undefined
+                                }
+                            >
+                                <Input
+                                    id="s-pw4"
+                                    type="password"
+                                    invalid={passwordMismatch}
+                                    value={confirmPassword}
+                                    onChange={(e) =>
+                                        setConfirmPassword(e.target.value)
+                                    }
+                                    required
+                                    autoComplete="new-password"
+                                />
+                            </Field>
+                            <div style={{ alignSelf: "flex-start" }}>
+                                <Button
+                                    type="submit"
+                                    variant="outline"
+                                    disabled={passwordLoading}
+                                >
+                                    {passwordLoading
+                                        ? "Updating…"
+                                        : "Update password"}
+                                </Button>
+                            </div>
+                        </form>
+                    </section>
 
-                    <Divider sx={{ my: 4 }} />
+                    <Divider spacing="8px" />
 
-                    <Typography
-                        variant="h6"
-                        color="error"
-                        sx={{ mb: 2, fontWeight: 600 }}
-                    >
-                        Danger Zone
-                    </Typography>
-                    {deleteError && (
-                        <Alert severity="error" sx={{ mb: 2 }}>
-                            {deleteError}
+                    <section className="ks-form-stack">
+                        <h2
+                            className="ks-heading ks-danger-heading"
+                            style={{ margin: 0 }}
+                        >
+                            Danger zone
+                        </h2>
+                        <Alert severity="warning">
+                            Deleting your account also deletes every saved
+                            review. This cannot be undone.
                         </Alert>
-                    )}
-                    <TextField
-                        label="Confirm Password to Delete"
-                        type="password"
-                        value={deletePassword}
-                        onChange={(e) => setDeletePassword(e.target.value)}
-                        fullWidth
-                        sx={{ mb: 2 }}
-                    />
-                    <Button
-                        variant="outlined"
-                        color="error"
-                        onClick={handleDeleteAccount}
-                        disabled={deleteLoading || !deletePassword}
-                    >
-                        {deleteLoading ? "Deleting…" : "Delete Account"}
-                    </Button>
-                </Box>
+                        {deleteError && (
+                            <Alert severity="error">{deleteError}</Alert>
+                        )}
+                        <Field
+                            label="Confirm password to delete"
+                            htmlFor="s-del"
+                        >
+                            <Input
+                                id="s-del"
+                                type="password"
+                                value={deletePassword}
+                                onChange={(e) =>
+                                    setDeletePassword(e.target.value)
+                                }
+                                autoComplete="current-password"
+                            />
+                        </Field>
+                        <div style={{ alignSelf: "flex-start" }}>
+                            <Button
+                                variant="outline"
+                                tone="danger"
+                                onClick={() => setDeleteAccountDialogOpen(true)}
+                                disabled={deleteLoading || !deletePassword}
+                            >
+                                Delete account
+                            </Button>
+                        </div>
+                    </section>
+                </div>
             )}
 
-            {/* Default Commentary Config */}
-            {tab === 1 && (
-                <Box>
-                    <Typography color="text.secondary" sx={{ mb: 2 }}>
+            {/* ── Default commentary config ────────────────────────────── */}
+            {tab === "Default commentary config" && (
+                <div
+                    className="ks-stack"
+                    style={{
+                        marginTop: "var(--space-13)",
+                        gap: "var(--space-10)",
+                    }}
+                >
+                    <p className="ks-page__lead">
                         These values are used as the defaults on the Commentary
                         page.
-                    </Typography>
+                    </p>
                     {configError && (
-                        <Alert severity="error" sx={{ mb: 2 }}>
-                            {configError}
-                        </Alert>
+                        <Alert severity="error">{configError}</Alert>
                     )}
                     <CommentaryConfig
+                        idPrefix="defaults"
+                        heading="Default commentary config"
+                        lead="Every new review starts from these settings."
                         model={model}
                         setModel={setModel}
                         language={language}
@@ -440,128 +497,113 @@ export default function Settings() {
                         customInstruction={customInstruction}
                         setCustomInstruction={setCustomInstruction}
                     />
-                    <Button
-                        variant="outlined"
-                        onClick={handleSaveCommentaryConfig}
-                        disabled={configLoading}
-                        sx={{ mt: 2 }}
-                    >
-                        {configLoading ? "Saving…" : "Save Defaults"}
-                    </Button>
-                </Box>
+                    <div style={{ alignSelf: "flex-start" }}>
+                        <Button
+                            variant="outline"
+                            onClick={handleSaveCommentaryConfig}
+                            disabled={configLoading}
+                        >
+                            {configLoading ? "Saving…" : "Save defaults"}
+                        </Button>
+                    </div>
+                </div>
             )}
 
-            {/* Miscellaneous */}
-            {tab === 2 && (
-                <Box>
-                    <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
-                        Theme
-                    </Typography>
-                    {themeError && (
-                        <Alert severity="error" sx={{ mb: 2 }}>
-                            {themeError}
-                        </Alert>
-                    )}
-                    <Box
-                        component="form"
-                        onSubmit={(e) => {
-                            e.preventDefault();
-                            handleUpdateTheme();
-                        }}
-                        sx={{
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 1.5,
-                            mb: 4,
-                        }}
-                    >
-                        <Select
-                            value={theme}
-                            onChange={(e) => setTheme(e.target.value)}
-                            fullWidth
-                        >
-                            <MenuItem value="system">System</MenuItem>
-                            <MenuItem value="light">Light</MenuItem>
-                            <MenuItem value="dark">Dark</MenuItem>
-                        </Select>
-                        <Button
-                            type="submit"
-                            variant="outlined"
-                            disabled={themeLoading}
-                        >
-                            {themeLoading ? "Updating…" : "Update Theme"}
-                        </Button>
-                    </Box>
-
-                    <Divider sx={{ my: 4 }} />
-
-                    <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
-                        Claude API Key
-                    </Typography>
-                    <Typography color="text.secondary" sx={{ mb: 2 }}>
-                        {hasClaudeApiKey
-                            ? "A Claude API key is set. You can update it with a new key at any time."
-                            : "No Claude API key is set yet. Add one to start generating commentary."}
-                    </Typography>
-                    <Stack direction="row" spacing={2}>
-                        <Button
-                            variant="outlined"
-                            onClick={() => setApiKeyDialogOpen(true)}
-                        >
-                            {hasClaudeApiKey
-                                ? "Update Claude API Key"
-                                : "Add Claude API Key"}
-                        </Button>
-                        {hasClaudeApiKey && (
-                            <Button
-                                variant="contained"
-                                color="error"
-                                onClick={() => setDeleteApiKeyDialogOpen(true)}
-                            >
-                                Delete Claude API Key
-                            </Button>
+            {/* ── Miscellaneous ────────────────────────────────────────── */}
+            {tab === "Miscellaneous" && (
+                <div
+                    className="ks-stack"
+                    style={{
+                        marginTop: "var(--space-13)",
+                        gap: "var(--space-12)",
+                        maxWidth: 520,
+                    }}
+                >
+                    <section className="ks-form-stack">
+                        <h2 className="ks-heading" style={{ margin: 0 }}>
+                            Theme
+                        </h2>
+                        {themeError && (
+                            <Alert severity="error">{themeError}</Alert>
                         )}
-                    </Stack>
-                </Box>
+                        <SegmentedControl
+                            ariaLabel="Theme"
+                            options={THEME_OPTIONS}
+                            value={themePreference}
+                            onChange={(value) => {
+                                if (isThemePreference(value)) {
+                                    setThemePreference(value);
+                                }
+                            }}
+                        />
+                        <Switch
+                            label="Play a stone sound when stepping through moves"
+                            checked={playStoneSound}
+                            onChange={(e) =>
+                                setPlayStoneSound(e.target.checked)
+                            }
+                        />
+                        <div style={{ alignSelf: "flex-start" }}>
+                            <Button
+                                variant="outline"
+                                onClick={handleUpdateTheme}
+                                disabled={themeLoading}
+                            >
+                                {themeLoading ? "Updating…" : "Update theme"}
+                            </Button>
+                        </div>
+                    </section>
+
+                    <Divider spacing="8px" />
+
+                    <section className="ks-form-stack">
+                        <h2 className="ks-heading" style={{ margin: 0 }}>
+                            Claude API key
+                        </h2>
+                        <p className="ks-page__lead">
+                            {hasClaudeApiKey
+                                ? "A Claude API key is set. You can update it with a new key at any time."
+                                : "No Claude API key is set yet. Add one to start generating commentary."}
+                        </p>
+                        <div className="ks-row ks-row--wrap">
+                            <Button
+                                variant="outline"
+                                onClick={() => setApiKeyDialogOpen(true)}
+                            >
+                                {hasClaudeApiKey
+                                    ? "Update Claude API key"
+                                    : "Add Claude API key"}
+                            </Button>
+                            {hasClaudeApiKey && (
+                                <Button
+                                    variant="outline"
+                                    tone="danger"
+                                    onClick={() =>
+                                        setDeleteApiKeyDialogOpen(true)
+                                    }
+                                >
+                                    Delete Claude API key
+                                </Button>
+                            )}
+                        </div>
+                    </section>
+                </div>
             )}
 
             <Dialog
                 open={apiKeyDialogOpen}
+                title={
+                    hasClaudeApiKey
+                        ? "Update Claude API key"
+                        : "Add Claude API key"
+                }
                 onClose={closeApiKeyDialog}
-                fullWidth
-                maxWidth="sm"
-            >
-                <Box component="form" onSubmit={handleSaveApiKey}>
-                    <DialogTitle>
-                        {hasClaudeApiKey
-                            ? "Update Claude API Key"
-                            : "Add Claude API Key"}
-                    </DialogTitle>
-                    <DialogContent>
-                        <DialogContentText sx={{ mb: 2 }}>
-                            Your key is encrypted before it&apos;s stored and is
-                            never shared.
-                        </DialogContentText>
-                        {apiKeyError && (
-                            <Alert severity="error" sx={{ mb: 2 }}>
-                                {apiKeyError}
-                            </Alert>
-                        )}
-                        <TextField
-                            label="Claude API Key"
-                            type="password"
-                            placeholder="sk-ant-..."
-                            value={apiKey}
-                            onChange={(e) => setApiKey(e.target.value)}
-                            required
-                            fullWidth
-                            autoFocus
-                            autoComplete="off"
-                        />
-                    </DialogContent>
-                    <DialogActions>
+                onSubmit={handleSaveApiKey}
+                actions={
+                    <>
                         <Button
                             type="button"
+                            variant="ghost"
                             onClick={closeApiKeyDialog}
                             disabled={apiKeyLoading}
                         >
@@ -569,49 +611,111 @@ export default function Settings() {
                         </Button>
                         <Button
                             type="submit"
-                            variant="contained"
                             disabled={apiKeyLoading || !apiKey.trim()}
                         >
-                            {apiKeyLoading ? "Saving…" : "Save Key"}
+                            {apiKeyLoading ? "Saving…" : "Save key"}
                         </Button>
-                    </DialogActions>
-                </Box>
+                    </>
+                }
+            >
+                <span>
+                    Your key is encrypted before it&apos;s stored and is never
+                    shared.
+                </span>
+                {apiKeyError && <Alert severity="error">{apiKeyError}</Alert>}
+                <Field label="Claude API key" htmlFor="dlg-key">
+                    <Input
+                        id="dlg-key"
+                        type="password"
+                        mono
+                        placeholder="sk-ant-..."
+                        value={apiKey}
+                        onChange={(e) => setApiKey(e.target.value)}
+                        required
+                        autoComplete="off"
+                    />
+                </Field>
+                <span
+                    style={{
+                        fontSize: "var(--text-2xs)",
+                        color: "var(--text-muted)",
+                    }}
+                >
+                    Don&apos;t have a key yet?{" "}
+                    <a
+                        href="https://console.anthropic.com/settings/keys"
+                        target="_blank"
+                        rel="noreferrer"
+                    >
+                        Get one from the Anthropic Console
+                    </a>
+                    .
+                </span>
             </Dialog>
 
             <Dialog
                 open={deleteApiKeyDialogOpen}
+                size="sm"
+                title="Delete Claude API key?"
                 onClose={closeDeleteApiKeyDialog}
-                fullWidth
-                maxWidth="sm"
+                actions={
+                    <>
+                        <Button
+                            variant="ghost"
+                            onClick={closeDeleteApiKeyDialog}
+                            disabled={deleteApiKeyLoading}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            tone="danger"
+                            onClick={handleDeleteApiKey}
+                            disabled={deleteApiKeyLoading}
+                        >
+                            {deleteApiKeyLoading ? "Deleting…" : "Delete key"}
+                        </Button>
+                    </>
+                }
             >
-                <DialogTitle>Delete Claude API Key?</DialogTitle>
-                <DialogContent>
-                    <DialogContentText sx={{ mb: 2 }}>
-                        Do you really want to delete your Claude API key? You
-                        won&apos;t be able to generate commentary until you add
-                        a new one.
-                    </DialogContentText>
-                    {deleteApiKeyError && (
-                        <Alert severity="error">{deleteApiKeyError}</Alert>
-                    )}
-                </DialogContent>
-                <DialogActions>
-                    <Button
-                        variant="contained"
-                        onClick={closeDeleteApiKeyDialog}
-                        disabled={deleteApiKeyLoading}
-                    >
-                        No
-                    </Button>
-                    <Button
-                        color="error"
-                        onClick={handleDeleteApiKey}
-                        disabled={deleteApiKeyLoading}
-                    >
-                        {deleteApiKeyLoading ? "Deleting…" : "Yes"}
-                    </Button>
-                </DialogActions>
+                <span>
+                    Do you really want to delete your Claude API key? You
+                    won&apos;t be able to generate commentary until you add a
+                    new one.
+                </span>
+                {deleteApiKeyError && (
+                    <Alert severity="error">{deleteApiKeyError}</Alert>
+                )}
             </Dialog>
-        </Box>
+
+            <Dialog
+                open={deleteAccountDialogOpen}
+                size="sm"
+                title="Delete your account?"
+                onClose={() => {
+                    if (!deleteLoading) setDeleteAccountDialogOpen(false);
+                }}
+                actions={
+                    <>
+                        <Button
+                            variant="ghost"
+                            onClick={() => setDeleteAccountDialogOpen(false)}
+                            disabled={deleteLoading}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            tone="danger"
+                            onClick={handleDeleteAccount}
+                            disabled={deleteLoading}
+                        >
+                            {deleteLoading ? "Deleting…" : "Delete account"}
+                        </Button>
+                    </>
+                }
+            >
+                This permanently deletes your account and every saved review. It
+                cannot be undone.
+            </Dialog>
+        </div>
     );
 }

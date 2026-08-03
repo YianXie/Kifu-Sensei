@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ENDPOINTS } from "@/constants/global/endpoints";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import Settings from "@/pages/Settings";
 
 vi.mock("@/api", () => ({
@@ -53,17 +54,19 @@ async function renderSettingsOnCommentaryTab() {
 
     render(
         <AuthProvider>
-            <Settings />
+            <ThemeProvider>
+                <Settings />
+            </ThemeProvider>
         </AuthProvider>
     );
 
     await waitFor(() =>
         expect(
-            screen.getByRole("tab", { name: "Default Commentary Config" })
+            screen.getByRole("tab", { name: "Default commentary config" })
         ).toBeInTheDocument()
     );
     await userEvent.click(
-        screen.getByRole("tab", { name: "Default Commentary Config" })
+        screen.getByRole("tab", { name: "Default commentary config" })
     );
 }
 
@@ -80,15 +83,13 @@ describe("saving the default commentary config", () => {
         });
         await renderSettingsOnCommentaryTab();
 
-        await userEvent.click(
-            screen.getByRole("combobox", { name: "Commentary Language" })
-        );
-        await userEvent.click(
-            await screen.findByRole("option", { name: "Japanese" })
+        await userEvent.selectOptions(
+            screen.getByRole("combobox", { name: "Commentary language" }),
+            "japanese"
         );
 
         await userEvent.click(
-            screen.getByRole("button", { name: "Save Defaults" })
+            screen.getByRole("button", { name: "Save defaults" })
         );
 
         await waitFor(() => expect(api.put).toHaveBeenCalled());
@@ -108,7 +109,7 @@ describe("saving the default commentary config", () => {
         await renderSettingsOnCommentaryTab();
 
         await userEvent.click(
-            screen.getByRole("button", { name: "Save Defaults" })
+            screen.getByRole("button", { name: "Save defaults" })
         );
 
         await waitFor(() => expect(api.put).toHaveBeenCalled());

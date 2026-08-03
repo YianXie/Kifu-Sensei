@@ -1,0 +1,203 @@
+/* ── Form controls ───────────────────────────────────────────────────────── */
+.ks-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    min-width: 0;
+}
+.ks-field--block {
+    width: 100%;
+}
+.ks-field__label {
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-medium);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+    color: var(--text-muted);
+}
+.ks-field__required {
+    color: var(--danger);
+    margin-left: 2px;
+}
+.ks-field__hint {
+    font-size: var(--text-3xs);
+    line-height: var(--leading-normal);
+    color: var(--text-muted);
+}
+.ks-field__error {
+    font-size: var(--text-3xs);
+    line-height: var(--leading-normal);
+    color: var(--danger);
+}
+
+.ks-input {
+    width: 100%;
+    height: var(--control-md);
+    padding: 0 var(--space-7);
+    font-family: var(--font-sans);
+    font-size: var(--text-xs);
+    color: var(--text-body);
+    background: var(--surface-raised);
+    border: var(--border-width) solid var(--border-default);
+    border-radius: var(--radius-md);
+    outline: none;
+    transition: var(--transition-colors);
+}
+.ks-input::placeholder {
+    color: var(--text-muted);
+}
+.ks-input:hover:not(:disabled) {
+    border-color: var(--border-strong);
+}
+.ks-input:focus {
+    border-color: var(--border-focus);
+    box-shadow: var(--shadow-focus);
+}
+.ks-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.ks-input--mono {
+    font-family: var(--font-mono);
+}
+.ks-input--invalid,
+.ks-input--invalid:focus {
+    border-color: var(--danger);
+    box-shadow: none;
+}
+.ks-input--valid {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+.ks-input--textarea {
+    height: auto;
+    min-height: 62px;
+    padding: var(--space-5) var(--space-7);
+    line-height: var(--leading-normal);
+    resize: vertical;
+}
+
+/* Input with a leading glyph */
+.ks-input-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+.ks-input-wrap .ks-icon {
+    position: absolute;
+    left: var(--space-6);
+    font-size: var(--icon-sm);
+    color: var(--text-muted);
+    pointer-events: none;
+}
+.ks-input-wrap .ks-input {
+    padding-left: 38px;
+}
+
+/* Select — native element, chevron drawn with gradients (no SVG dependency) */
+.ks-select {
+    appearance: none;
+    padding-right: 30px;
+    background-image:
+        linear-gradient(45deg, transparent 50%, currentColor 50%),
+        linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-position:
+        calc(100% - 16px) calc(50% + 1px),
+        calc(100% - 11px) calc(50% + 1px);
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+    cursor: pointer;
+}
+.ks-select option {
+    background: var(--surface-card);
+    color: var(--text-body);
+}
+
+/* Switch */
+.ks-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-6);
+    cursor: pointer;
+    font-size: var(--text-xs);
+    color: var(--text-body);
+}
+.ks-switch input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.ks-switch__track {
+    position: relative;
+    width: 38px;
+    height: 22px;
+    border-radius: var(--radius-pill);
+    background: var(--surface-hover);
+    border: var(--border-width) solid var(--border-default);
+    transition: var(--transition-colors);
+    flex-shrink: 0;
+}
+.ks-switch__thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: var(--radius-circle);
+    background: var(--text-muted);
+    transition:
+        transform var(--duration-base) var(--ease-standard),
+        background var(--duration-fast);
+}
+.ks-switch input:checked + .ks-switch__track {
+    background: var(--accent-soft);
+    border-color: var(--accent-soft-border);
+}
+.ks-switch input:checked + .ks-switch__track .ks-switch__thumb {
+    transform: translateX(16px);
+    background: var(--accent);
+}
+.ks-switch input:disabled + .ks-switch__track {
+    opacity: 0.45;
+}
+/* The visually-hidden checkbox still owns focus; surface it on the track. */
+.ks-switch input:focus-visible + .ks-switch__track {
+    outline: var(--border-focus-width) solid var(--border-focus);
+    outline-offset: 2px;
+}
+
+/* Segmented radio group — used for the light/dark/system preference */
+.ks-segmented {
+    display: inline-flex;
+    padding: 2px;
+    gap: 2px;
+    background: var(--surface-sunken);
+    border: var(--border-width) solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+}
+.ks-segmented__option {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+    height: 30px;
+    padding: 0 var(--space-8);
+    border: 0;
+    background: none;
+    border-radius: var(--radius-md);
+    font-family: var(--font-sans);
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-medium);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: var(--transition-colors);
+}
+.ks-segmented__option:hover {
+    color: var(--text-body);
+}
+.ks-segmented__option[aria-checked="true"] {
+    background: var(--surface-raised);
+    color: var(--text-heading);
+    box-shadow: var(--shadow-1);
+}

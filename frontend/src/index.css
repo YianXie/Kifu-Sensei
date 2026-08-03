@@ -1,7 +1,28 @@
-* {
-    box-sizing: border-box;
-}
+/* Kifu-Sensei design system — global entry point. Imports only.
+   Mirrors `styles.css` in the Claude Design project, plus two app layers:
+   `app.css` (page composition) and `toastify.css` (react-toastify skin). */
+@import url("./styles/ds/tokens/fonts.css");
+@import url("./styles/ds/tokens/colors.css");
+@import url("./styles/ds/tokens/typography.css");
+@import url("./styles/ds/tokens/spacing.css");
+@import url("./styles/ds/tokens/radii.css");
+@import url("./styles/ds/tokens/elevation.css");
+@import url("./styles/ds/tokens/motion.css");
+@import url("./styles/ds/tokens/base.css");
+@import url("./styles/ds/components/core.css");
+@import url("./styles/ds/components/forms.css");
+@import url("./styles/ds/components/surfaces.css");
+@import url("./styles/ds/components/feedback.css");
+@import url("./styles/ds/components/navigation.css");
+@import url("./styles/ds/components/game.css");
+@import url("./styles/ds/components/app.css");
+/* react-toastify's own stylesheet is pulled in here, immediately before the
+   skin that overrides it, so the two are never emitted out of order. */
+@import url("react-toastify/dist/ReactToastify.css");
+@import url("./styles/ds/components/toastify.css");
 
+html,
 body {
     margin: 0;
+    padding: 0;
 }

@@ -1,0 +1,173 @@
+/* ── Palette ──────────────────────────────────────────────────────────────
+   Two families, straight off the board: warm INK (black stone, the logo disc)
+   and warm PAPER (white stone, the 棋 glyph). Accents are the two woods —
+   BRASS from the marketing art, KAYA from the extension's own --ks-accent.
+   Severity colours are lifted verbatim from extension/panel/panel.css. */
+:root {
+    /* Ink — warm near-blacks and greys */
+    --ink-950: #0b0b0c;
+    --ink-900: #131315;
+    --ink-850: #17181a;
+    --ink-800: #1e1f22;
+    --ink-700: #2a2b2f;
+    --ink-600: #3a3c41;
+    --ink-500: #56585f;
+    --ink-400: #7a7d85;
+    --ink-300: #a3a6ad;
+    --ink-200: #c9cbd1;
+    --ink-100: #e4e2dc;
+
+    /* Paper — the stone-white / cream side */
+    --paper-200: #e7e1d4;
+    --paper-100: #efeae0;
+    --paper-050: #f7f4ee;
+    --paper-000: #ffffff;
+
+    /* Brass — the sensei accent (marketing art, board-wood adjacent) */
+    --brass-700: #6f561a;
+    --brass-600: #8a6d1f;
+    --brass-500: #b8912f;
+    --brass-400: #c9a227;
+    --brass-300: #dfc069;
+    --brass-200: #eedca4;
+    --brass-050: #f6efdb;
+
+    /* Kaya — the green from the extension panel */
+    --kaya-600: #215a41;
+    --kaya-500: #2a6b4f;
+    --kaya-400: #3d9970;
+    --kaya-200: #b6ddc9;
+    --kaya-100: #eaf4ef;
+
+    /* Board — exact values the canvas renderer draws with */
+    --wood-500: #dcb35c;
+    --wood-line: #333333;
+    --stone-black: #000000;
+    --stone-white: #ffffff;
+    --stone-marker: #ff0000;
+
+    /* Severity — verbatim from the extension panel tokens */
+    --blunder-500: #dc2626;
+    --blunder-bg: #fef2f2;
+    --blunder-divider: #fee2e2;
+    --blunder-badge: #fca5a5;
+    --mistake-500: #b45309;
+    --mistake-bg: #fffbeb;
+    --mistake-divider: #f3e8d0;
+    --mistake-badge: #f59e0b;
+    --notable-500: #374151;
+    --notable-bg: #f9fafb;
+    --notable-divider: #e8e8e8;
+    --notable-badge: #d1d5db;
+}
+
+/* ── Semantic aliases — dark is the default theme ───────────────────────── */
+:root {
+    --surface-page: var(--ink-950);
+    --surface-card: var(--ink-900);
+    --surface-raised: var(--ink-850);
+    --surface-sunken: #080809;
+    --surface-hover: rgba(239, 234, 224, 0.06);
+    --surface-active: rgba(239, 234, 224, 0.11);
+    --surface-scrim: rgba(8, 8, 9, 0.72);
+
+    --text-body: var(--paper-100);
+    --text-heading: var(--paper-050);
+    --text-secondary: var(--ink-300);
+    --text-muted: var(--ink-400);
+    --text-inverse: var(--ink-950);
+    --text-accent: var(--brass-300);
+    --text-link: var(--brass-300);
+    --text-link-hover: var(--brass-200);
+
+    --border-subtle: rgba(239, 234, 224, 0.08);
+    --border-default: rgba(239, 234, 224, 0.14);
+    --border-strong: rgba(239, 234, 224, 0.28);
+    --border-focus: var(--brass-300);
+
+    --accent: var(--brass-400);
+    --accent-hover: var(--brass-300);
+    --accent-press: var(--brass-500);
+    --accent-contrast: var(--ink-950);
+    --accent-soft: rgba(201, 162, 39, 0.14);
+    --accent-soft-border: rgba(201, 162, 39, 0.34);
+
+    --success: var(--kaya-400);
+    --success-soft: rgba(61, 153, 112, 0.14);
+    --success-border: rgba(61, 153, 112, 0.36);
+    --danger: #f26a6a;
+    --danger-soft: rgba(220, 38, 38, 0.16);
+    --danger-border: rgba(242, 106, 106, 0.4);
+    --warning: var(--mistake-badge);
+    --warning-soft: rgba(245, 158, 11, 0.14);
+    --warning-border: rgba(245, 158, 11, 0.36);
+
+    /* Severity, resolved for a dark surface */
+    --severity-blunder-fg: #f87171;
+    --severity-blunder-bg: rgba(220, 38, 38, 0.12);
+    --severity-blunder-rail: var(--blunder-500);
+    --severity-mistake-fg: #fbbf24;
+    --severity-mistake-bg: rgba(245, 158, 11, 0.11);
+    --severity-mistake-rail: var(--mistake-badge);
+    --severity-notable-fg: var(--ink-300);
+    --severity-notable-bg: rgba(239, 234, 224, 0.05);
+    --severity-notable-rail: var(--ink-500);
+
+    color-scheme: dark;
+}
+
+/* ── Light theme ─────────────────────────────────────────────────────────
+   Apply with <html data-theme="light"> (or on any subtree). Mirrors the
+   product's existing light/dark preference in Settings → Miscellaneous. */
+[data-theme="light"] {
+    --surface-page: var(--paper-050);
+    --surface-card: var(--paper-000);
+    --surface-raised: var(--paper-000);
+    --surface-sunken: var(--paper-100);
+    --surface-hover: rgba(19, 19, 21, 0.045);
+    --surface-active: rgba(19, 19, 21, 0.085);
+    --surface-scrim: rgba(19, 19, 21, 0.44);
+
+    --text-body: var(--ink-800);
+    --text-heading: var(--ink-900);
+    --text-secondary: var(--ink-500);
+    --text-muted: var(--ink-400);
+    --text-inverse: var(--paper-050);
+    --text-accent: var(--brass-600);
+    --text-link: var(--brass-600);
+    --text-link-hover: var(--brass-700);
+
+    --border-subtle: rgba(19, 19, 21, 0.07);
+    --border-default: rgba(19, 19, 21, 0.13);
+    --border-strong: rgba(19, 19, 21, 0.26);
+    --border-focus: var(--brass-600);
+
+    --accent: var(--kaya-500);
+    --accent-hover: var(--kaya-600);
+    --accent-press: var(--kaya-600);
+    --accent-contrast: var(--paper-000);
+    --accent-soft: var(--kaya-100);
+    --accent-soft-border: var(--kaya-200);
+
+    --success: var(--kaya-500);
+    --success-soft: var(--kaya-100);
+    --success-border: var(--kaya-200);
+    --danger: var(--blunder-500);
+    --danger-soft: var(--blunder-bg);
+    --danger-border: var(--blunder-badge);
+    --warning: var(--mistake-500);
+    --warning-soft: var(--mistake-bg);
+    --warning-border: var(--mistake-badge);
+
+    --severity-blunder-fg: var(--blunder-500);
+    --severity-blunder-bg: var(--blunder-bg);
+    --severity-blunder-rail: var(--blunder-500);
+    --severity-mistake-fg: var(--mistake-500);
+    --severity-mistake-bg: var(--mistake-bg);
+    --severity-mistake-rail: var(--mistake-500);
+    --severity-notable-fg: var(--notable-500);
+    --severity-notable-bg: var(--notable-bg);
+    --severity-notable-rail: #9ca3af;
+
+    color-scheme: light;
+}

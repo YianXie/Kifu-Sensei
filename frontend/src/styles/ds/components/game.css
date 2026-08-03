@@ -1,0 +1,233 @@
+/* ── Game surfaces ───────────────────────────────────────────────────────── */
+.ks-board {
+    display: block;
+    width: 100%;
+    height: auto;
+    cursor: pointer;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    background: var(--wood-500);
+}
+.ks-board-wrap {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+/* Move controls dock — square top, rounded bottom, welded to the board */
+.ks-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    container-type: inline-size;
+    padding: var(--space-3) var(--space-6);
+    background: var(--surface-card);
+    border: var(--border-width) solid var(--border-subtle);
+    border-top: 0;
+    border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+    overflow: hidden;
+}
+.ks-controls__group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-width: 0;
+}
+.ks-controls__group--start {
+    margin-left: auto;
+}
+.ks-controls__group--end {
+    margin-right: auto;
+}
+.ks-controls__counter {
+    min-width: 44px;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+.ks-controls .ks-iconbtn {
+    width: clamp(24px, 9cqw, 36px);
+    height: clamp(24px, 9cqw, 36px);
+}
+.ks-controls .ks-icon {
+    font-size: clamp(0.875rem, 5cqw, 1.25rem);
+}
+
+/* Comment panel — the sidebar beside the board */
+.ks-comment-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+    min-width: var(--comment-panel-min);
+    padding: var(--space-10);
+    background: var(--surface-card);
+    border: var(--border-width) solid var(--border-subtle);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+}
+.ks-comment-panel__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3) var(--space-8);
+    /* In a narrow panel the badges drop to their own line rather than
+       hyphenating the move counter. */
+    flex-wrap: wrap;
+}
+.ks-comment-panel__turn {
+    font-family: var(--font-mono);
+    font-size: var(--text-2xs);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.ks-comment-panel__body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: none;
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+    line-height: var(--leading-relaxed);
+    color: var(--text-body);
+}
+.ks-comment-panel__body::-webkit-scrollbar {
+    display: none;
+}
+.ks-comment-panel__empty {
+    font-family: var(--font-sans);
+    color: var(--text-muted);
+}
+
+/* Commentary card — severity rail on the left, exactly as the extension panel */
+.ks-commentary {
+    flex-shrink: 0;
+    border-radius: var(--radius-md);
+    border: var(--border-width) solid var(--border-subtle);
+    border-left: var(--border-rail) solid var(--severity-notable-rail);
+    background: var(--severity-notable-bg);
+    overflow: hidden;
+}
+.ks-commentary--blunder {
+    border-left-color: var(--severity-blunder-rail);
+    background: var(--severity-blunder-bg);
+}
+.ks-commentary--mistake {
+    border-left-color: var(--severity-mistake-rail);
+    background: var(--severity-mistake-bg);
+}
+.ks-commentary__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-6);
+    padding: var(--space-5) var(--space-7) var(--space-4);
+    border-bottom: var(--border-width) solid var(--border-subtle);
+}
+.ks-commentary__move {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-semibold);
+    color: var(--text-heading);
+}
+.ks-commentary__badges {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+.ks-commentary__body {
+    padding: var(--space-5) var(--space-7) var(--space-6);
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
+    font-style: italic;
+    line-height: var(--leading-relaxed);
+    color: var(--text-body);
+}
+.ks-commentary__stats {
+    display: flex;
+    gap: var(--space-9);
+    padding: 0 var(--space-7) var(--space-6);
+    font-family: var(--font-mono);
+    font-size: var(--text-3xs);
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+.ks-commentary--interactive {
+    cursor: pointer;
+    transition: var(--transition-colors);
+}
+.ks-commentary--interactive:hover {
+    border-color: var(--border-default);
+}
+/* The card is a button in-product, so it has to reset the UA button styling. */
+.ks-commentary--interactive {
+    display: block;
+    width: 100%;
+    padding: 0;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+}
+
+/* Mini board thumbnail on history rows */
+.ks-minithumb {
+    border-radius: var(--radius-2xs);
+    overflow: hidden;
+    line-height: 0;
+    box-shadow: var(--shadow-1);
+    flex-shrink: 0;
+    display: block;
+}
+
+/* SGF dropzone */
+.ks-dropzone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-6);
+    width: 240px;
+    height: 240px;
+    padding: var(--space-10);
+    border: 2px dashed var(--border-default);
+    border-radius: var(--radius-xl);
+    background: transparent;
+    color: var(--text-muted);
+    text-align: center;
+    cursor: pointer;
+    transition: var(--transition-colors);
+}
+.ks-dropzone:hover {
+    background: var(--surface-hover);
+}
+.ks-dropzone .ks-icon {
+    font-size: var(--icon-xl);
+}
+.ks-dropzone__label {
+    font-size: var(--text-xs);
+    line-height: var(--leading-normal);
+    overflow-wrap: anywhere;
+}
+.ks-dropzone--over {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--text-accent);
+}
+.ks-dropzone--error {
+    border-color: var(--danger);
+    color: var(--danger);
+}
+.ks-dropzone--filled {
+    border-style: solid;
+    border-color: var(--accent-soft-border);
+    background: var(--accent-soft);
+    color: var(--text-body);
+}
+.ks-dropzone:focus-within {
+    outline: var(--border-focus-width) solid var(--border-focus);
+    outline-offset: 2px;
+}

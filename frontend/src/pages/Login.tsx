@@ -2,20 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { toast } from "react-toastify";
 
-import {
-    Alert,
-    Box,
-    Button,
-    Container,
-    Dialog,
-    DialogActions,
-    DialogContent,
-    DialogContentText,
-    DialogTitle,
-    TextField,
-    Typography,
-} from "@mui/material";
-
+import { Alert, Button, Dialog, Divider, Field, Input } from "@/components/ui";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { getErrorMessage } from "@/utils/errorFormatting";
@@ -39,7 +26,6 @@ export default function Login() {
     // isAuthenticated back to true, which would otherwise re-trigger the prompt
     // on the way out.
     const promptSettled = useRef(false);
-    const confirmRef = useRef<HTMLButtonElement>(null);
 
     useEffect(() => {
         if (!isForExtension && isAuthenticated) {
@@ -81,133 +67,87 @@ export default function Login() {
     }
 
     return (
-        <Container maxWidth="sm">
-            <Box
-                sx={{
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "center",
-                    gap: 3,
-                    minHeight: "80vh",
-                }}
-            >
-                <Typography
-                    variant="h4"
-                    sx={{ fontWeight: 700, textAlign: "center" }}
-                >
-                    Log In to Kifu-Sensei {isForExtension && "Extension"}
-                </Typography>
+        <div className="ks-auth">
+            <div className="ks-auth__head">
+                <img src="/logo.png" width={56} height={56} alt="" />
+                <h1 className="ks-auth__title">
+                    Log in to Kifu-Sensei{isForExtension ? " Extension" : ""}
+                </h1>
+                <p className="ks-auth__lead">
+                    Your reviews, your history, your own Claude API key.
+                </p>
+            </div>
 
-                {error && <Alert severity="error">{error}</Alert>}
+            {error && <Alert severity="error">{error}</Alert>}
 
-                <Box
-                    component="form"
-                    onSubmit={handleSubmit}
-                    sx={{ display: "flex", flexDirection: "column", gap: 2 }}
-                >
-                    <TextField
-                        label="Email"
+            <form onSubmit={handleSubmit} className="ks-auth__form">
+                <Field label="Email" htmlFor="login-email">
+                    <Input
+                        id="login-email"
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         required
-                        fullWidth
                         autoFocus
                         autoComplete="email"
                     />
-                    <TextField
-                        label="Password"
+                </Field>
+                <Field label="Password" htmlFor="login-password">
+                    <Input
+                        id="login-password"
                         type="password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required
-                        fullWidth
                         autoComplete="current-password"
                     />
-                    <Button
-                        type="submit"
-                        variant="contained"
-                        size="large"
-                        fullWidth
-                        disabled={loading}
-                    >
-                        {loading ? "Logging in…" : "Log In"}
-                    </Button>
-                </Box>
+                </Field>
+                <Button type="submit" size="lg" block disabled={loading}>
+                    {loading ? "Logging in…" : "Log in"}
+                </Button>
+            </form>
 
-                <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ textAlign: "center" }}
-                >
+            <Divider label="or" />
+
+            <div className="ks-auth__foot">
+                <span>
                     Don&apos;t have an account?{" "}
-                    <Link
-                        to="/register"
-                        style={{ color: "inherit", fontWeight: 600 }}
-                    >
-                        Register
-                    </Link>
-                </Typography>
-
-                <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ textAlign: "center" }}
-                >
-                    <Link
-                        to="/privacy"
-                        style={{ color: "inherit", fontWeight: 600 }}
-                    >
-                        Privacy Policy
-                    </Link>
-                </Typography>
-            </Box>
+                    <Link to="/register">Register</Link>
+                </span>
+                <span>
+                    <Link to="/privacy">Privacy policy</Link>
+                </span>
+            </div>
 
             {/* Dismissing this — "No", Escape, or a click outside — falls
                 through to the form behind it, so a misclick costs nothing. */}
             <Dialog
                 open={continueOpen}
+                size="sm"
+                title="Use your current account?"
                 onClose={() => setContinueOpen(false)}
-                fullWidth
-                maxWidth="xs"
-                // autoFocus on the button loses the race against the dialog's
-                // focus trap, which lands focus on the paper instead. Focusing
-                // once the transition has settled is what actually sticks, so
-                // Enter confirms the highlighted action.
-                slotProps={{
-                    transition: {
-                        onEntered: () => confirmRef.current?.focus(),
-                    },
-                }}
+                actions={
+                    <>
+                        <Button
+                            variant="ghost"
+                            onClick={() => setContinueOpen(false)}
+                        >
+                            No, use another account
+                        </Button>
+                        <Button
+                            onClick={() =>
+                                navigate("/extension-ready", { replace: true })
+                            }
+                        >
+                            Yes, continue
+                        </Button>
+                    </>
+                }
             >
-                <DialogTitle>Use your current account?</DialogTitle>
-                <DialogContent>
-                    <DialogContentText>
-                        You&apos;re already signed in
-                        {user?.email ? ` as ${user.email}` : ""}. Connect the
-                        extension to this account, or sign in with a different
-                        one.
-                    </DialogContentText>
-                </DialogContent>
-                <DialogActions>
-                    <Button
-                        type="button"
-                        onClick={() => setContinueOpen(false)}
-                    >
-                        No, use another account
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="contained"
-                        ref={confirmRef}
-                        onClick={() =>
-                            navigate("/extension-ready", { replace: true })
-                        }
-                    >
-                        Yes, continue
-                    </Button>
-                </DialogActions>
+                You&apos;re already signed in
+                {user?.email ? ` as ${user.email}` : ""}. Connect the extension
+                to this account, or sign in with a different one.
             </Dialog>
-        </Container>
+        </div>
     );
 }

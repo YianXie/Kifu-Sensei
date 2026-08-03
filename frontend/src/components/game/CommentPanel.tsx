@@ -1,75 +1,73 @@
-import { Box, Paper, Typography } from "@mui/material";
+import { Badge } from "@/components/ui";
+import type { GameMove } from "@/types/game";
+import type { CommentarySeverity } from "@/utils/commentary";
 
-import { GameMove } from "@/types/game";
+const SEVERITY_LABEL: Record<CommentarySeverity, string> = {
+    blunder: "Blunder",
+    mistake: "Mistake",
+    notable: "Notable",
+};
 
+/** The commentary sidebar next to the board. */
 export default function CommentPanel({
-    boardCanvasSize,
     moves,
     currentMoveIndex,
     currentComment,
+    color,
+    severity,
     panelHeight,
 }: {
-    boardCanvasSize: number;
     moves: GameMove[];
     currentMoveIndex: number;
     currentComment: string;
+    /** Colour of the player who made the current move, when there is one. */
+    color?: "B" | "W" | null;
+    /** Severity tier of the current move, when it has a comment. */
+    severity?: CommentarySeverity | null;
+    /** Fixed height in px. Left unset, the panel fills its flex column. */
     panelHeight?: number;
 }) {
     return (
-        <Box
-            sx={{
-                display: "flex",
-                flexDirection: "column",
-                minHeight: 0,
-                width: { xs: "100%", md: "auto" },
-                height: {
-                    md: panelHeight ? `${panelHeight}px` : undefined,
-                },
-            }}
+        <aside
+            className="ks-comment-panel"
+            style={
+                panelHeight
+                    ? { height: panelHeight, flex: "0 0 auto" }
+                    : { flex: 1 }
+            }
         >
-            <Paper
-                variant="outlined"
-                sx={{
-                    flex: 1,
-                    minWidth: { md: 280 },
-                    width: { xs: "100%", md: boardCanvasSize / 3 },
-                    minHeight: { xs: 200, md: "unset" },
-                    maxHeight: { xs: 350, md: "none" },
-                    height: { md: panelHeight ? "100%" : undefined },
-                    p: 2,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 1,
-                    overflow: "hidden",
-                }}
-            >
-                <Typography variant="subtitle2" color="text.secondary">
+            <div className="ks-comment-panel__head">
+                <span className="ks-comment-panel__turn">
                     Move {currentMoveIndex} / {moves.length}
-                </Typography>
-                <Box
-                    role="status"
-                    aria-live="polite"
-                    sx={{
-                        flex: 1,
-                        minHeight: 0,
-                        overflowY: "auto",
-                        pr: 0.5,
-                        scrollbarWidth: "none",
-                    }}
-                >
-                    {currentComment ? (
-                        <Typography variant="body2">
-                            {currentComment}
-                        </Typography>
-                    ) : (
-                        <Typography variant="body2" color="text.secondary">
-                            {currentMoveIndex === 0
-                                ? "Starting position — no commentary for this turn."
-                                : "No commentary was generated for this move."}
-                        </Typography>
-                    )}
-                </Box>
-            </Paper>
-        </Box>
+                </span>
+                <span style={{ display: "flex", gap: "var(--space-3)" }}>
+                    {color ? (
+                        <Badge tone={color === "B" ? "black" : "white"}>
+                            {color === "B" ? "Black" : "White"}
+                        </Badge>
+                    ) : null}
+                    {severity ? (
+                        <Badge tone={severity}>
+                            {SEVERITY_LABEL[severity]}
+                        </Badge>
+                    ) : null}
+                </span>
+            </div>
+            <div
+                className="ks-comment-panel__body"
+                role="status"
+                aria-live="polite"
+            >
+                {currentComment ? (
+                    currentComment
+                ) : (
+                    <span className="ks-comment-panel__empty">
+                        {currentMoveIndex === 0
+                            ? "Starting position — no commentary for this turn."
+                            : "No commentary was generated for this move."}
+                    </span>
+                )}
+            </div>
+        </aside>
     );
 }
