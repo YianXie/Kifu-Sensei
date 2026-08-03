@@ -1,0 +1,106 @@
+/* ── react-toastify, wearing the design system's Toast ────────────────────
+   The product raises transient messages through react-toastify. Rather than
+   swap the library out, its container and item are restyled to match
+   `.ks-toast` in feedback.css — same surface, border, radius, shadow and
+   severity accents, so a toast is indistinguishable from the design's own.
+   Imported after `react-toastify/dist/ReactToastify.css` in `index.css`. */
+
+.Toastify__toast-container {
+    padding: 0;
+    width: auto;
+}
+.Toastify__toast-container--bottom-right {
+    right: var(--space-12);
+    bottom: var(--space-12);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+}
+
+.Toastify__toast {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-6);
+    min-height: 0;
+    min-width: 280px;
+    max-width: 380px;
+    margin: 0;
+    padding: var(--space-8) var(--space-9);
+    border-radius: var(--radius-md);
+    border: var(--border-width) solid var(--border-default);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-3);
+    font-family: var(--font-sans);
+    font-size: var(--text-xs);
+    line-height: var(--leading-normal);
+    color: var(--text-body);
+}
+.Toastify__toast-body {
+    align-items: flex-start;
+    gap: var(--space-6);
+    margin: 0;
+    padding: 0;
+}
+.Toastify__toast-icon {
+    width: var(--icon-sm);
+    margin-inline-end: 0;
+    color: var(--text-accent);
+}
+.Toastify__close-button {
+    align-self: flex-start;
+    color: var(--text-muted);
+    opacity: 1;
+}
+.Toastify__close-button:hover {
+    color: var(--text-body);
+}
+.Toastify__progress-bar {
+    background: var(--accent);
+}
+
+.Toastify__toast--error {
+    border-color: var(--danger-border);
+}
+.Toastify__toast--error .Toastify__toast-icon,
+.Toastify__toast--error .Toastify__progress-bar {
+    color: var(--danger);
+    background: var(--danger);
+}
+.Toastify__toast--success {
+    border-color: var(--success-border);
+}
+.Toastify__toast--success .Toastify__toast-icon,
+.Toastify__toast--success .Toastify__progress-bar {
+    color: var(--success);
+    background: var(--success);
+}
+.Toastify__toast--warning {
+    border-color: var(--warning-border);
+}
+.Toastify__toast--warning .Toastify__toast-icon,
+.Toastify__toast--warning .Toastify__progress-bar {
+    color: var(--warning);
+    background: var(--warning);
+}
+.Toastify__toast--info .Toastify__toast-icon,
+.Toastify__toast--info .Toastify__progress-bar {
+    color: var(--text-accent);
+    background: var(--accent);
+}
+
+/* The icon is an inline SVG whose fill is hard-coded by the library. */
+.Toastify__toast-icon svg {
+    fill: currentColor;
+}
+
+@media (max-width: 480px) {
+    .Toastify__toast-container--bottom-right {
+        left: var(--space-8);
+        right: var(--space-8);
+        bottom: var(--space-8);
+    }
+    .Toastify__toast {
+        min-width: 0;
+        max-width: none;
+    }
+}

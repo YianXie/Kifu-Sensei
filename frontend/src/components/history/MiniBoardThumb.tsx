@@ -121,14 +121,11 @@ export default function MiniBoardThumb({
     return (
         <canvas
             ref={canvasRef}
+            className="ks-minithumb"
             width={size}
             height={size}
-            style={{
-                display: "block",
-                width: size,
-                height: size,
-                borderRadius: 3,
-            }}
+            style={{ width: size, height: size }}
+            aria-hidden="true"
         />
     );
 }

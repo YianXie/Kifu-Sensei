@@ -1,0 +1,150 @@
+/* ── Surfaces ────────────────────────────────────────────────────────────── */
+.ks-card {
+    background: var(--surface-card);
+    border: var(--border-width) solid var(--border-subtle);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    transition:
+        var(--transition-colors), var(--transition-shadow),
+        var(--transition-transform);
+}
+.ks-card--flat {
+    background: transparent;
+}
+.ks-card--raised {
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-2);
+    border-color: transparent;
+}
+.ks-card--interactive {
+    cursor: pointer;
+}
+.ks-card--interactive:hover {
+    transform: translateY(-3px);
+    border-color: var(--border-default);
+    box-shadow: var(--shadow-3);
+}
+.ks-card--sm {
+    border-radius: var(--radius-md);
+}
+.ks-card__header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    padding: var(--space-9) var(--space-10) var(--space-8);
+}
+.ks-card__title {
+    font-family: var(--font-sans);
+    font-size: var(--text-md);
+    font-weight: var(--weight-semibold);
+    letter-spacing: var(--tracking-snug);
+    color: var(--text-heading);
+    margin: 0;
+}
+.ks-card__subtitle {
+    font-size: var(--text-2xs);
+    color: var(--text-muted);
+    margin: 2px 0 0;
+}
+.ks-card__body {
+    padding: var(--space-10);
+}
+.ks-card__header + .ks-card__body {
+    padding-top: 0;
+}
+.ks-card__footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-6);
+    padding: var(--space-5) var(--space-8);
+    border-top: var(--border-width) solid var(--border-subtle);
+}
+
+/* The 44px rounded glyph plate on feature cards */
+.ks-iconplate {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-xl);
+    flex-shrink: 0;
+    color: var(--text-accent);
+    background: var(--accent-soft);
+    border: var(--border-width) solid var(--accent-soft-border);
+}
+.ks-iconplate--neutral {
+    color: var(--text-body);
+    background: var(--surface-hover);
+    border-color: transparent;
+}
+
+/* Panel — the bordered container the config form and comment panel sit in */
+.ks-panel {
+    background: var(--surface-card);
+    border: var(--border-width) solid var(--border-default);
+    border-radius: var(--radius-xl);
+    padding: var(--space-12);
+}
+.ks-panel--tight {
+    padding: var(--space-10);
+    border-radius: var(--radius-md);
+}
+.ks-panel__heading {
+    font-family: var(--font-sans);
+    font-size: var(--text-lg);
+    font-weight: var(--weight-semibold);
+    color: var(--text-heading);
+    margin: 0;
+}
+.ks-panel__lead {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    margin: var(--space-2) 0 0;
+}
+
+/* EmptyState — history-empty, 404, "no API key yet" */
+.ks-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: var(--space-8);
+    padding: var(--space-16) var(--space-12);
+}
+.ks-empty .ks-icon {
+    font-size: var(--icon-xl);
+    color: var(--text-muted);
+}
+.ks-empty__title {
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    font-weight: var(--weight-semibold);
+    color: var(--text-heading);
+    margin: 0;
+}
+.ks-empty__body {
+    font-size: var(--text-xs);
+    line-height: var(--leading-relaxed);
+    color: var(--text-secondary);
+    max-width: 42ch;
+    margin: 0;
+}
+.ks-empty__actions {
+    display: flex;
+    gap: var(--space-8);
+    margin-top: var(--space-2);
+}
+
+/* Grid wash — the 48px lattice behind the hero, echoing the board */
+.ks-gridwash {
+    position: absolute;
+    inset: 0;
+    background-image: var(--pattern-grid);
+    background-size: var(--pattern-grid-size) var(--pattern-grid-size);
+    opacity: 0.35;
+    pointer-events: none;
+    z-index: 0;
+}

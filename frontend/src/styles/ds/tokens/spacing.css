@@ -1,0 +1,39 @@
+/* ── Spacing ──────────────────────────────────────────────────────────────
+   A 2px-resolution scale. The odd steps (7, 9, 11, 14) are real values from
+   the extension panel and are kept rather than snapped to a 4/8 grid. */
+:root {
+    --space-0: 0;
+    --space-1: 2px;
+    --space-2: 4px;
+    --space-3: 6px;
+    --space-4: 7px;
+    --space-5: 9px;
+    --space-6: 10px;
+    --space-7: 11px;
+    --space-8: 12px;
+    --space-9: 14px;
+    --space-10: 16px;
+    --space-11: 20px;
+    --space-12: 24px;
+    --space-13: 28px;
+    --space-14: 32px;
+    --space-15: 40px;
+    --space-16: 48px;
+    --space-17: 64px;
+    --space-18: 80px;
+
+    /* Layout */
+    --container-sm: 600px;
+    --container-md: 900px;
+    --container-lg: 1200px;
+    --container-xl: 1536px;
+    --gutter-page: var(--space-12);
+    --navbar-height: 60px;
+    --board-canvas: 800px;
+    --comment-panel-min: 280px;
+
+    /* Control heights */
+    --control-sm: 32px;
+    --control-md: 40px;
+    --control-lg: 48px;
+}

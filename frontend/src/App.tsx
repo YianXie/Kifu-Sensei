@@ -1,16 +1,9 @@
-import { useMemo } from "react";
 import { BrowserRouter, Route, Routes } from "react-router";
-
-import {
-    CssBaseline,
-    ThemeProvider,
-    createTheme,
-    useMediaQuery,
-} from "@mui/material";
 
 import ProtectedRoute from "@/components/global/ProtectedRoute";
 import Layout from "@/components/layout/Layout";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import Commentary from "@/pages/Commentary";
 import Home from "@/pages/Home";
 import Login from "@/pages/Login";
@@ -26,43 +19,9 @@ import Logout from "./pages/Logout";
 
 function ThemedApp() {
     const { userSettings } = useAuth();
-    const prefersDark = useMediaQuery("(prefers-color-scheme: dark)");
-    const preferredTheme = userSettings?.preferences?.theme;
-    const themeModePreference =
-        preferredTheme === "light" ||
-        preferredTheme === "dark" ||
-        preferredTheme === "system"
-            ? preferredTheme
-            : "system";
-    const resolvedMode =
-        themeModePreference === "system"
-            ? prefersDark
-                ? "dark"
-                : "light"
-            : themeModePreference;
-
-    const theme = useMemo(
-        () =>
-            createTheme({
-                palette: {
-                    mode: resolvedMode,
-                },
-                typography: {
-                    fontFamily: [
-                        "Inter",
-                        "-apple-system",
-                        "BlinkMacSystemFont",
-                        "Segoe UI",
-                        "sans-serif",
-                    ].join(","),
-                },
-            }),
-        [resolvedMode]
-    );
 
     return (
-        <ThemeProvider theme={theme}>
-            <CssBaseline />
+        <ThemeProvider serverPreference={userSettings?.preferences?.theme}>
             <Routes>
                 <Route element={<Layout />}>
                     <Route path="/" element={<Home />} />

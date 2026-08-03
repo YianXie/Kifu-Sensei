@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import Navbar from "@/components/layout/Navbar";
 import { useAuth } from "@/contexts/AuthContext";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: vi.fn() }));
 
@@ -34,13 +35,15 @@ function renderNavbar(isAuthenticated: boolean) {
 
     return render(
         <MemoryRouter initialEntries={["/"]}>
-            <Navbar />
-            <Routes>
-                <Route path="/" element={<p>home page</p>} />
-                <Route path="/settings" element={<p>settings page</p>} />
-                <Route path="/logout" element={<p>logout page</p>} />
-                <Route path="/login" element={<p>login page</p>} />
-            </Routes>
+            <ThemeProvider>
+                <Navbar />
+                <Routes>
+                    <Route path="/" element={<p>home page</p>} />
+                    <Route path="/settings" element={<p>settings page</p>} />
+                    <Route path="/logout" element={<p>logout page</p>} />
+                    <Route path="/login" element={<p>login page</p>} />
+                </Routes>
+            </ThemeProvider>
         </MemoryRouter>
     );
 }

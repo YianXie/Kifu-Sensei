@@ -6,8 +6,12 @@ an interactive Go board. Past reviews are saved and re-openable from history.
 
 ## Stack
 
-- **React 18** + **TypeScript**, built with **Vite 6**
-- **Material UI (MUI) v9** (`@mui/material`, `@mui/icons-material`) with Emotion styling
+- **React 19** + **TypeScript**, built with **Vite 6**
+- The **Kifu-Sensei design system** — plain CSS custom properties and `ks-` classes,
+  vendored under `src/styles/ds/`, with a thin React component per design-system
+  component in `src/components/ui/`. No component framework.
+- **`@mui/icons-material`** for the Material Symbols Rounded glyph set, used only
+  by `components/ui/Icon.tsx`
 - **React Router v7** for routing
 - **axios** for HTTP, with JWT attach + auto-refresh interceptors
 - **`@sabaki/go-board`** for board geometry (liberties, captures)
@@ -42,8 +46,9 @@ separate from `vite.config.ts`, which it merges, so the production build config 
 nothing test-only. Test files are colocated: `src/api.test.ts` next to `src/api.ts`.
 
 `src/test/setup.ts` registers the jest-dom matchers and shims two things jsdom does not
-implement: `window.matchMedia`, which MUI reads during render, and
-`HTMLMediaElement.play`, which the stone-placement sound calls.
+implement: `window.matchMedia`, which `useMediaQuery` (and so `ThemeProvider` and the
+navbar's mobile breakpoint) reads during render, and `HTMLMediaElement.play`, which the
+stone-placement sound calls.
 
 Covered today: the axios interceptors (`api.test.ts` — token attachment, refresh-on-401,
 the concurrent-request queue, the sign-out redirect), `AuthContext` hydration/login/logout,
@@ -63,10 +68,15 @@ It is the base URL of the backend API; every endpoint is derived from it.
 ```
 src/
 ├── main.tsx                 # React root; wraps <App/> in <StrictMode>
-├── App.tsx                  # Router + MUI theme provider + AuthProvider
+├── App.tsx                  # Router + AuthProvider + ThemeProvider
 ├── api.ts                   # axios instance: JWT attach + 401 auto-refresh queue
-├── index.css                # global CSS
+├── index.css                # design-system entry point (imports only)
 ├── vite-env.d.ts
+│
+├── styles/ds/               # the design system, as CSS
+│   ├── tokens/              # colors, typography, spacing, radii, elevation, motion, base
+│   └── components/          # core, forms, surfaces, feedback, navigation, game,
+│                            #   app (page composition), toastify (react-toastify skin)
 │
 ├── pages/                   # one component per route
 │   ├── Home.tsx             # marketing / landing page
@@ -81,21 +91,27 @@ src/
 │   └── NotFoundPage.tsx     # 404
 │
 ├── components/
+│   ├── ui/                           # one React component per design-system component
 │   ├── global/ProtectedRoute.tsx     # gate for authenticated routes
-│   ├── layout/                       # Layout, Navbar, NavSidebar (app shell + nav)
-│   ├── commentary/CommentaryConfig.tsx   # model / language / count / tokens / instructions form
+│   ├── layout/                       # Layout, Navbar, Footer (app shell + nav)
+│   ├── commentary/
+│   │   ├── CommentaryConfig.tsx      # model / language / count / tokens / instructions form
+│   │   └── SgfDropzone.tsx           # the .sgf upload target
 │   ├── game/                         # board + review UI (see below)
 │   │   ├── GameViewer.tsx            # orchestrates board + controls + comment panel
-│   │   ├── GoBoard.tsx               # SVG/DOM board renderer (@sabaki/go-board)
+│   │   ├── GoBoard.tsx               # canvas board renderer (@sabaki/go-board)
 │   │   ├── Controls.tsx              # move navigation (first / prev / next / last / jump)
-│   │   ├── ControlMoveButton.tsx     # a single "jump to commented move" button
-│   │   └── CommentPanel.tsx          # renders the comment for the current turn
+│   │   ├── CommentPanel.tsx          # renders the comment for the current turn
+│   │   └── CommentaryCard.tsx        # one commented move in the review list
 │   ├── history/                      # HistoryCard + MiniBoardThumb (review previews)
 │   └── home/Demo.tsx                 # sample commentary shown on the landing page
 │
-├── contexts/AuthContext.tsx  # auth state, user settings, login/logout
+├── contexts/
+│   ├── AuthContext.tsx       # auth state, user settings, login/logout
+│   └── ThemeContext.tsx      # light/dark preference → <html data-theme>
 ├── hooks/
 │   ├── usePageTitle.ts               # sets document.title per page
+│   ├── useMediaQuery.ts              # subscribe to a CSS media query
 │   └── useRedirectIfAuthenticated.ts # bounces logged-in users away from login/register
 │
 ├── constants/                # endpoint URLs + tunable limits/config, grouped by domain
@@ -109,7 +125,8 @@ src/
 │   ├── game.ts               # GameMove tuple + isValidMove guard
 │   └── api.ts
 │
-├── utils/                    # errorFormatting, string helpers
+├── utils/                    # errorFormatting, commentary (severity/colour/coords),
+│                             #   preferences, string helpers
 └── assets/sounds/            # stone-placement sound
 ```
 
@@ -118,8 +135,8 @@ src/
 ### Composition root — `App.tsx`
 
 `App` wraps everything in `<BrowserRouter>` → `<AuthProvider>` → `<ThemedApp>`.
-`ThemedApp` builds the MUI theme (see below) and declares all routes. Routes render
-inside a shared `<Layout>` (navbar + toast container + `<Outlet>`), and the
+`ThemedApp` mounts `<ThemeProvider>` (see below) and declares all routes. Routes render
+inside a shared `<Layout>` (navbar + `<Outlet>` + footer + toast container), and the
 authenticated routes are additionally nested under `<ProtectedRoute>`:
 
 ```
@@ -135,22 +152,44 @@ authenticated routes are additionally nested under `<ProtectedRoute>`:
 *                  NotFoundPage
 ```
 
-### MUI theming
+### The design system — `styles/ds/` + `components/ui/`
 
-The theme is created with `createTheme` inside a `useMemo` in `App.tsx` and provided
-via `<ThemeProvider>` + `<CssBaseline>`:
+The UI implements the Claude Design project `Kifu-Sensei.dc.html`. `styles/ds/` is a
+near-verbatim copy of that project's CSS: tokens in `tokens/*.css`, component layers in
+`components/*.css`, everything keyed on `ks-` class names. Two files are ours rather
+than the design's — `components/app.css` (page composition, which the design expresses
+as inline styles per screen) and `components/toastify.css` (re-skins react-toastify's
+markup as the design's Toast). `src/index.css` imports them all, in order.
 
-- **Light/dark mode** is resolved from the user's saved preference
-  (`userSettings.preferences.theme` — `"light" | "dark" | "system"`). When set to
-  `"system"` (or unset/invalid), it follows the OS via
-  `useMediaQuery("(prefers-color-scheme: dark)")`. The theme is memoized on the
-  resolved mode so it only rebuilds when the effective mode changes.
-- **Typography** uses an Inter-first font stack with system fallbacks.
+`components/ui/` holds one React component per design-system component, each rendering
+exactly the markup its CSS expects: `Button`, `IconButton`, `Icon`, `Badge`, `Chip`,
+`Divider`, `Field`, `Input`, `Select`, `Textarea`, `Switch`, `SegmentedControl`, `Card`,
+`Panel`, `EmptyState`, `Alert`, `Dialog`, `Spinner`, `Tooltip`, `Menu`, `NavList`,
+`Tabs`, `Drawer`. Compose screens from these rather than inventing new `ks-` classes.
 
-Components style with MUI's `sx` prop and theme-aware tokens (`text.secondary`,
-`success.main`, etc.) rather than hard-coded colors, so dark mode works automatically.
-Layout uses MUI `Box`/`Container`/`Stack` primitives; icons come from
-`@mui/icons-material`.
+**Colour comes only from the tokens.** Dark is the default; `<html data-theme="light">`
+switches. Never hard-code a hex value in a component — every surface, border and accent
+has a semantic alias in `tokens/colors.css`, which is what makes both themes work.
+
+Icons are Material Symbols Rounded, addressed by ligature name — `<Icon name="history" />`.
+They come from `@mui/icons-material` as SVG rather than the icon webfont the design
+links, so there is no extra CDN request and no flash of raw ligature text; add an entry
+to the `GLYPHS` map in `Icon.tsx` before using a new name. `Icon.tsx` is the only file
+that touches MUI, and `@mui/material` stays in `package.json` solely because
+`@mui/icons-material` requires it.
+
+### Theming — `contexts/ThemeContext.tsx`
+
+`ThemeProvider` owns the `"system" | "light" | "dark"` preference and writes the
+resolved value to `<html data-theme>`. Two things set it, and they do not fight:
+
+- The navbar toggle and the Settings segmented control call `setPreference` — immediate,
+  and remembered in `localStorage["ks_theme"]` so a reload doesn't flash the old theme.
+- The signed-in account preference (`userSettings.preferences.theme`) wins whenever the
+  **server's** value changes: on hydration, on login, and when Settings saves it. A local
+  toggle doesn't change the server value, so it is never clobbered by a re-render.
+
+`"system"` follows the OS via `useMediaQuery("(prefers-color-scheme: dark)")`.
 
 ### Authentication — `contexts/AuthContext.tsx`
 
@@ -171,8 +210,12 @@ Flow:
 - **`logout`** removes both tokens **and** the `extension_auth` key, so signing out of
   the website doesn't leave a stale session the browser extension could silently pick
   up (see the extension README for the full handoff).
-- `userSettings` carries `preferences` (theme, default commentary config) and
-  `has_claude_api_key`, which the UI uses to decide whether to prompt for a key.
+- `userSettings` carries `preferences` and `has_claude_api_key`, which the UI uses to
+  decide whether to prompt for a key.
+
+`preferences` is one free-form JSON blob, and `PUT /auth/user/settings/` shallow-merges
+it, so each screen sends only its own section: `theme` and `play_stone_sound` from
+Settings → Miscellaneous, `commentary_config` from Settings → Default commentary config.
 
 ### axios instance — `api.ts`
 
@@ -200,17 +243,26 @@ Accepts an optional `customRedirect`.
 
 `Commentary.tsx` is the heart of the app:
 
+It has four states — the API-key gate, upload, generating, and review:
+
 1. Reads the user's default commentary config from their preferences
    (`readCommentaryConfig` in `types/commentary.ts`, which validates each field and
    falls back to `DEFAULT_COMMENTARY_CONFIG`).
 2. Renders `CommentaryConfig` (model, language, number of comments, max tokens, custom
-   instruction) and a drag-and-drop SGF uploader (`.sgf` only).
+   instruction) beside `SgfDropzone` (`.sgf` only, click or drag).
 3. Posts the SGF + config to `POST /api/commentary/` and receives a
    `CommentaryResponse` (`board_size`, `moves`, `initial_stones`, `comments[]`,
-   `annotated_sgf_content`).
+   `annotated_sgf_content`). The synchronous endpoint reports no intermediate progress,
+   so the generating screen lists the pipeline's stages without pretending to track
+   them.
 4. Passes the result to `GameViewer`, which renders `GoBoard` + `Controls` +
-   `CommentPanel`. Commented turns are indexed by turn number so navigation can jump
-   straight to them.
+   `CommentPanel`, and fills the rest of the side column with a scrollable list of
+   `CommentaryCard`s. Commented turns are indexed by turn number so navigation can jump
+   straight to them, and clicking a card moves the board to that turn.
+
+Each card's severity tier and stone colour are derived client-side by
+`utils/commentary.ts` — the API returns `winrate_delta` and the move list, not a tier,
+since the tier is a display concern.
 
 `GameMove` (`types/game.ts`) is a tuple `[color, [row, col] | null]`; `null` coords
 mean a pass. `isValidMove` narrows the tuple to a placed stone.
@@ -225,7 +277,9 @@ a model or language on the backend, update `ClaudeModel` / `CommentaryLanguage` 
 
 - Type every function signature and prop.
 - Import via the `@/` alias, not deep relative paths.
-- Style with `sx` and theme tokens; avoid hard-coded colors so dark mode keeps working.
+- Build screens out of `components/ui/` and the `ks-` classes. Reach for the design
+  tokens (`var(--space-10)`, `var(--text-secondary)`) in the rare inline style; never
+  hard-code a colour, or one of the two themes will be wrong.
 - Prettier + ESLint are enforced in CI (`make ci` from the repo root). Imports are
   auto-sorted by `@trivago/prettier-plugin-sort-imports`.
 - New logic that can be exercised without a running backend should come with a test.

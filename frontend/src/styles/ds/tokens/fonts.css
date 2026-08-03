@@ -1,0 +1,31 @@
+/* Webfonts are served from the Google Fonts CDN (no binaries vendored).
+   IBM Plex superfamily: Serif for display, Sans for UI, Mono for board data.
+   Plex also ships JP / KR / SC siblings, which matters because Kifu-Sensei
+   generates commentary in English, Chinese (Simplified), Japanese and Korean.
+   `index.html` preconnects to both hosts so this @import resolves promptly. */
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap");
+
+/* Iconography — the design system specifies Material Symbols Rounded. We render
+   the same glyph set from `@mui/icons-material`, which the product already
+   depends on: SVG rather than an icon font, so there is no second CDN request
+   and no flash of ligature text before the font arrives. `Icon.tsx` is the only
+   place that maps a Material ligature name onto its component.
+
+   Every sizing rule in this design system sets `font-size` on `.ks-icon`, so the
+   glyph is sized in `em` and inherits that cascade untouched. */
+.ks-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--icon-md);
+    line-height: 1;
+    color: inherit;
+    user-select: none;
+    flex-shrink: 0;
+}
+.ks-icon > svg {
+    display: block;
+    width: 1em;
+    height: 1em;
+    fill: currentColor;
+}

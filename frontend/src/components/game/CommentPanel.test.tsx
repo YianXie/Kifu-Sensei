@@ -7,7 +7,6 @@ import CommentPanel from "@/components/game/CommentPanel";
 function setup(overrides: Partial<Parameters<typeof CommentPanel>[0]> = {}) {
     render(
         <CommentPanel
-            boardCanvasSize={600}
             moves={[]}
             currentMoveIndex={0}
             currentComment=""

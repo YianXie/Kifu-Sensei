@@ -2,18 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "react-toastify";
 
-import ErrorOutlinedIcon from "@mui/icons-material/ErrorOutlined";
-import HistoryOutlinedIcon from "@mui/icons-material/HistoryOutlined";
-import {
-    Box,
-    Button,
-    CircularProgress,
-    Stack,
-    Typography,
-} from "@mui/material";
-
 import api from "@/api";
 import HistoryCard from "@/components/history/HistoryCard";
+import { Button, Card, EmptyState, Spinner } from "@/components/ui";
 import { ENDPOINTS } from "@/constants/global/endpoints";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { UserCommentaryHistory } from "@/types/auth";
@@ -101,92 +92,60 @@ export default function History() {
     };
 
     return (
-        <Box sx={{ px: { xs: 3, md: 5 }, py: 4 }}>
-            <Typography variant="h4" sx={{ fontWeight: 700, mb: 0.5 }}>
-                Commentary History
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                {status === "loaded"
-                    ? `${total} session${total === 1 ? "" : "s"}`
-                    : " "}
-            </Typography>
+        <div className="ks-container ks-container--lg ks-page">
+            <div className="ks-page__head">
+                <div>
+                    <span className="ks-eyebrow">Saved reviews</span>
+                    <h1 className="ks-page__title">Commentary history</h1>
+                    <p className="ks-page__lead">
+                        {status === "loaded"
+                            ? `${total} session${total === 1 ? "" : "s"}`
+                            : " "}
+                    </p>
+                </div>
+            </div>
 
             {status === "loading" && (
-                <Box
-                    sx={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 2,
-                        py: 8,
-                    }}
+                <div
+                    className="ks-center"
+                    style={{ padding: "var(--space-17) 0" }}
                 >
-                    <CircularProgress size={40} />
-                    <Typography color="text.secondary">
-                        Loading your history…
-                    </Typography>
-                </Box>
+                    <Spinner size={40} label="Loading your history…" />
+                </div>
             )}
 
             {status === "error" && (
-                <Box
-                    sx={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        textAlign: "center",
-                        gap: 1.5,
-                        py: 8,
-                    }}
-                >
-                    <ErrorOutlinedIcon color="error" sx={{ fontSize: 48 }} />
-                    <Typography sx={{ fontWeight: 600 }}>
-                        Could not load your history
-                    </Typography>
-                    <Typography color="text.secondary" sx={{ maxWidth: 360 }}>
-                        Something went wrong while fetching your saved sessions.
-                    </Typography>
-                    <Button variant="outlined" onClick={handleRetry}>
-                        Retry
-                    </Button>
-                </Box>
+                <Card>
+                    <EmptyState
+                        icon="error"
+                        title="Could not load your history"
+                        body="Something went wrong while fetching your saved sessions."
+                        actions={
+                            <Button variant="outline" onClick={handleRetry}>
+                                Retry
+                            </Button>
+                        }
+                    />
+                </Card>
             )}
 
             {status === "loaded" && commentaries.length === 0 && (
-                <Box
-                    sx={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        textAlign: "center",
-                        gap: 1.5,
-                        py: 8,
-                    }}
-                >
-                    <HistoryOutlinedIcon
-                        color="disabled"
-                        sx={{ fontSize: 48 }}
+                <Card>
+                    <EmptyState
+                        icon="history"
+                        title="No sessions yet"
+                        body="Generate commentary on a game and it will show up here."
+                        actions={
+                            <Button onClick={() => navigate("/commentary")}>
+                                Generate commentary
+                            </Button>
+                        }
                     />
-                    <Typography sx={{ fontWeight: 600 }}>
-                        No sessions yet
-                    </Typography>
-                    <Typography color="text.secondary" sx={{ maxWidth: 360 }}>
-                        Generate commentary on a game and it will show up here.
-                    </Typography>
-                    <Button
-                        variant="contained"
-                        onClick={() => navigate("/commentary")}
-                    >
-                        Generate commentary
-                    </Button>
-                </Box>
+                </Card>
             )}
 
             {status === "loaded" && commentaries.length > 0 && (
-                <Stack spacing={1.5} sx={{ maxWidth: 640 }}>
+                <div className="ks-history">
                     {commentaries.map((c) => (
                         <HistoryCard
                             key={c.id}
@@ -196,17 +155,23 @@ export default function History() {
                         />
                     ))}
                     {commentaries.length < total && (
-                        <Button
-                            variant="outlined"
-                            onClick={handleLoadMore}
-                            disabled={isLoadingMore}
-                            sx={{ alignSelf: "center", mt: 1 }}
+                        <div
+                            style={{
+                                alignSelf: "center",
+                                marginTop: "var(--space-2)",
+                            }}
                         >
-                            {isLoadingMore ? "Loading…" : "Load more"}
-                        </Button>
+                            <Button
+                                variant="outline"
+                                onClick={handleLoadMore}
+                                disabled={isLoadingMore}
+                            >
+                                {isLoadingMore ? "Loading…" : "Load more"}
+                            </Button>
+                        </div>
                     )}
-                </Stack>
+                </div>
             )}
-        </Box>
+        </div>
     );
 }

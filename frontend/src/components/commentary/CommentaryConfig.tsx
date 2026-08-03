@@ -1,17 +1,11 @@
 import {
-    Box,
     Divider,
-    FormControl,
-    FormHelperText,
-    InputLabel,
-    MenuItem,
-    Paper,
+    Field,
+    Input,
+    Panel,
     Select,
-    Stack,
-    TextField,
-    Typography,
-} from "@mui/material";
-
+    Textarea,
+} from "@/components/ui";
 import {
     CUSTOM_INSTRUCTION_MAX,
     MAX_TOKEN_MAX,
@@ -20,6 +14,20 @@ import {
     NUM_COMMENTS_MIN,
 } from "@/constants/commentary/config";
 import type { ClaudeModel, CommentaryLanguage } from "@/types/commentary";
+
+const MODEL_OPTIONS: { value: ClaudeModel; label: string }[] = [
+    { value: "claude-fable-5", label: "Claude Fable 5" },
+    { value: "claude-opus-5", label: "Claude Opus 5" },
+    { value: "claude-sonnet-5", label: "Claude Sonnet 5" },
+    { value: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
+];
+
+const LANGUAGE_OPTIONS: { value: CommentaryLanguage; label: string }[] = [
+    { value: "english", label: "English" },
+    { value: "chinese (simplified)", label: "Chinese (simplified)" },
+    { value: "japanese", label: "Japanese" },
+    { value: "korean", label: "Korean" },
+];
 
 function parseBoundedInt(
     raw: string,
@@ -47,6 +55,10 @@ export default function CommentaryConfig({
     setMaxToken,
     customInstruction,
     setCustomInstruction,
+    heading = "Commentary configuration",
+    lead = "Tune how the AI generates analysis for your game.",
+    /** Keeps the two instances of this form from sharing element ids. */
+    idPrefix = "cfg",
 }: {
     model: ClaudeModel;
     setModel: (value: ClaudeModel) => void;
@@ -58,107 +70,58 @@ export default function CommentaryConfig({
     setMaxToken: (value: number) => void;
     customInstruction: string;
     setCustomInstruction: (value: string) => void;
+    heading?: string;
+    lead?: string;
+    idPrefix?: string;
 }) {
     return (
-        <Paper
-            elevation={0}
-            sx={{
-                width: "100%",
-                mt: 2,
-                px: { xs: 2, sm: 3 },
-                py: { xs: 2.5, sm: 3 },
-                borderRadius: 3,
-                border: "1px solid",
-                borderColor: "divider",
-            }}
-        >
-            <Stack spacing={3}>
-                <Box>
-                    <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                        Commentary Configuration
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                        Tune how the AI generates analysis for your game.
-                    </Typography>
-                </Box>
-
-                <Divider />
-
-                <Box sx={{ display: "flex", gap: 1.5 }}>
-                    <FormControl size="small" fullWidth>
-                        <InputLabel id="claude-model-select-label">
-                            Claude Model
-                        </InputLabel>
-                        <Select
-                            labelId="claude-model-select-label"
-                            value={model}
-                            label="Claude Model"
-                            onChange={(event) => {
-                                setModel(event.target.value);
-                            }}
-                        >
-                            <MenuItem value="claude-fable-5">
-                                Claude Fable 5
-                            </MenuItem>
-                            <MenuItem value="claude-opus-5">
-                                Claude Opus 5
-                            </MenuItem>
-                            <MenuItem value="claude-sonnet-5">
-                                Claude Sonnet 5
-                            </MenuItem>
-                            <MenuItem value="claude-haiku-4-5">
-                                Claude Haiku 4.5
-                            </MenuItem>
-                        </Select>
-                        <FormHelperText>
-                            Select a model based on quality and speed
-                            preference.
-                        </FormHelperText>
-                    </FormControl>
-                    <FormControl size="small" fullWidth>
-                        <InputLabel id="commentary-language-select-label">
-                            Commentary Language
-                        </InputLabel>
-                        <Select
-                            labelId="commentary-language-select-label"
-                            value={language}
-                            label="Commentary Language"
-                            onChange={(event) => {
-                                setLanguage(event.target.value);
-                            }}
-                        >
-                            <MenuItem value="english">English</MenuItem>
-                            <MenuItem value="chinese (simplified)">
-                                Chinese (simplified)
-                            </MenuItem>
-                            <MenuItem value="japanese">Japanese</MenuItem>
-                            <MenuItem value="korean">Korean</MenuItem>
-                        </Select>
-                        <FormHelperText>
-                            Select a language based on your preference.
-                        </FormHelperText>
-                    </FormControl>
-                </Box>
-
-                <Box
-                    sx={{
-                        display: "flex",
-                        gap: 1.5,
-                    }}
+        <Panel heading={heading} lead={lead}>
+            <Divider spacing="20px" />
+            <div className="ks-form-grid">
+                <Field
+                    label="Claude model"
+                    htmlFor={`${idPrefix}-model`}
+                    hint="Select a model based on quality and speed preference."
                 >
-                    <TextField
-                        fullWidth
-                        size="small"
-                        variant="outlined"
-                        label="Number of Comments"
+                    <Select
+                        id={`${idPrefix}-model`}
+                        value={model}
+                        options={MODEL_OPTIONS}
+                        onChange={(event) =>
+                            setModel(event.target.value as ClaudeModel)
+                        }
+                    />
+                </Field>
+
+                <Field
+                    label="Commentary language"
+                    htmlFor={`${idPrefix}-language`}
+                    hint="Select a language based on your preference."
+                >
+                    <Select
+                        id={`${idPrefix}-language`}
+                        value={language}
+                        options={LANGUAGE_OPTIONS}
+                        onChange={(event) =>
+                            setLanguage(
+                                event.target.value as CommentaryLanguage
+                            )
+                        }
+                    />
+                </Field>
+
+                <Field
+                    label="Number of comments"
+                    htmlFor={`${idPrefix}-num-comments`}
+                    hint="Recommended: 15-30"
+                >
+                    <Input
+                        id={`${idPrefix}-num-comments`}
                         type="number"
+                        mono
+                        min={NUM_COMMENTS_MIN}
+                        max={NUM_COMMENTS_MAX}
                         value={numComments}
-                        slotProps={{
-                            htmlInput: {
-                                min: NUM_COMMENTS_MIN,
-                                max: NUM_COMMENTS_MAX,
-                            },
-                        }}
                         onChange={(event) => {
                             const next = parseBoundedInt(
                                 event.target.value,
@@ -169,22 +132,21 @@ export default function CommentaryConfig({
                                 setNumComments(next);
                             }
                         }}
-                        sx={{ flex: 1 }}
-                        helperText="Recommended: 15-30"
                     />
-                    <TextField
-                        fullWidth
-                        size="small"
-                        variant="outlined"
-                        label="Max Token"
+                </Field>
+
+                <Field
+                    label="Max token"
+                    htmlFor={`${idPrefix}-max-token`}
+                    hint="Recommended: 512-2048"
+                >
+                    <Input
+                        id={`${idPrefix}-max-token`}
                         type="number"
+                        mono
+                        min={MAX_TOKEN_MIN}
+                        max={MAX_TOKEN_MAX}
                         value={maxToken}
-                        slotProps={{
-                            htmlInput: {
-                                min: MAX_TOKEN_MIN,
-                                max: MAX_TOKEN_MAX,
-                            },
-                        }}
                         onChange={(event) => {
                             const next = parseBoundedInt(
                                 event.target.value,
@@ -195,31 +157,28 @@ export default function CommentaryConfig({
                                 setMaxToken(next);
                             }
                         }}
-                        sx={{ flex: 1 }}
-                        helperText="Recommended: 512-2048"
                     />
-                </Box>
+                </Field>
 
-                <TextField
-                    fullWidth
-                    size="small"
-                    variant="outlined"
-                    label="Custom Instruction"
-                    placeholder="e.g. Focus on strategic turning points and explain alternatives briefly."
-                    value={customInstruction}
-                    slotProps={{
-                        htmlInput: {
-                            maxLength: CUSTOM_INSTRUCTION_MAX,
-                        },
-                    }}
-                    multiline
-                    minRows={4}
-                    onChange={(event) => {
-                        setCustomInstruction(event.target.value);
-                    }}
-                    helperText="Optional: Add your preferred writing style or analysis focus."
-                />
-            </Stack>
-        </Paper>
+                <div className="ks-form-grid__full">
+                    <Field
+                        label="Custom instruction"
+                        htmlFor={`${idPrefix}-instruction`}
+                        hint="Optional: add your preferred writing style or analysis focus."
+                    >
+                        <Textarea
+                            id={`${idPrefix}-instruction`}
+                            rows={3}
+                            maxLength={CUSTOM_INSTRUCTION_MAX}
+                            placeholder="e.g. Focus on strategic turning points and explain alternatives briefly."
+                            value={customInstruction}
+                            onChange={(event) =>
+                                setCustomInstruction(event.target.value)
+                            }
+                        />
+                    </Field>
+                </div>
+            </div>
+        </Panel>
     );
 }

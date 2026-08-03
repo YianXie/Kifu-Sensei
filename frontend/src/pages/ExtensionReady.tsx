@@ -2,18 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "react-toastify";
 
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import ErrorOutlineIcon from "@mui/icons-material/ErrorOutlineOutlined";
-import {
-    Box,
-    Button,
-    CircularProgress,
-    Container,
-    Typography,
-} from "@mui/material";
-
 import axios from "axios";
 
+import { Button, Icon, Spinner } from "@/components/ui";
 import { ENDPOINTS } from "@/constants/global/endpoints";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
@@ -72,100 +63,80 @@ export default function ExtensionReady() {
     }, [isAuthenticated, isLoading, refreshToken, logout, navigate, handOff]);
 
     return (
-        <Container maxWidth="sm">
-            <Box
-                sx={{
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    gap: 3,
-                    textAlign: "center",
-                }}
-            >
-                <Box
-                    sx={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        gap: 2,
-                    }}
-                >
-                    <img
-                        src="/logo.png"
-                        alt="Kifu-Sensei"
+        <div
+            className="ks-auth"
+            style={{ alignItems: "center", textAlign: "center" }}
+        >
+            <img
+                src="/logo.png"
+                width={72}
+                height={72}
+                alt=""
+                draggable={false}
+            />
+            <h1 className="ks-auth__title">Kifu-Sensei</h1>
+
+            {state === "working" && (
+                <div className="ks-center" style={{ gap: "var(--space-9)" }}>
+                    <Spinner size={48} />
+                    <p
                         style={{
-                            maxWidth: "100px",
-                            height: "auto",
-                            userSelect: "none",
+                            margin: 0,
+                            fontSize: "var(--text-md)",
+                            color: "var(--text-secondary)",
                         }}
-                        draggable={false}
-                    />
-                    <Typography variant="h4" sx={{ fontWeight: 700 }}>
-                        Kifu-Sensei
-                    </Typography>
-                </Box>
+                    >
+                        Connecting your extension…
+                    </p>
+                </div>
+            )}
 
-                <Box
-                    sx={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        gap: 2,
-                    }}
-                >
-                    {state === "working" && (
-                        <>
-                            <CircularProgress size={60} />
-                            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                Connecting your extension…
-                            </Typography>
-                        </>
-                    )}
+            {state === "done" && (
+                <div className="ks-center" style={{ gap: "var(--space-8)" }}>
+                    <span
+                        style={{
+                            color: "var(--success)",
+                            display: "inline-flex",
+                        }}
+                    >
+                        <Icon name="check_circle" size="xl" />
+                    </span>
+                    <h2 className="ks-heading" style={{ margin: 0 }}>
+                        Extension authenticated
+                    </h2>
+                    <p className="ks-auth__lead">
+                        Your extension is signed in and ready to use. You can
+                        close this tab.
+                    </p>
+                </div>
+            )}
 
-                    {state === "done" && (
-                        <>
-                            <CheckCircleIcon
-                                sx={{
-                                    fontSize: 60,
-                                    color: "success.main",
-                                }}
-                            />
-                            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                Extension Authenticated
-                            </Typography>
-                            <Typography variant="body1" color="text.secondary">
-                                Your extension is now logged in and ready to
-                                use.
-                            </Typography>
-                        </>
-                    )}
-
-                    {state === "failed" && (
-                        <>
-                            <ErrorOutlineIcon
-                                sx={{ fontSize: 60, color: "error.main" }}
-                            />
-                            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                                Could not connect your extension
-                            </Typography>
-                            <Typography variant="body1" color="text.secondary">
-                                We couldn&apos;t reach Kifu-Sensei to finish
-                                signing the extension in. Check your connection
-                                and try again.
-                            </Typography>
-                            <Button
-                                variant="contained"
-                                onClick={() =>
-                                    refreshToken && void handOff(refreshToken)
-                                }
-                            >
-                                Try again
-                            </Button>
-                        </>
-                    )}
-                </Box>
-            </Box>
-        </Container>
+            {state === "failed" && (
+                <div className="ks-center" style={{ gap: "var(--space-8)" }}>
+                    <span
+                        style={{
+                            color: "var(--danger)",
+                            display: "inline-flex",
+                        }}
+                    >
+                        <Icon name="error" size="xl" />
+                    </span>
+                    <h2 className="ks-heading" style={{ margin: 0 }}>
+                        Could not connect your extension
+                    </h2>
+                    <p className="ks-auth__lead">
+                        Kifu-Sensei could not be reached to finish signing the
+                        extension in. Check your connection and try again.
+                    </p>
+                    <Button
+                        onClick={() =>
+                            refreshToken && void handOff(refreshToken)
+                        }
+                    >
+                        Try again
+                    </Button>
+                </div>
+            )}
+        </div>
     );
 }

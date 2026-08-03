@@ -2,21 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { toast } from "react-toastify";
 
-import CloudUploadOutlinedIcon from "@mui/icons-material/CloudUploadOutlined";
-import KeyOutlinedIcon from "@mui/icons-material/KeyOutlined";
-import {
-    Box,
-    Button,
-    CircularProgress,
-    Container,
-    Typography,
-} from "@mui/material";
-
 import axios from "axios";
 
 import api from "@/api";
 import CommentaryConfig from "@/components/commentary/CommentaryConfig";
+import SgfDropzone from "@/components/commentary/SgfDropzone";
+import CommentaryCard from "@/components/game/CommentaryCard";
 import GameViewer from "@/components/game/GameViewer";
+import { Button, EmptyState, Icon, Panel, Spinner } from "@/components/ui";
 import { ENDPOINTS } from "@/constants/global/endpoints";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
@@ -27,7 +20,26 @@ import {
     readCommentaryConfig,
 } from "@/types/commentary";
 import type { GameMove } from "@/types/game";
+import {
+    type CommentarySeverity,
+    colorForTurn,
+    coordinateForTurn,
+    severityForDelta,
+} from "@/utils/commentary";
 import { getCommentaryError } from "@/utils/errorFormatting";
+import { readPlayStoneSound } from "@/utils/preferences";
+import { toTitleCase } from "@/utils/string";
+
+/** The stages a review moves through, in order. */
+const PIPELINE_STEPS = [
+    "Reading the SGF",
+    "KataGo first pass — every move scanned",
+    "Second pass on the key positions",
+    "Claude writing the commentary",
+];
+
+const REVIEW_BOARD_SIZE = 460;
+const REVIEW_COMMENT_PANEL_HEIGHT = 196;
 
 function isSgfFile(file: File) {
     return file.name.toLowerCase().endsWith(".sgf");
@@ -45,7 +57,6 @@ export default function Commentary() {
 
     const [file, setFile] = useState<File | null>(null);
     const [error, setError] = useState(false);
-    const [isDragOver, setIsDragOver] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [result, setResult] = useState<CommentaryResponse | null>(null);
     const [model, setModel] = useState<ClaudeModel>(defaultConfig.model);
@@ -66,6 +77,15 @@ export default function Commentary() {
         if (!result) return map;
         for (const item of result.comments) {
             map[item.turn] = item.comment;
+        }
+        return map;
+    }, [result]);
+
+    const severityByTurn = useMemo(() => {
+        const map: Record<number, CommentarySeverity> = {};
+        if (!result) return map;
+        for (const item of result.comments) {
+            map[item.turn] = severityForDelta(item.winrate_delta);
         }
         return map;
     }, [result]);
@@ -96,32 +116,6 @@ export default function Commentary() {
         }
         setError(false);
         setFile(uploadedFile);
-    }
-
-    function handleRemoveFile() {
-        setFile(null);
-    }
-
-    function handleInputChange(event: React.ChangeEvent<HTMLInputElement>) {
-        handleFile(event.target.files?.[0]);
-        event.target.value = "";
-    }
-
-    function handleDragOver(event: React.DragEvent) {
-        event.preventDefault();
-        setIsDragOver(true);
-    }
-
-    function handleDragLeave(event: React.DragEvent) {
-        event.preventDefault();
-        setError(false);
-        setIsDragOver(false);
-    }
-
-    function handleDrop(event: React.DragEvent) {
-        event.preventDefault();
-        setIsDragOver(false);
-        handleFile(event.dataTransfer.files[0]);
     }
 
     function handleDownloadSGF() {
@@ -202,211 +196,194 @@ export default function Commentary() {
         }
     }
 
-    function handleCancelGenerate() {
-        abortControllerRef.current?.abort();
-    }
-
-    function handleNewGame() {
-        setResult(null);
-        setFile(null);
-        setCurrentMoveIndex(0);
-    }
-
+    // ── Generating ────────────────────────────────────────────────────────
     if (isLoading) {
         return (
-            <Container maxWidth="md">
-                <Box
-                    sx={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 3,
-                        minHeight: "70vh",
-                    }}
-                >
-                    <CircularProgress size={48} />
-                    <Typography variant="body1" color="text.secondary">
+            <div className="ks-generating">
+                <Spinner size={48} />
+                <div style={{ textAlign: "center" }}>
+                    <h1 className="ks-page__title ks-page__title--sm">
                         Generating commentary…
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
+                    </h1>
+                    <p className="ks-page__lead">
                         This may take a minute depending on game length.
-                    </Typography>
-                    <Button
-                        variant="outlined"
-                        color="error"
-                        onClick={handleCancelGenerate}
+                    </p>
+                </div>
+
+                <Panel style={{ width: "100%" }}>
+                    <span className="ks-eyebrow">Pipeline</span>
+                    <div className="ks-pipeline">
+                        {PIPELINE_STEPS.map((step) => (
+                            <div className="ks-pipeline__step" key={step}>
+                                <Icon name="radio_button_unchecked" size="sm" />
+                                <span>{step}</span>
+                            </div>
+                        ))}
+                    </div>
+                    <p
+                        className="ks-page__meta"
+                        style={{ marginTop: "var(--space-9)" }}
                     >
-                        Cancel
-                    </Button>
-                </Box>
-            </Container>
+                        Stages run in order; progress is not reported until the
+                        review finishes.
+                    </p>
+                </Panel>
+
+                <Button
+                    variant="outline"
+                    tone="danger"
+                    onClick={() => abortControllerRef.current?.abort()}
+                >
+                    Cancel
+                </Button>
+            </div>
         );
     }
 
+    // ── No API key ────────────────────────────────────────────────────────
     if (!hasClaudeApiKey && !result) {
         return (
-            <Container maxWidth="sm">
-                <Box
-                    sx={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        textAlign: "center",
-                        gap: 2,
-                        minHeight: "70vh",
-                    }}
-                >
-                    <KeyOutlinedIcon color="primary" sx={{ fontSize: 56 }} />
-                    <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                        Claude API key required
-                    </Typography>
-                    <Typography color="text.secondary" sx={{ maxWidth: 420 }}>
-                        You skipped setting up your Claude API key. Add it to
-                        start generating commentary on your games.
-                    </Typography>
-                    <Button
-                        variant="contained"
-                        size="large"
-                        startIcon={<KeyOutlinedIcon />}
-                        onClick={() => navigate("/setup-api-key")}
-                    >
-                        Set up API key
-                    </Button>
-                </Box>
-            </Container>
+            <div className="ks-container ks-container--sm ks-page">
+                <EmptyState
+                    icon="key"
+                    title="Claude API key required"
+                    body="You skipped setting up your Claude API key. Add it to start generating commentary on your games."
+                    actions={
+                        <Button
+                            size="lg"
+                            startIcon="key"
+                            onClick={() => navigate("/setup-api-key")}
+                        >
+                            Set up API key
+                        </Button>
+                    }
+                />
+            </div>
         );
     }
 
-    return (
-        <Container maxWidth="lg" sx={{ py: 3 }}>
-            {result ? (
-                <Box
-                    sx={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 0,
-                        alignItems: "stretch",
-                    }}
-                >
-                    <GameViewer
-                        boardSize={boardSize}
-                        moves={moves}
-                        initialStones={initialStones}
-                        comments={commentsByTurn}
-                        currentMoveIndex={currentMoveIndex}
-                        setCurrentMoveIndex={setCurrentMoveIndex}
-                    />
-                    <Box
-                        sx={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 2,
-                            mt: 2,
-                        }}
-                    >
+    // ── Review ────────────────────────────────────────────────────────────
+    if (result) {
+        const commentCount = result.comments.length;
+        return (
+            <div className="ks-container ks-page">
+                <div className="ks-page__head">
+                    <div>
+                        <span className="ks-eyebrow">Review</span>
+                        <h1 className="ks-page__title ks-page__title--sm">
+                            {result.sgf_file_name}
+                        </h1>
+                        <p className="ks-page__meta">
+                            {boardSize}×{boardSize} · {moves.length} moves ·{" "}
+                            {commentCount} comments ·{" "}
+                            {toTitleCase(result.language)}
+                        </p>
+                    </div>
+                    <div style={{ display: "flex", gap: "var(--space-8)" }}>
                         <Button
-                            variant="contained"
+                            startIcon="download"
                             onClick={handleDownloadSGF}
-                            sx={{ textTransform: "none" }}
                         >
                             Download annotated SGF file
                         </Button>
                         <Button
-                            variant="outlined"
-                            onClick={handleNewGame}
-                            sx={{ textTransform: "none" }}
+                            variant="outline"
+                            onClick={() => {
+                                setResult(null);
+                                setFile(null);
+                                setCurrentMoveIndex(0);
+                            }}
                         >
                             Upload another game
                         </Button>
-                    </Box>
-                </Box>
-            ) : (
-                <Box
-                    sx={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 3,
-                        minHeight: "70vh",
-                    }}
+                    </div>
+                </div>
+
+                <GameViewer
+                    boardSize={boardSize}
+                    boardCanvasSize={REVIEW_BOARD_SIZE}
+                    moves={moves}
+                    initialStones={initialStones}
+                    comments={commentsByTurn}
+                    severityByTurn={severityByTurn}
+                    currentMoveIndex={currentMoveIndex}
+                    setCurrentMoveIndex={setCurrentMoveIndex}
+                    soundEnabled={readPlayStoneSound(userSettings?.preferences)}
+                    commentPanelHeight={REVIEW_COMMENT_PANEL_HEIGHT}
                 >
-                    <Box
-                        component="label"
-                        htmlFor="sgf-upload"
-                        onDragOver={handleDragOver}
-                        onDragLeave={handleDragLeave}
-                        onDrop={handleDrop}
-                        sx={{
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            gap: 1,
-                            width: 240,
-                            height: 240,
-                            borderRadius: 3,
-                            border: "2px dashed",
-                            borderColor: isDragOver
-                                ? "primary.main"
-                                : error
-                                  ? "error.main"
-                                  : "divider",
-                            bgcolor: isDragOver
-                                ? "action.hover"
-                                : "transparent",
-                            cursor: "pointer",
-                            transition:
-                                "border-color 0.2s ease, background-color 0.2s ease",
-                            "&:hover": {
-                                bgcolor: "action.hover",
-                            },
-                        }}
-                    >
-                        <input
-                            id="sgf-upload"
-                            type="file"
-                            accept=".sgf"
-                            hidden
-                            onChange={handleInputChange}
-                        />
-                        <CloudUploadOutlinedIcon
-                            color={isDragOver ? "primary" : "action"}
-                            sx={{ fontSize: 48 }}
-                        />
-                        <Typography
-                            variant="body2"
-                            color="text.secondary"
-                            sx={{ px: 2, textAlign: "center" }}
-                        >
-                            {isDragOver
-                                ? "Drop .sgf file here"
-                                : file
-                                  ? file.name
-                                  : "Click or drag to upload .sgf file"}
-                        </Typography>
-                    </Box>
+                    <span className="ks-eyebrow">
+                        All comments · {commentCount}
+                    </span>
+                    <div className="ks-review__list">
+                        {result.comments.map((item) => (
+                            <CommentaryCard
+                                key={item.turn}
+                                move={item.turn}
+                                coordinate={coordinateForTurn(moves, item.turn)}
+                                color={colorForTurn(
+                                    moves,
+                                    item.turn,
+                                    item.color
+                                )}
+                                severity={severityForDelta(item.winrate_delta)}
+                                winRateDelta={item.winrate_delta}
+                                onClick={() => setCurrentMoveIndex(item.turn)}
+                            >
+                                {item.comment}
+                            </CommentaryCard>
+                        ))}
+                    </div>
+                </GameViewer>
+            </div>
+        );
+    }
 
+    // ── Upload ────────────────────────────────────────────────────────────
+    return (
+        <div className="ks-container ks-page">
+            <span className="ks-eyebrow">New review</span>
+            <h1 className="ks-page__title">Generate commentary</h1>
+            <p
+                className="ks-page__lead"
+                style={{ marginBottom: "var(--space-13)" }}
+            >
+                Upload a finished game as an SGF file. KataGo finds the moves
+                that cost you the most, then Claude explains them.
+            </p>
+
+            <div className="ks-upload">
+                <div className="ks-upload__side">
+                    <SgfDropzone
+                        fileName={file?.name}
+                        state={error ? "error" : "idle"}
+                        onFile={handleFile}
+                    />
                     <Button
-                        variant="contained"
-                        onClick={handleGenerate}
+                        size="lg"
+                        block
+                        startIcon="auto_awesome"
                         disabled={!file}
+                        onClick={handleGenerate}
                     >
-                        GENERATE
+                        Generate
                     </Button>
-
                     {file && (
                         <Button
-                            variant="outlined"
-                            color="error"
-                            onClick={handleRemoveFile}
+                            variant="outline"
+                            tone="danger"
+                            block
+                            onClick={() => setFile(null)}
                         >
-                            REMOVE FILE
+                            Remove file
                         </Button>
                     )}
+                    <p className="ks-upload__note">
+                        Only .sgf is supported. A 20-move commentary costs less
+                        than $0.10 against your own key.
+                    </p>
+                </div>
 
+                <div className="ks-upload__config">
                     <CommentaryConfig
                         model={model}
                         setModel={setModel}
@@ -419,8 +396,8 @@ export default function Commentary() {
                         customInstruction={customInstruction}
                         setCustomInstruction={setCustomInstruction}
                     />
-                </Box>
-            )}
-        </Container>
+                </div>
+            </div>
+        </div>
     );
 }
