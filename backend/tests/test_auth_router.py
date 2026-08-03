@@ -750,3 +750,54 @@ def test_history_detail_requires_authentication(client: TestClient) -> None:
 
 def test_history_requires_authentication(client: TestClient) -> None:
     assert client.get("/auth/user/commentary-history/").status_code == 401
+
+
+def test_history_delete_removes_the_row(
+    client: TestClient, session: Session, auth_headers: dict, user: User
+) -> None:
+    commentary = Commentary(user_id=user.id, sgf_file_name="mine.sgf", moves=[], comments=[])
+    session.add(commentary)
+    session.commit()
+    session.refresh(commentary)
+
+    response = client.delete(
+        f"/auth/user/commentary-history/{commentary.id}/", headers=auth_headers
+    )
+
+    assert response.status_code == 204
+    # The row was removed through the request's own session; detach ours so the
+    # lookup below hits the database rather than the identity map.
+    commentary_id = commentary.id
+    session.expunge_all()
+    assert session.get(Commentary, commentary_id) is None
+    body = client.get("/auth/user/commentary-history/", headers=auth_headers).json()
+    assert body["total"] == 0
+    assert body["commentaries"] == []
+
+
+def test_history_delete_is_missing_for_an_unknown_id(
+    client: TestClient, auth_headers: dict
+) -> None:
+    response = client.delete("/auth/user/commentary-history/999999/", headers=auth_headers)
+    assert response.status_code == 404
+
+
+def test_history_delete_leaves_another_users_commentary_alone(
+    client: TestClient, session: Session, auth_headers: dict, make_user
+) -> None:
+    other = make_user("other@example.com")
+    commentary = Commentary(user_id=other.id, sgf_file_name="theirs.sgf", moves=[], comments=[])
+    session.add(commentary)
+    session.commit()
+    session.refresh(commentary)
+
+    response = client.delete(
+        f"/auth/user/commentary-history/{commentary.id}/", headers=auth_headers
+    )
+
+    assert response.status_code == 404
+    assert session.get(Commentary, commentary.id) is not None
+
+
+def test_history_delete_requires_authentication(client: TestClient) -> None:
+    assert client.delete("/auth/user/commentary-history/1/").status_code == 401

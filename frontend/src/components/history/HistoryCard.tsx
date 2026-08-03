@@ -1,15 +1,24 @@
 import { useState } from "react";
 import { toast } from "react-toastify";
 
+import DeleteOutlinedIcon from "@mui/icons-material/DeleteOutlined";
 import DownloadIcon from "@mui/icons-material/Download";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardActions from "@mui/material/CardActions";
 import CardContent from "@mui/material/CardContent";
 import CircularProgress from "@mui/material/CircularProgress";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogContentText from "@mui/material/DialogContentText";
+import DialogTitle from "@mui/material/DialogTitle";
 import Divider from "@mui/material/Divider";
+import IconButton from "@mui/material/IconButton";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
 import api from "@/api";
@@ -23,9 +32,11 @@ import MiniBoardThumb from "./MiniBoardThumb";
 export default function HistoryCard({
     commentary,
     onOpen,
+    onDelete,
 }: {
     commentary: CommentaryHistoryItem;
     onOpen: (commentary: CommentaryResponse) => void;
+    onDelete: (id: number) => void;
 }) {
     const {
         id,
@@ -40,7 +51,10 @@ export default function HistoryCard({
 
     const [isOpening, setIsOpening] = useState(false);
     const [isDownloading, setIsDownloading] = useState(false);
-    const busy = isOpening || isDownloading;
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+    const [deleteError, setDeleteError] = useState<string | null>(null);
+    const busy = isOpening || isDownloading || isDeleting;
 
     async function fetchDetail(): Promise<CommentaryResponse> {
         const { data } = await api.get<CommentaryResponse>(
@@ -80,6 +94,30 @@ export default function HistoryCard({
             );
         } finally {
             setIsDownloading(false);
+        }
+    }
+
+    function closeDeleteDialog() {
+        if (isDeleting) return;
+        setDeleteDialogOpen(false);
+        setDeleteError(null);
+    }
+
+    async function handleDelete() {
+        setIsDeleting(true);
+        setDeleteError(null);
+        try {
+            await api.delete(ENDPOINTS.userCommentaryHistoryDetail(id));
+            toast.success("Session deleted.");
+            setDeleteDialogOpen(false);
+            // Last, since the parent unmounts this card in response.
+            onDelete(id);
+        } catch (error) {
+            setDeleteError(
+                getErrorMessage(error, "Could not delete this session.")
+            );
+        } finally {
+            setIsDeleting(false);
         }
     }
 
@@ -135,7 +173,28 @@ export default function HistoryCard({
 
             <Divider />
 
-            <CardActions sx={{ justifyContent: "flex-end", px: 1, py: 0.75 }}>
+            <CardActions sx={{ px: 1, py: 0.75 }}>
+                <Tooltip title="Delete session">
+                    {/* The span keeps the tooltip working while the button is disabled. */}
+                    <span>
+                        <IconButton
+                            size="small"
+                            color="error"
+                            aria-label="Delete session"
+                            onClick={() => setDeleteDialogOpen(true)}
+                            disabled={busy}
+                        >
+                            {isDeleting ? (
+                                <CircularProgress size={18} color="error" />
+                            ) : (
+                                <DeleteOutlinedIcon fontSize="small" />
+                            )}
+                        </IconButton>
+                    </span>
+                </Tooltip>
+
+                <Box sx={{ flex: 1 }} />
+
                 <Button
                     size="small"
                     startIcon={
@@ -172,6 +231,41 @@ export default function HistoryCard({
                     Open
                 </Button>
             </CardActions>
+
+            <Dialog
+                open={deleteDialogOpen}
+                onClose={closeDeleteDialog}
+                fullWidth
+                maxWidth="sm"
+            >
+                <DialogTitle>Delete this session?</DialogTitle>
+                <DialogContent>
+                    <DialogContentText sx={{ mb: 2 }}>
+                        The commentary for <strong>{sgf_file_name}</strong> will
+                        be permanently removed from your history. This cannot be
+                        undone.
+                    </DialogContentText>
+                    {deleteError && (
+                        <Alert severity="error">{deleteError}</Alert>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button
+                        variant="contained"
+                        onClick={closeDeleteDialog}
+                        disabled={isDeleting}
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        color="error"
+                        onClick={handleDelete}
+                        disabled={isDeleting}
+                    >
+                        {isDeleting ? "Deleting…" : "Delete"}
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </Card>
     );
 }

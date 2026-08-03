@@ -290,3 +290,19 @@ def get_commentary_detail(
         comments=commentary.comments,
         annotated_sgf_content=commentary.annotated_sgf_content,
     )
+
+
+@router.delete("/user/commentary-history/{commentary_id}/", status_code=status.HTTP_204_NO_CONTENT)
+def delete_commentary(commentary_id: int, user: CurrentUser, session: SessionDep) -> Response:
+    """Permanently remove one saved review. Scoped to the caller the same way the
+    detail endpoint is: someone else's entry is reported missing, not forbidden, so
+    this cannot be used to probe which ids exist."""
+    commentary = session.exec(
+        select(Commentary).where(Commentary.id == commentary_id, Commentary.user_id == user.id)
+    ).first()
+    if commentary is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Commentary not found.")
+
+    session.delete(commentary)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

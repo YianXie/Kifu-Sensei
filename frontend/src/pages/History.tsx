@@ -95,6 +95,11 @@ export default function History() {
         navigate("/commentary", { state: { commentary } });
     };
 
+    const handleDelete = (id: number) => {
+        setCommentaries((prev) => prev.filter((c) => c.id !== id));
+        setTotal((prev) => Math.max(0, prev - 1));
+    };
+
     return (
         <Box sx={{ px: { xs: 3, md: 5 }, py: 4 }}>
             <Typography variant="h4" sx={{ fontWeight: 700, mb: 0.5 }}>
@@ -187,6 +192,7 @@ export default function History() {
                             key={c.id}
                             commentary={c}
                             onOpen={handleOpen}
+                            onDelete={handleDelete}
                         />
                     ))}
                     {commentaries.length < total && (
