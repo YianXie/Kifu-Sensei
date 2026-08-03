@@ -14,9 +14,11 @@ vi.mock("@/contexts/AuthContext", () => ({ useAuth: vi.fn() }));
 const mockedUseAuth = vi.mocked(useAuth);
 const originalMatchMedia = window.matchMedia;
 
-function mockMobileViewport() {
+/** `matches` drives both the mobile breakpoint and the dark-scheme query, which
+ *  is harmless here — only the breakpoint changes what the navbar renders. */
+function mockViewport(matches: boolean) {
     window.matchMedia = ((query: string) => ({
-        matches: true,
+        matches,
         media: query,
         onchange: null,
         addListener: () => {},
@@ -27,8 +29,8 @@ function mockMobileViewport() {
     })) as unknown as typeof window.matchMedia;
 }
 
-function renderNavbar(isAuthenticated: boolean) {
-    mockMobileViewport();
+function renderNavbar(isAuthenticated: boolean, { mobile = true } = {}) {
+    mockViewport(mobile);
     mockedUseAuth.mockReturnValue({
         isAuthenticated,
     } as unknown as ReturnType<typeof useAuth>);
@@ -40,6 +42,7 @@ function renderNavbar(isAuthenticated: boolean) {
                 <Routes>
                     <Route path="/" element={<p>home page</p>} />
                     <Route path="/settings" element={<p>settings page</p>} />
+                    <Route path="/privacy" element={<p>privacy page</p>} />
                     <Route path="/logout" element={<p>logout page</p>} />
                     <Route path="/login" element={<p>login page</p>} />
                 </Routes>
@@ -48,11 +51,11 @@ function renderNavbar(isAuthenticated: boolean) {
     );
 }
 
-describe("Navbar mobile drawer", () => {
-    afterEach(() => {
-        window.matchMedia = originalMatchMedia;
-    });
+afterEach(() => {
+    window.matchMedia = originalMatchMedia;
+});
 
+describe("Navbar mobile drawer", () => {
     it("navigates when a row's icon is clicked, not just its label text", async () => {
         renderNavbar(true);
 
@@ -97,5 +100,80 @@ describe("Navbar mobile drawer", () => {
         await userEvent.click(icon as SVGElement);
 
         expect(await screen.findByText("login page")).toBeInTheDocument();
+    });
+
+    it("keeps Privacy reachable on mobile, for signed-out visitors too", async () => {
+        renderNavbar(false);
+
+        await userEvent.click(
+            screen.getByRole("button", { name: "Open navigation menu" })
+        );
+
+        await userEvent.click(screen.getByRole("link", { name: /privacy/i }));
+
+        expect(await screen.findByText("privacy page")).toBeInTheDocument();
+    });
+});
+
+describe("Navbar account menu", () => {
+    async function openAccountMenu() {
+        renderNavbar(true, { mobile: false });
+        await userEvent.click(screen.getByRole("button", { name: "Account" }));
+    }
+
+    // Regression: the outside-click handler used to close the menu on mousedown
+    // before the click reached the item, so nothing ever navigated.
+    it("navigates to Settings", async () => {
+        await openAccountMenu();
+
+        await userEvent.click(
+            screen.getByRole("menuitem", { name: /settings/i })
+        );
+
+        expect(await screen.findByText("settings page")).toBeInTheDocument();
+    });
+
+    it("navigates to Privacy, which is no longer in the bar", async () => {
+        await openAccountMenu();
+
+        expect(
+            screen.queryByRole("link", { name: "Privacy" })
+        ).not.toBeInTheDocument();
+
+        await userEvent.click(
+            screen.getByRole("menuitem", { name: /privacy/i })
+        );
+
+        expect(await screen.findByText("privacy page")).toBeInTheDocument();
+    });
+
+    it("navigates to Logout", async () => {
+        await openAccountMenu();
+
+        await userEvent.click(
+            screen.getByRole("menuitem", { name: /logout/i })
+        );
+
+        expect(await screen.findByText("logout page")).toBeInTheDocument();
+    });
+
+    it("leaves History out of the menu — it is already a link in the bar", async () => {
+        await openAccountMenu();
+
+        expect(
+            screen.queryByRole("menuitem", { name: /history/i })
+        ).not.toBeInTheDocument();
+        expect(
+            screen.getByRole("link", { name: "History" })
+        ).toBeInTheDocument();
+    });
+
+    it("closes when a click lands outside it", async () => {
+        await openAccountMenu();
+        expect(screen.getByRole("menu")).toBeInTheDocument();
+
+        await userEvent.click(document.body);
+
+        expect(screen.queryByRole("menu")).not.toBeInTheDocument();
     });
 });

@@ -14,25 +14,31 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 
-/** Links that sit directly in the bar on desktop. */
-const PUBLIC_LINKS: NavListItem[] = [
-    { label: "Privacy", to: "/privacy", icon: "policy" },
-];
+/** The links that sit directly in the bar. Signed-out visitors get none of
+ *  them — everything else lives behind the account menu. */
 const PRIVATE_LINKS: NavListItem[] = [
     { label: "Commentary", to: "/commentary", icon: "comment" },
     { label: "History", to: "/history", icon: "history" },
 ];
 
+const PRIVACY_LINK: NavListItem = {
+    label: "Privacy",
+    to: "/privacy",
+    icon: "policy",
+};
+
+/** The account dropdown. History is deliberately absent — it is already a
+ *  first-class link in the bar. */
 const ACCOUNT_MENU: MenuEntry[] = [
     { label: "Settings", icon: "settings" },
-    { label: "History", icon: "history" },
+    { label: "Privacy", icon: "policy" },
     "divider",
     { label: "Logout", icon: "logout", danger: true },
 ];
 
 const MENU_TARGETS: Record<string, string> = {
     Settings: "/settings",
-    History: "/history",
+    Privacy: "/privacy",
     Logout: "/logout",
 };
 
@@ -47,11 +53,10 @@ export default function Navbar() {
     const [menuOpen, setMenuOpen] = useState(false);
     const accountRef = useRef<HTMLDivElement>(null);
 
-    const links = isAuthenticated
-        ? [...PRIVATE_LINKS, ...PUBLIC_LINKS]
-        : PUBLIC_LINKS;
+    const links = isAuthenticated ? PRIVATE_LINKS : [];
     const drawerItems: NavListItem[] = [
         ...links,
+        PRIVACY_LINK,
         ...(isAuthenticated
             ? [
                   {
@@ -65,7 +70,9 @@ export default function Navbar() {
     ];
 
     // The account dropdown is positioned, not portalled, so a click anywhere
-    // else has to close it explicitly.
+    // else has to close it explicitly. `accountRef` wraps the trigger *and* the
+    // dropdown: if it covered only the trigger, mousedown on a menu item would
+    // unmount the menu before the click landed, and the item would never fire.
     useEffect(() => {
         if (!menuOpen) return;
         function handlePointerDown(event: MouseEvent) {
@@ -133,7 +140,7 @@ export default function Navbar() {
                             onClick={() => setDrawerOpen(true)}
                         />
                     ) : isAuthenticated ? (
-                        <div ref={accountRef}>
+                        <div ref={accountRef} style={{ position: "relative" }}>
                             <IconButton
                                 icon="account_circle"
                                 label="Account"
@@ -142,6 +149,26 @@ export default function Navbar() {
                                 aria-expanded={menuOpen}
                                 onClick={() => setMenuOpen((open) => !open)}
                             />
+                            {menuOpen && (
+                                <div
+                                    style={{
+                                        position: "absolute",
+                                        right: 0,
+                                        top: "calc(100% + 8px)",
+                                        zIndex: 60,
+                                    }}
+                                >
+                                    <Menu
+                                        items={ACCOUNT_MENU}
+                                        onSelect={(item) => {
+                                            setMenuOpen(false);
+                                            navigate(
+                                                MENU_TARGETS[item.label] ?? "/"
+                                            );
+                                        }}
+                                    />
+                                </div>
+                            )}
                         </div>
                     ) : (
                         <Button size="sm" onClick={() => navigate("/login")}>
@@ -150,25 +177,6 @@ export default function Navbar() {
                     )}
                 </div>
             </header>
-
-            {menuOpen && (
-                <div
-                    style={{
-                        position: "absolute",
-                        right: 24,
-                        top: 56,
-                        zIndex: 60,
-                    }}
-                >
-                    <Menu
-                        items={ACCOUNT_MENU}
-                        onSelect={(item) => {
-                            setMenuOpen(false);
-                            navigate(MENU_TARGETS[item.label] ?? "/");
-                        }}
-                    />
-                </div>
-            )}
 
             <Drawer
                 open={drawerOpen}
