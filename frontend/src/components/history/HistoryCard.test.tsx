@@ -11,7 +11,7 @@ import type {
 } from "@/types/commentary";
 
 vi.mock("@/api", () => ({
-    default: { get: vi.fn() },
+    default: { get: vi.fn(), delete: vi.fn() },
 }));
 
 vi.mock("react-toastify", () => ({
@@ -20,6 +20,7 @@ vi.mock("react-toastify", () => ({
 
 const api = (await import("@/api")).default as unknown as {
     get: ReturnType<typeof vi.fn>;
+    delete: ReturnType<typeof vi.fn>;
 };
 const { toast } = (await import("react-toastify")) as unknown as {
     toast: { error: ReturnType<typeof vi.fn> };
@@ -51,6 +52,7 @@ const DETAIL: CommentaryResponse = {
 // jsdom has no createObjectURL/revokeObjectURL implementation.
 beforeEach(() => {
     api.get.mockReset();
+    api.delete.mockReset();
     toast.error.mockReset();
     URL.createObjectURL = vi.fn(() => "blob:mock");
     URL.revokeObjectURL = vi.fn();
@@ -60,7 +62,13 @@ describe("opening a session", () => {
     it("fetches the full record and hands it to onOpen", async () => {
         api.get.mockResolvedValue({ data: DETAIL });
         const onOpen = vi.fn();
-        render(<HistoryCard commentary={SUMMARY} onOpen={onOpen} />);
+        render(
+            <HistoryCard
+                commentary={SUMMARY}
+                onOpen={onOpen}
+                onDelete={vi.fn()}
+            />
+        );
 
         await userEvent.click(screen.getByRole("button", { name: /open/i }));
 
@@ -73,7 +81,13 @@ describe("opening a session", () => {
     it("shows an error toast and does not call onOpen if the fetch fails", async () => {
         api.get.mockRejectedValue(new Error("network error"));
         const onOpen = vi.fn();
-        render(<HistoryCard commentary={SUMMARY} onOpen={onOpen} />);
+        render(
+            <HistoryCard
+                commentary={SUMMARY}
+                onOpen={onOpen}
+                onDelete={vi.fn()}
+            />
+        );
 
         await userEvent.click(screen.getByRole("button", { name: /open/i }));
 
@@ -85,7 +99,13 @@ describe("opening a session", () => {
 describe("downloading a session", () => {
     it("fetches the full record before building the download", async () => {
         api.get.mockResolvedValue({ data: DETAIL });
-        render(<HistoryCard commentary={SUMMARY} onOpen={vi.fn()} />);
+        render(
+            <HistoryCard
+                commentary={SUMMARY}
+                onOpen={vi.fn()}
+                onDelete={vi.fn()}
+            />
+        );
 
         await userEvent.click(
             screen.getByRole("button", { name: /download/i })
@@ -98,9 +118,103 @@ describe("downloading a session", () => {
     });
 });
 
+describe("deleting a session", () => {
+    it("asks for confirmation before deleting anything", async () => {
+        const onDelete = vi.fn();
+        render(
+            <HistoryCard
+                commentary={SUMMARY}
+                onOpen={vi.fn()}
+                onDelete={onDelete}
+            />
+        );
+
+        await userEvent.click(
+            screen.getByRole("button", { name: /delete session/i })
+        );
+
+        expect(
+            screen.getByRole("dialog", { name: /delete this session\?/i })
+        ).toBeInTheDocument();
+        expect(api.delete).not.toHaveBeenCalled();
+        expect(onDelete).not.toHaveBeenCalled();
+    });
+
+    it("does not delete when the dialog is cancelled", async () => {
+        const onDelete = vi.fn();
+        render(
+            <HistoryCard
+                commentary={SUMMARY}
+                onOpen={vi.fn()}
+                onDelete={onDelete}
+            />
+        );
+
+        await userEvent.click(
+            screen.getByRole("button", { name: /delete session/i })
+        );
+        await userEvent.click(screen.getByRole("button", { name: /cancel/i }));
+
+        expect(api.delete).not.toHaveBeenCalled();
+        expect(onDelete).not.toHaveBeenCalled();
+    });
+
+    it("deletes the record and notifies the parent once confirmed", async () => {
+        api.delete.mockResolvedValue({ status: 204 });
+        const onDelete = vi.fn();
+        render(
+            <HistoryCard
+                commentary={SUMMARY}
+                onOpen={vi.fn()}
+                onDelete={onDelete}
+            />
+        );
+
+        await userEvent.click(
+            screen.getByRole("button", { name: /delete session/i })
+        );
+        await userEvent.click(
+            screen.getByRole("button", { name: /^delete$/i })
+        );
+
+        expect(api.delete).toHaveBeenCalledWith(
+            ENDPOINTS.userCommentaryHistoryDetail(42)
+        );
+        expect(onDelete).toHaveBeenCalledWith(42);
+    });
+
+    it("keeps the card and shows the error if the delete fails", async () => {
+        api.delete.mockRejectedValue(new Error("network error"));
+        const onDelete = vi.fn();
+        render(
+            <HistoryCard
+                commentary={SUMMARY}
+                onOpen={vi.fn()}
+                onDelete={onDelete}
+            />
+        );
+
+        await userEvent.click(
+            screen.getByRole("button", { name: /delete session/i })
+        );
+        await userEvent.click(
+            screen.getByRole("button", { name: /^delete$/i })
+        );
+
+        expect(onDelete).not.toHaveBeenCalled();
+        expect(await screen.findByRole("alert")).toBeInTheDocument();
+    });
+});
+
 describe("rendering the summary", () => {
     it("shows the comment count from the summary without fetching", () => {
-        render(<HistoryCard commentary={SUMMARY} onOpen={vi.fn()} />);
+        render(
+            <HistoryCard
+                commentary={SUMMARY}
+                onOpen={vi.fn()}
+                onDelete={vi.fn()}
+            />
+        );
         expect(screen.getByText(/3 comments/)).toBeInTheDocument();
         expect(api.get).not.toHaveBeenCalled();
     });
