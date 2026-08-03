@@ -7,6 +7,7 @@ import HistoryIcon from "@mui/icons-material/History";
 import LoginIcon from "@mui/icons-material/Login";
 import LogoutIcon from "@mui/icons-material/Logout";
 import MenuIcon from "@mui/icons-material/Menu";
+import PolicyIcon from "@mui/icons-material/Policy";
 import SettingsIcon from "@mui/icons-material/Settings";
 import {
     AppBar,
@@ -46,6 +47,12 @@ export default function Navbar() {
             to: "/commentary",
             protected: true,
             icon: <CommentIcon fontSize="small" />,
+        },
+        {
+            label: "Privacy",
+            to: "/privacy",
+            protected: false,
+            icon: <PolicyIcon fontSize="small" />,
         },
     ];
     const authItems = [
