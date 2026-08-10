@@ -5,9 +5,11 @@
 // cross a shadow boundary — OGS sets Nunito 16px on the surrounding `.PlayControls`,
 // which would otherwise leak in.
 //
-// Colours are derived from `panel/panel.css` so the button matches the side panel.
-// (`design/all-button-states.png`, referenced in the brief, is not in the repository —
-// see assumption A1 in IMPLEMENTATION_PLAN.md.)
+// Colours come from the design system's tokens, inlined rather than imported: a
+// shadow root cannot see a stylesheet the page has not loaded, and this one is
+// deliberately sealed off from OGS's CSS. They are the resolved values of
+// `--accent` / `--accent-press` / `--accent-hover` in each theme, so the button
+// matches the side panel rather than drifting from it.
 
 const HOST_ID = "kifu-sensei-root";
 
@@ -43,8 +45,8 @@ const STYLES = `
     padding: 8px 12px;
     border: none;
     border-radius: 6px;
-    background: #2a6b4f;
-    color: #ffffff;
+    background: #2a6b4f; /* --kaya-500, the light-theme --accent */
+    color: #ffffff; /* --accent-contrast */
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     font-size: 13px;
     font-weight: 600;
@@ -53,11 +55,11 @@ const STYLES = `
     cursor: pointer;
     transition: background 0.15s;
 }
-.ks-button:hover:not(:disabled) { background: #215a41; }
+.ks-button:hover:not(:disabled) { background: #215a41; } /* --kaya-600 */
 .ks-button:disabled { cursor: default; opacity: 0.75; }
 
 .ks-button:focus-visible {
-    outline: 2px solid #3d9970;
+    outline: 2px solid #3d9970; /* --kaya-400 */
     outline-offset: 2px;
 }
 
@@ -78,15 +80,27 @@ const STYLES = `
 
 /* OGS resolves its own "system" setting to a concrete value and writes it to
    <html data-theme>, so that — not prefers-color-scheme — is the signal. The host
-   mirrors it, because a shadow root cannot match an ancestor attribute. */
+   mirrors it, because a shadow root cannot match an ancestor attribute.
+
+   Brass, not green: the panel's accent flips to brass in dark, and a green button
+   on a dark OGS next to a brass panel is exactly the split this is fixing. */
 :host([data-ks-theme="dark"]) .ks-button,
 :host([data-ks-theme="accessible"]) .ks-button {
-    background: #35845f;
-    color: #ffffff;
+    background: #c9a227; /* --brass-400, the dark-theme --accent */
+    color: #0b0b0c; /* --ink-950, the dark --accent-contrast */
 }
 :host([data-ks-theme="dark"]) .ks-button:hover:not(:disabled),
 :host([data-ks-theme="accessible"]) .ks-button:hover:not(:disabled) {
-    background: #3d9970;
+    background: #dfc069; /* --brass-300 */
+}
+:host([data-ks-theme="dark"]) .ks-button:focus-visible,
+:host([data-ks-theme="accessible"]) .ks-button:focus-visible {
+    outline-color: #dfc069;
+}
+:host([data-ks-theme="dark"]) .ks-spinner,
+:host([data-ks-theme="accessible"]) .ks-spinner {
+    border-color: rgba(11, 11, 12, 0.35);
+    border-top-color: #0b0b0c;
 }
 
 .ks-spinner {

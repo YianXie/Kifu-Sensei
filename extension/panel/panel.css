@@ -1,35 +1,76 @@
-/* ── Design tokens ──────────────────────────────────────────────── */
+/* ── Design tokens ──────────────────────────────────────────────────
+   The same token layer the website is built on. It lives in shared/ because
+   the design system was derived *from* this file in the first place — the
+   accent and every severity colour below were lifted verbatim from here —
+   and then the website moved on without the panel.
+
+   Dark is the default; `<html data-theme="light">` switches. `theme.ts`
+   writes that attribute before the first screen paints. */
+@import url("../../shared/styles/tokens/colors.css");
+@import url("../../shared/styles/tokens/typography.css");
+@import url("../../shared/styles/tokens/spacing.css");
+@import url("../../shared/styles/tokens/radii.css");
+@import url("../../shared/styles/tokens/elevation.css");
+@import url("../../shared/styles/tokens/motion.css");
+
+/* The panel's own names, pointed at the semantic tokens.
+   An alias layer rather than a rename across 94 selectors: every rule body
+   below is untouched, so this changes colour and theme without also changing
+   layout. The aliases retire as the selectors move to their `ks-` twins.
+
+   Fonts resolve through the same tokens. The panel does not load the IBM Plex
+   webfonts — an extension page should not reach for a CDN at render time —
+   so it lands on the fallback chain in those tokens, which is the system
+   stack the panel was already using. Vendoring the woff2 subsets is the
+   follow-up that would close the last of the typographic gap. */
 :root {
-    --ks-accent: #2a6b4f;
-    --ks-accent-light: #eaf4ef;
-    --ks-accent-border: #b6ddc9;
-    --ks-black: #1a1a1a;
-    --ks-dark: #2d2d2d;
-    --ks-mid: #6b6b6b;
-    --ks-light: #e8e8e8;
-    --ks-white: #ffffff;
+    --ks-accent: var(--accent);
+    --ks-accent-light: var(--accent-soft);
+    --ks-accent-border: var(--accent-soft-border);
+    --ks-black: var(--text-heading);
+    --ks-dark: var(--text-body);
+    --ks-mid: var(--text-secondary);
+    --ks-light: var(--border-default);
+    --ks-white: var(--surface-card);
 
-    --ks-blunder: #dc2626;
-    --ks-blunder-bg: #fef2f2;
-    --ks-blunder-div: #fee2e2;
-    --ks-blunder-badge: #fca5a5;
+    --ks-blunder: var(--severity-blunder-fg);
+    --ks-blunder-bg: var(--severity-blunder-bg);
+    --ks-blunder-div: var(--border-subtle);
+    --ks-blunder-badge: var(--severity-blunder-rail);
 
-    --ks-mistake: #b45309;
-    --ks-mistake-bg: #fffbeb;
-    --ks-mistake-div: #f3e8d0;
-    --ks-mistake-badge: #f59e0b;
+    --ks-mistake: var(--severity-mistake-fg);
+    --ks-mistake-bg: var(--severity-mistake-bg);
+    --ks-mistake-div: var(--border-subtle);
+    --ks-mistake-badge: var(--severity-mistake-rail);
 
-    --ks-notable: #374151;
-    --ks-notable-bg: #f9fafb;
-    --ks-notable-div: var(--ks-light);
-    --ks-notable-badge: #d1d5db;
+    --ks-notable: var(--severity-notable-fg);
+    --ks-notable-bg: var(--severity-notable-bg);
+    --ks-notable-div: var(--border-subtle);
+    --ks-notable-badge: var(--severity-notable-rail);
 
-    --font-body:
-        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+    --font-body: var(--font-sans);
 }
 
 /* ── Reset & base ────────────────────────────────────────────────── */
+:focus-visible {
+    outline: var(--border-focus-width) solid var(--border-focus);
+    outline-offset: 2px;
+}
+
+/* Two animations run here — the entry pop and the step spinner — plus the
+   progress and dock transitions. motion.css clamps them; this makes the panel
+   honour it too rather than being the one surface that ignores the setting. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
 *,
 *::before,
 *::after {
@@ -44,8 +85,8 @@ body {
     min-height: 100vh;
     font-family: var(--font-body);
     font-size: 14px;
-    color: var(--ks-dark);
-    background: var(--ks-white);
+    color: var(--text-body);
+    background: var(--surface-page);
     overflow-x: hidden;
 }
 
@@ -113,7 +154,7 @@ p {
     transition: background 0.1s;
 }
 .btn-icon:hover {
-    background: #f3f4f6;
+    background: var(--surface-hover);
     color: var(--ks-dark);
 }
 
@@ -161,15 +202,6 @@ p {
     margin-top: 4px;
 }
 
-.section-label {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--ks-mid);
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
-    margin-bottom: 10px;
-}
-
 .sub-action {
     font-size: 12px;
     color: var(--ks-mid);
@@ -207,7 +239,7 @@ p {
 }
 
 .card--notable {
-    border-left: 3px solid #9ca3af;
+    border-left: 3px solid var(--severity-notable-rail);
     background: var(--ks-notable-bg);
 }
 .card--notable .card-header {
@@ -243,14 +275,14 @@ p {
 }
 
 .badge--black {
-    background: var(--ks-black);
-    color: var(--ks-white);
+    background: var(--ink-900);
+    color: var(--paper-000);
 }
 
 .badge--white {
-    background: var(--ks-white);
-    color: var(--ks-black);
-    border: 1px solid var(--ks-light);
+    background: var(--paper-000);
+    color: var(--ink-900);
+    border: 1px solid var(--border-default);
 }
 
 .badge--blunder {
@@ -294,24 +326,6 @@ p {
     font-variant-numeric: tabular-nums;
 }
 
-/* Partial card (blurred bottom fade for generating preview) */
-.card--partial .card-body {
-    position: relative;
-    overflow: hidden;
-    max-height: 80px;
-}
-
-.card-body--fade::after {
-    content: "";
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 36px;
-    background: linear-gradient(to bottom, transparent, var(--ks-blunder-bg));
-    pointer-events: none;
-}
-
 /* ── Buttons ─────────────────────────────────────────────────────── */
 .btn {
     display: flex;
@@ -332,10 +346,10 @@ p {
 
 .btn--primary {
     background: var(--ks-accent);
-    color: var(--ks-white);
+    color: var(--accent-contrast);
 }
 .btn--primary:hover:not(:disabled) {
-    background: #215a41;
+    background: var(--accent-press);
 }
 .btn--primary:disabled {
     background: var(--ks-light);
@@ -460,7 +474,7 @@ p {
     padding: 9px 11px;
     font-size: 13px;
     color: var(--ks-dark);
-    outline: none;
+    background: var(--surface-card);
     transition:
         border-color 0.2s,
         background 0.2s;
@@ -472,7 +486,7 @@ p {
     font-family: var(--font-mono);
 }
 .field-input:focus {
-    border-color: #9ca3af;
+    border-color: var(--border-strong);
 }
 
 .field-input--valid {
@@ -596,7 +610,7 @@ p {
     font-size: 12px;
     font-family: var(--font-mono);
     color: var(--ks-mid);
-    background: #f3f4f6;
+    background: var(--surface-hover);
     padding: 3px 9px;
     border-radius: 999px;
     margin-top: 2px;
@@ -717,7 +731,7 @@ select.field-input {
 }
 
 .progress-track {
-    background: var(--ks-light);
+    background: var(--surface-hover);
     border-radius: 4px;
     height: 6px;
     overflow: hidden;
@@ -726,7 +740,11 @@ select.field-input {
 .progress-fill {
     height: 100%;
     border-radius: 4px;
-    background: linear-gradient(90deg, var(--ks-accent) 0%, #3d9970 100%);
+    background: linear-gradient(
+        90deg,
+        var(--accent) 0%,
+        var(--accent-hover) 100%
+    );
     transition: width 0.4s ease;
 }
 
@@ -762,12 +780,6 @@ select.field-input {
 .gen-step-label {
     font-size: 13px;
     color: var(--ks-dark);
-}
-
-.gen-step-sub {
-    font-size: 11px;
-    color: var(--ks-mid);
-    margin-left: 6px;
 }
 
 /* Dimmed until the KataGo passes finish and the real total is known. */
@@ -850,11 +862,13 @@ select.field-input {
     display: flex;
     justify-content: center;
     padding: 14px 14px 12px;
-    /* Fades the cards out underneath instead of cutting them off. */
+    /* Fades the cards out underneath instead of cutting them off. Fades to the
+       page, not to a card — it sits over the scrolling list, and it used to be
+       hard-coded white, which only worked because the panel was always light. */
     background: linear-gradient(
         to bottom,
-        rgba(255, 255, 255, 0),
-        var(--ks-white) 45%
+        transparent,
+        var(--surface-page) 45%
     );
     pointer-events: none;
     transition:
@@ -884,12 +898,12 @@ select.field-input {
     letter-spacing: -0.01em;
     color: var(--ks-white);
     background: var(--ks-accent);
-    box-shadow: 0 2px 8px rgba(26, 26, 26, 0.16);
+    box-shadow: var(--shadow-2);
     cursor: pointer;
     transition: background 0.15s;
 }
 .btn-download:hover:not(:disabled) {
-    background: #215a41;
+    background: var(--accent-press);
 }
 .btn-download:disabled {
     background: var(--ks-light);
@@ -910,7 +924,7 @@ select.field-input {
 
 .footer-disclaimer {
     font-size: 11px;
-    color: #9ca3af;
+    color: var(--text-muted);
     line-height: 1.5;
 }
 

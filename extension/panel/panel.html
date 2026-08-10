@@ -18,7 +18,13 @@
                     />
                     <span class="header-title">Kifu-Sensei</span>
                 </div>
-                <button id="btn-close" class="btn-icon" title="Close panel">
+                <button
+                    id="btn-close"
+                    class="btn-icon"
+                    type="button"
+                    aria-label="Close panel"
+                    title="Close panel"
+                >
                     ✕
                 </button>
             </header>
@@ -28,9 +34,9 @@
                 <div class="screen-body">
                     <div>
                         <p class="screen-label">Preview</p>
-                        <p class="screen-heading">
+                        <h1 class="screen-heading">
                             See what commentary looks like:
-                        </p>
+                        </h1>
                     </div>
                     <!--
                         Built by buildCard() from DEMO_COMMENT in panel.ts, not
@@ -63,9 +69,9 @@
             <div id="screen-welcome" class="screen hidden">
                 <div class="screen-body welcome-body">
                     <div class="welcome-hero">
-                        <span class="welcome-check">✓</span>
+                        <span class="welcome-check" aria-hidden="true">✓</span>
                         <p class="welcome-eyebrow">You're signed in</p>
-                        <h2 class="welcome-heading">Welcome to Kifu-Sensei</h2>
+                        <h1 class="welcome-heading">Welcome to Kifu-Sensei</h1>
                         <p id="welcome-email" class="welcome-email hidden"></p>
                     </div>
 
@@ -77,21 +83,21 @@
 
                     <ol class="welcome-steps">
                         <li>
-                            <span class="welcome-step-num">1</span>
+                            <span class="welcome-step-num" aria-hidden="true">1</span>
                             <span
                                 >Open a finished game on
                                 <strong>online-go.com</strong></span
                             >
                         </li>
                         <li>
-                            <span class="welcome-step-num">2</span>
+                            <span class="welcome-step-num" aria-hidden="true">2</span>
                             <span
                                 >Click the Kifu-Sensei icon to open this
                                 panel</span
                             >
                         </li>
                         <li>
-                            <span class="welcome-step-num">3</span>
+                            <span class="welcome-step-num" aria-hidden="true">3</span>
                             <span
                                 >Read move-by-move commentary on your
                                 mistakes</span
@@ -116,9 +122,9 @@
             <!-- ── API KEY SCREEN ────────────────────────────────────────── -->
             <div id="screen-api-key" class="screen hidden">
                 <div class="screen-body">
-                    <h2 class="apikey-heading">
+                    <h1 class="apikey-heading">
                         Add your Claude API key<br />to continue
-                    </h2>
+                    </h1>
                     <div class="info-box">
                         Kifu-Sensei uses Claude AI to explain your moves. You
                         bring your own key —
@@ -135,7 +141,13 @@
                         <span class="btn-sub">(Opens Anthropic console)</span>
                     </a>
                     <div class="accordion">
-                        <button id="accordion-toggle" class="accordion-trigger">
+                        <button
+                            id="accordion-toggle"
+                            class="accordion-trigger"
+                            type="button"
+                            aria-expanded="false"
+                            aria-controls="accordion-body"
+                        >
                             <span>▾ What is an API key?</span>
                             <span
                                 id="accordion-chevron"
@@ -173,15 +185,15 @@
                     <button id="btn-save-key" class="btn btn--primary" disabled>
                         Save &amp; Continue
                     </button>
-                    <p id="apikey-error" class="error-inline hidden"></p>
+                    <p id="apikey-error" class="error-inline hidden" role="alert"></p>
                 </div>
             </div>
 
             <!-- ── KEY SAVED SCREEN (shown right after saving a key) ─────── -->
             <div id="screen-key-saved" class="screen hidden">
                 <div class="screen-body screen-body--centered">
-                    <span class="welcome-check welcome-check--lg">✓</span>
-                    <h2 class="saved-heading">You're in!</h2>
+                    <span class="welcome-check welcome-check--lg" aria-hidden="true">✓</span>
+                    <h1 class="saved-heading">You're in!</h1>
                     <p class="saved-lead">
                         Your API key is saved. Open a finished game on
                         online-go.com and Kifu-Sensei will turn the key moments
@@ -198,7 +210,7 @@
                 <div class="screen-body">
                     <div>
                         <p class="screen-label">Ready to review</p>
-                        <p id="config-game" class="screen-heading"></p>
+                        <h1 id="config-game" class="screen-heading"></h1>
                     </div>
 
                     <div class="field-row">
@@ -266,7 +278,7 @@
                     <button id="btn-generate" class="btn btn--primary">
                         Generate commentary
                     </button>
-                    <p id="config-error" class="error-inline hidden"></p>
+                    <p id="config-error" class="error-inline hidden" role="alert"></p>
                 </div>
             </div>
 
@@ -274,12 +286,19 @@
             <div id="screen-generating" class="screen hidden">
                 <div class="screen-body">
                     <div>
-                        <p class="screen-heading">Analyzing your game…</p>
-                        <p id="gen-subtitle" class="gen-subtitle">
+                        <h1 class="screen-heading">Analyzing your game…</h1>
+                        <p id="gen-subtitle" class="gen-subtitle" role="status" aria-live="polite">
                             Move 0 of 20 key moves
                         </p>
                     </div>
-                    <div class="progress-track">
+                    <div
+                        class="progress-track"
+                        role="progressbar"
+                        aria-label="Review progress"
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                        aria-valuenow="0"
+                    >
                         <div
                             id="progress-fill"
                             class="progress-fill"
@@ -320,7 +339,12 @@
             <!-- ── COMMENTARY SCREEN ─────────────────────────────────────── -->
             <div id="screen-commentary" class="screen hidden">
                 <div class="commentary-toolbar">
-                    <span id="commentary-count" class="commentary-count"></span>
+                    <span
+                        id="commentary-count"
+                        class="commentary-count"
+                        role="status"
+                        aria-live="polite"
+                    ></span>
                     <button id="btn-regenerate" class="btn-outline">
                         ↻ Regenerate
                     </button>
@@ -351,8 +375,8 @@
             <!-- ── ERROR SCREEN ───────────────────────────────────────────── -->
             <div id="screen-error" class="screen hidden">
                 <div class="screen-body screen-body--centered">
-                    <span class="error-icon">⚠</span>
-                    <p id="error-msg" class="error-text"></p>
+                    <span class="error-icon" aria-hidden="true">⚠</span>
+                    <p id="error-msg" class="error-text" role="alert"></p>
                     <button id="btn-retry" class="btn btn--primary">
                         Try Again
                     </button>
@@ -363,7 +387,7 @@
             <!-- ── WAITING SCREEN (ready, no game loaded) ────────────────── -->
             <div id="screen-waiting" class="screen hidden">
                 <div class="screen-body screen-body--centered">
-                    <span class="waiting-icon">♟</span>
+                    <span class="waiting-icon" aria-hidden="true">♟</span>
                     <p id="waiting-text" class="waiting-text">
                         Open a finished game on OGS to get AI commentary.
                     </p>

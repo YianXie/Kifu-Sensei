@@ -57,6 +57,7 @@ import {
     parseOgsGameId,
 } from "../src/shared/ogs";
 import type { ExtensionAuthObject } from "../src/shared/types";
+import { adoptAccountTheme, initTheme } from "./theme";
 
 // Frontend origins where the website may hold a stale extension_auth entry.
 // Wildcarded because production serves the app from www — the bare apex only
@@ -95,6 +96,25 @@ let gameCheckToken = 0;
 // does not hijack the view.
 let activeGameId: number | null = null;
 
+/**
+ * What each screen is called, for `document.title`.
+ *
+ * The panel reported the same name on all nine screens, while every page on the
+ * website sets "<Page> | Kifu-Sensei" through `usePageTitle`. The title is how a
+ * screen reader announces that the view changed at all — nothing else here does.
+ */
+const SCREEN_TITLES: Record<ScreenId, string> = {
+    "screen-demo": "Preview",
+    "screen-welcome": "Welcome",
+    "screen-api-key": "Add your API key",
+    "screen-key-saved": "API key saved",
+    "screen-config": "Review settings",
+    "screen-generating": "Generating commentary",
+    "screen-commentary": "Commentary",
+    "screen-error": "Something went wrong",
+    "screen-waiting": "Waiting for a finished game",
+};
+
 export function showScreen(id: ScreenId): void {
     currentScreen = id;
     for (const screenId of SCREEN_IDS) {
@@ -102,6 +122,7 @@ export function showScreen(id: ScreenId): void {
             .getElementById(screenId)
             ?.classList.toggle("hidden", screenId !== id);
     }
+    document.title = `${SCREEN_TITLES[id]} | Kifu-Sensei`;
 }
 
 // Best-effort extraction of the account email from the JWT payload so the
@@ -411,6 +432,7 @@ async function rerunCommentary(): Promise<void> {
 function renderProgress(progress: { done: number; total: number }): void {
     const subtitle = el("gen-subtitle");
     const fill = el("progress-fill");
+    const track = fill?.parentElement ?? null;
     const findingIcon = el("gen-finding-icon");
     const writingStep = el("gen-writing-step");
     const writingIcon = el("gen-writing-icon");
@@ -420,6 +442,8 @@ function renderProgress(progress: { done: number; total: number }): void {
         // measure yet, so the bar stays empty rather than inventing motion.
         if (subtitle) subtitle.textContent = "Finding the key moments…";
         if (fill) fill.style.width = "0%";
+        // Indeterminate: KataGo has not said how many moments there are yet.
+        track?.removeAttribute("aria-valuenow");
         if (findingIcon) {
             findingIcon.textContent = "◷";
             findingIcon.className = "gen-step-icon gen-step-icon--spin";
@@ -435,9 +459,15 @@ function renderProgress(progress: { done: number; total: number }): void {
     if (subtitle) {
         subtitle.textContent = `Move ${progress.done} of ${progress.total} key moments`;
     }
+    const percent = Math.round((progress.done / progress.total) * 100);
     if (fill) {
-        fill.style.width = `${Math.round((progress.done / progress.total) * 100)}%`;
+        fill.style.width = `${percent}%`;
     }
+    track?.setAttribute("aria-valuenow", String(percent));
+    track?.setAttribute(
+        "aria-valuetext",
+        `Move ${progress.done} of ${progress.total}`
+    );
     if (findingIcon) {
         findingIcon.textContent = "✔";
         findingIcon.className = "gen-step-icon gen-step-icon--done";
@@ -778,6 +808,7 @@ async function syncAuthState(): Promise<void> {
     try {
         settings = (await response.json()) as typeof settings;
         accountConfig = readCommentaryConfig(settings.preferences);
+        void adoptAccountTheme(settings.preferences?.theme);
     } catch (error) {
         console.error(
             "[Kifu-Sensei panel] Malformed settings response:",
@@ -1157,6 +1188,9 @@ function watchActiveTab(): void {
 }
 
 function init(): void {
+    // Before anything paints: a panel that flashed light before turning dark
+    // would be worse than one that never turned.
+    initTheme();
     initHeader();
     initDemoScreen();
     initWelcomeScreen();
