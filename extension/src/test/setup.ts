@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, vi } from "vitest";
 
+import { installWebStorage } from "./webStorage";
+
+// Must run before anything touches `localStorage` — see the note in webStorage.ts.
+// `src/shared/auth.ts` reads it, and `inject.ts` is built around polling it.
+installWebStorage();
+
 /**
  * A minimal in-memory stand-in for the `chrome.storage` areas the extension uses.
  *

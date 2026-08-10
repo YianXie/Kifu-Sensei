@@ -3,6 +3,11 @@ import { cleanup } from "@testing-library/react";
 
 import { afterEach, vi } from "vitest";
 
+import { installWebStorage } from "./webStorage";
+
+// Must run before anything touches `localStorage` — see the note in webStorage.ts.
+installWebStorage();
+
 // jsdom implements neither of these, and MUI's responsive styling reads
 // `matchMedia` during render.
 if (!window.matchMedia) {
