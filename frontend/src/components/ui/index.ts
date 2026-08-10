@@ -19,6 +19,7 @@ export type { MenuEntry, MenuItem } from "./Menu";
 export { default as NavList } from "./NavList";
 export type { NavListItem } from "./NavList";
 export { default as Panel } from "./Panel";
+export { default as Progress } from "./Progress";
 export { default as SegmentedControl } from "./SegmentedControl";
 export { default as Select } from "./Select";
 export type { SelectOption } from "./Select";

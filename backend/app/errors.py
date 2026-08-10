@@ -28,9 +28,15 @@ class CommentaryError(Exception):
     status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR
     code: str = "internal_error"
 
-    def __init__(self, detail: str, *, retry_after: int | None = None) -> None:
+    def __init__(
+        self, detail: str, *, retry_after: int | None = None, job_id: str | None = None
+    ) -> None:
         self.detail = detail
         self.retry_after = retry_after
+        # Only ``ActiveJobExistsError`` sets this. Proving a run is already going
+        # without saying *which* leaves the caller unable to do the one useful thing
+        # — attach to it — so it retries, and earns the same 409.
+        self.job_id = job_id
         super().__init__(detail)
 
 
@@ -185,11 +191,14 @@ def _commentary_error_handler(_: Request, exc: CommentaryError) -> JSONResponse:
     # ``retry_after`` is echoed in the body so browser clients can read it without
     # CORS-exposing the header, and set as the standard header for everything else.
     headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after is not None else None
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.detail, "code": exc.code, "retry_after": exc.retry_after},
-        headers=headers,
-    )
+    content: dict[str, object] = {
+        "detail": exc.detail,
+        "code": exc.code,
+        "retry_after": exc.retry_after,
+    }
+    if exc.job_id is not None:
+        content["job_id"] = exc.job_id
+    return JSONResponse(status_code=exc.status_code, content=content, headers=headers)
 
 
 def _request_validation_handler(_: Request, exc: RequestValidationError) -> JSONResponse:

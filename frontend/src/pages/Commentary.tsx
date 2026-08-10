@@ -1,8 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { toast } from "react-toastify";
-
-import axios from "axios";
 
 import { readCommentaryConfig } from "@shared/commentary";
 import {
@@ -19,26 +17,16 @@ import {
 } from "@shared/types";
 import type { GameMove } from "@shared/types";
 
-import api from "@/api";
 import CommentaryConfig from "@/components/commentary/CommentaryConfig";
 import SgfDropzone from "@/components/commentary/SgfDropzone";
 import CommentaryCard from "@/components/game/CommentaryCard";
 import GameViewer from "@/components/game/GameViewer";
-import { Button, EmptyState, Icon, Panel, Spinner } from "@/components/ui";
-import { ENDPOINTS } from "@/constants/global/endpoints";
+import { Button, EmptyState, Panel, Progress, Spinner } from "@/components/ui";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCommentaryJob } from "@/hooks/useCommentaryJob";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { getCommentaryError } from "@/utils/errorFormatting";
 import { readPlayStoneSound } from "@/utils/preferences";
 import { toTitleCase } from "@/utils/string";
-
-/** The stages a review moves through, in order. */
-const PIPELINE_STEPS = [
-    "Reading the SGF",
-    "KataGo first pass — every move scanned",
-    "Second pass on the key positions",
-    "Claude writing the commentary",
-];
 
 const REVIEW_BOARD_SIZE = 460;
 const REVIEW_COMMENT_PANEL_HEIGHT = 196;
@@ -59,8 +47,33 @@ export default function Commentary() {
 
     const [file, setFile] = useState<File | null>(null);
     const [error, setError] = useState(false);
-    const [isLoading, setIsLoading] = useState(false);
     const [result, setResult] = useState<CommentaryResponse | null>(null);
+
+    const {
+        isRunning,
+        progress,
+        isAttached,
+        start: startJob,
+        stopWatching,
+    } = useCommentaryJob({
+        onResult: setResult,
+        onError: (error) => {
+            if (error.code === "no_api_key") {
+                toast.error(error.message);
+                // The key was removed after this page loaded, so the guard screen
+                // below did not catch it — send them where they can fix it.
+                navigate("/setup-api-key");
+                return;
+            }
+            // The pipeline saves its result server-side whether or not this client
+            // is still watching, so a failure to *watch* is not a failure to run.
+            toast.error(
+                error.detail
+                    ? `${error.message} ${error.detail}`
+                    : error.message
+            );
+        },
+    });
     const [model, setModel] = useState<ClaudeModel>(defaultConfig.model);
     const [language, setLanguage] = useState<CommentaryLanguage>(
         defaultConfig.language
@@ -72,7 +85,6 @@ export default function Commentary() {
     const [customInstruction, setCustomInstruction] = useState<string>(
         defaultConfig.custom_instruction
     );
-    const abortControllerRef = useRef<AbortController | null>(null);
 
     const commentsByTurn = useMemo(() => {
         const map: Record<number, string> = {};
@@ -137,100 +149,78 @@ export default function Commentary() {
     }
 
     async function handleGenerate() {
-        const controller = new AbortController();
-        abortControllerRef.current = controller;
-        try {
-            setIsLoading(true);
-            const sgfContent = await file?.text();
-            const sgfFileName = file?.name;
-            const { data } = await api.post<CommentaryResponse>(
-                ENDPOINTS.commentary,
-                {
-                    sgf_file_name: sgfFileName,
-                    sgf_content: sgfContent,
-                    model,
-                    language,
-                    num_comments: numComments,
-                    max_token: maxToken,
-                    custom_instruction: customInstruction,
-                },
-                { signal: controller.signal }
-            );
-            setResult(data);
-        } catch (err) {
-            if (axios.isCancel(err)) {
-                // User-initiated: the request may still be running server-side
-                // (aborting the client fetch does not stop the pipeline once
-                // it's started), so the run could still land in History shortly.
-                toast.info(
-                    "Cancelled. If the review had already started, it may still finish — check History in a bit."
-                );
-                return;
-            }
-            console.error("Error generating commentary:", err);
-            const { code, message } = getCommentaryError(err);
-            if (code === "no_api_key") {
-                toast.error(message);
-                // The key was removed after this page loaded, so the guard screen
-                // above didn't catch it — send them where they can fix it.
-                navigate("/setup-api-key");
-            } else if (code === null) {
-                // Unclassified — most often a dropped connection rather than a
-                // failure the backend reported. The pipeline runs to completion and
-                // saves its result server-side independent of whether this response
-                // ever arrives, so the run may already be sitting in History even
-                // though this request failed.
-                toast.error(
-                    `${message} If your review had already started, check History — it may already be there.`
-                );
-            } else {
-                toast.error(message);
-            }
-        } finally {
-            abortControllerRef.current = null;
-            setIsLoading(false);
+        const sgfContent = await file?.text();
+        if (file === null || sgfContent === undefined) {
+            return;
         }
+        await startJob({
+            sgf_file_name: file.name,
+            sgf_content: sgfContent,
+            model,
+            language,
+            num_comments: numComments,
+            max_token: maxToken,
+            custom_instruction: customInstruction,
+        });
     }
 
     // ── Generating ────────────────────────────────────────────────────────
-    if (isLoading) {
+    if (isRunning) {
+        // Two stages, and only the second has a size: KataGo scans every move and
+        // then re-reads the worst ones before the first comment is written, so
+        // `total` stays 0 until that is done. Saying so beats a bar that pretends.
         return (
             <div className="ks-generating">
                 <Spinner size={48} />
                 <div style={{ textAlign: "center" }}>
                     <h1 className="ks-page__title ks-page__title--sm">
-                        Generating commentary…
+                        {isAttached
+                            ? "Picking up your review…"
+                            : "Generating commentary…"}
                     </h1>
-                    <p className="ks-page__lead">
-                        This may take a minute depending on game length.
+                    <p
+                        className="ks-page__lead"
+                        role="status"
+                        aria-live="polite"
+                    >
+                        {progress === null
+                            ? "Finding the key moments…"
+                            : `Move ${progress.done} of ${progress.total} key moments`}
                     </p>
                 </div>
 
                 <Panel style={{ width: "100%" }}>
-                    <span className="ks-eyebrow">Pipeline</span>
-                    <div className="ks-pipeline">
-                        {PIPELINE_STEPS.map((step) => (
-                            <div className="ks-pipeline__step" key={step}>
-                                <Icon name="radio_button_unchecked" size="sm" />
-                                <span>{step}</span>
-                            </div>
-                        ))}
-                    </div>
+                    <Progress
+                        label="Review progress"
+                        value={progress?.done}
+                        max={progress?.total}
+                        valueText={
+                            progress === null
+                                ? "Finding the key moments"
+                                : `Move ${progress.done} of ${progress.total}`
+                        }
+                    />
                     <p
                         className="ks-page__meta"
                         style={{ marginTop: "var(--space-9)" }}
                     >
-                        Stages run in order; progress is not reported until the
-                        review finishes.
+                        {isAttached
+                            ? "A review was already running on your account — this is that one."
+                            : "You can close this tab; the review keeps going and lands in History."}
                     </p>
                 </Panel>
 
                 <Button
                     variant="outline"
                     tone="danger"
-                    onClick={() => abortControllerRef.current?.abort()}
+                    onClick={() => {
+                        stopWatching();
+                        toast.info(
+                            "Stopped watching. The review keeps running and will appear in History."
+                        );
+                    }}
                 >
-                    Cancel
+                    Stop watching
                 </Button>
             </div>
         );

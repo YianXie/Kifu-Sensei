@@ -525,6 +525,36 @@ def test_creating_a_second_job_while_one_is_active_is_rejected(
     )
 
 
+def test_the_conflict_names_the_run_that_holds_the_slot(
+    client: TestClient, session: Session, auth_headers: dict, user: User
+) -> None:
+    """Both surfaces share the one active-job slot, so a client refused here needs to
+    know *which* run to attach to. Without the id its only move is to retry, which
+    earns the same 409 — and a review started in the extension stays invisible to the
+    web app, and vice versa."""
+    active = CommentaryJob(user_id=user.id, status="running")
+    session.add(active)
+    session.commit()
+    active_id = active.id
+
+    response = client.post("/api/commentary/jobs/", headers=auth_headers, json=REQUEST_BODY)
+
+    assert response.json()["job_id"] == active_id
+
+
+def test_other_failures_carry_no_job_id(
+    client: TestClient, auth_headers: dict, stub_pipeline
+) -> None:
+    """``job_id`` belongs to the one code that means "attach to this instead"; every
+    other failure would only be handing the client an id it has no use for."""
+    stub_pipeline(raises=MissingApiKeyError("no key"))
+
+    response = client.post("/api/commentary/", headers=auth_headers, json=REQUEST_BODY)
+
+    assert response.json()["code"] == "no_api_key"
+    assert "job_id" not in response.json()
+
+
 def test_creating_a_job_is_allowed_once_the_previous_one_finished(
     client: TestClient, session: Session, auth_headers: dict, user: User, stub_pipeline
 ) -> None:

@@ -103,6 +103,10 @@ class CommentaryErrorResponse(BaseModel):
         "internal_error",
     ]
     retry_after: int | None = None
+    #: The run already in progress, on ``job_already_running`` only. Without it a
+    #: client can tell that *a* run is going but not which, so it cannot attach to
+    #: it — and a retry earns the same 409.
+    job_id: str | None = None
 
 
 class GenerateCommentaryRequest(BaseModel):

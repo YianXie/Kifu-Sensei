@@ -335,8 +335,19 @@
                             </div>
                         </div>
                     </div>
-                    <button id="btn-cancel-generating" class="btn-link">
-                        Cancel
+                    <!--
+                        Not "Cancel". Nothing cancels a run: there is no cancel
+                        route, the pipeline runs to completion on the server and
+                        still saves its result. This only stops watching — and it
+                        used to leave the backend row holding the one-active-run
+                        slot, so the next attempt earned a 409.
+                    -->
+                    <button
+                        id="btn-cancel-generating"
+                        class="btn-link"
+                        type="button"
+                    >
+                        Stop watching
                     </button>
                 </div>
             </div>

@@ -154,6 +154,18 @@ async function fetchWithTimeout(
     }
 }
 
+/** The id the backend reports alongside `job_already_running`. */
+async function readActiveJobId(response: Response): Promise<string | null> {
+    try {
+        const body = (await response.json()) as { job_id?: unknown };
+        return typeof body.job_id === "string" && body.job_id
+            ? body.job_id
+            : null;
+    } catch {
+        return null;
+    }
+}
+
 const SGF_ERRORS: Record<string, string> = {
     unfinished:
         "online-go.com will not release this game's record until it has finished.",
@@ -255,7 +267,31 @@ export async function submitJob(job: StoredJob): Promise<StoredJob> {
     }
 
     if (!response.ok) {
-        const failed = fail(job, await readErrorResponse(response));
+        // Cloned before `readErrorResponse` consumes the body — a Response can only
+        // be read once, and `clone()` after the fact throws.
+        const forJobId = response.clone();
+        const error = await readErrorResponse(response);
+
+        // A run is already going on this account — most often this panel's own,
+        // abandoned by a cancel that cleared local state while leaving the backend
+        // row holding the one-active-run slot. Retrying could only earn the same
+        // 409; attaching to the run is what the user actually wants, and it is also
+        // how a review started on the website becomes visible here.
+        if (error.code === "job_already_running") {
+            const activeId = await readActiveJobId(forJobId);
+            if (activeId !== null) {
+                const attached: StoredJob = {
+                    ...job,
+                    jobId: activeId,
+                    status: "queued",
+                    error: null,
+                };
+                await writeJob(attached);
+                return attached;
+            }
+        }
+
+        const failed = fail(job, error);
         await writeJob(failed);
         return failed;
     }
