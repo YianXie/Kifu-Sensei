@@ -282,6 +282,18 @@ p {
     font-style: italic;
 }
 
+/* The win-rate swing, on its own line so the badge row can carry the two
+   labels. Mirrors `.ks-commentary__stats` on the website. */
+.card-stats {
+    display: flex;
+    gap: 14px;
+    padding: 0 11px 10px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ks-mid);
+    font-variant-numeric: tabular-nums;
+}
+
 /* Partial card (blurred bottom fade for generating preview) */
 .card--partial .card-body {
     position: relative;

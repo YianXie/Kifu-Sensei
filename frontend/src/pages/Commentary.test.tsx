@@ -189,6 +189,35 @@ describe("downloading the annotated SGF", () => {
         );
 
         expect(anchorClicks).toHaveLength(1);
-        expect(anchorClicks[0].download).toBe("history-game.sgf");
+        // Suffixed, not verbatim: handing the browser the uploaded name meant the
+        // annotated record downloaded on top of the file the user had just picked.
+        expect(anchorClicks[0].download).toBe("history-game_annotated.sgf");
+    });
+
+    it("saves the record as an SGF rather than as plain text", async () => {
+        renderWithResult(true);
+
+        const blobs: Blob[] = [];
+        const realCreateObjectURL = URL.createObjectURL;
+        vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
+            blobs.push(blob as Blob);
+            return "blob:stub";
+        });
+        vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+        const realCreateElement = document.createElement.bind(document);
+        vi.spyOn(document, "createElement").mockImplementation(
+            (tag: string, options?: ElementCreationOptions) => {
+                const el = realCreateElement(tag, options);
+                if (tag === "a") (el as HTMLAnchorElement).click = vi.fn();
+                return el;
+            }
+        );
+
+        await userEvent.click(
+            screen.getByRole("button", { name: "Download annotated SGF file" })
+        );
+
+        expect(blobs[0].type).toBe("application/x-go-sgf");
+        URL.createObjectURL = realCreateObjectURL;
     });
 });

@@ -14,6 +14,7 @@ import {
     SCREEN_IDS,
     buildCard,
     decodeEmailFromToken,
+    initDemoScreen,
     showError,
     showScreen,
     waitingMessage,
@@ -72,14 +73,47 @@ describe("buildCard", () => {
         ["B", [2, 15]],
     ];
 
-    it("tags the card and badge with the severity the shared rule gives", () => {
+    it("names the severity rather than leaving it to the rail colour", () => {
         const card = buildCard(
             { turn: 1, comment: "…", winrate_delta: -18, color: "B" },
             moves
         );
 
         expect(card.className).toContain("card--blunder");
-        expect(card.querySelector(".badge--blunder")?.textContent).toBe("−18%");
+        expect(card.querySelector(".badge--blunder")?.textContent).toBe(
+            "Blunder"
+        );
+    });
+
+    it("puts the coordinate in the header, as the website does", () => {
+        const card = buildCard(
+            { turn: 2, comment: "…", winrate_delta: null, color: null },
+            moves
+        );
+
+        expect(card.querySelector(".card-move")?.textContent).toBe(
+            "Move 2 · Q16"
+        );
+    });
+
+    it("names the colour rather than abbreviating it", () => {
+        const card = buildCard(
+            { turn: 1, comment: "…", winrate_delta: null, color: null },
+            moves
+        );
+
+        expect(card.querySelector(".badge--black")?.textContent).toBe("Black");
+    });
+
+    it("shows the swing on its own line", () => {
+        const card = buildCard(
+            { turn: 1, comment: "…", winrate_delta: -18, color: "B" },
+            moves
+        );
+
+        expect(card.querySelector(".card-stats")?.textContent).toBe(
+            "Win rate −18%"
+        );
     });
 
     it("reads the colour from the move list, not turn parity", () => {
@@ -108,13 +142,15 @@ describe("buildCard", () => {
         );
     });
 
-    it("omits the delta badge when the swing is unknown", () => {
+    it("omits the win-rate line when the swing is unknown", () => {
         const card = buildCard(
             { turn: 1, comment: "…", winrate_delta: null, color: null },
             moves
         );
 
-        expect(card.querySelectorAll(".badge")).toHaveLength(1);
+        expect(card.querySelector(".card-stats")).toBe(null);
+        // The colour and severity labels are always there.
+        expect(card.querySelectorAll(".badge")).toHaveLength(2);
     });
 });
 
@@ -232,5 +268,34 @@ describe("copy helpers", () => {
     it("returns null rather than throwing on a token it cannot read", () => {
         expect(decodeEmailFromToken("not-a-jwt")).toBe(null);
         expect(decodeEmailFromToken("")).toBe(null);
+    });
+});
+
+describe("the signed-out preview", () => {
+    // It used to be static markup: "−12%" tagged card--mistake, when
+    // severityForDelta calls anything at or below −10 a blunder. Rendering it
+    // through buildCard means the preview cannot disagree with a real card.
+    it("tiers the preview by the same rule a real card uses", () => {
+        initDemoScreen();
+
+        const card = document.querySelector("#demo-card .card");
+        expect(card?.className).toContain("card--blunder");
+        expect(card?.querySelector(".badge--blunder")?.textContent).toBe(
+            "Blunder"
+        );
+        expect(card?.querySelector(".card-stats")?.textContent).toBe(
+            "Win rate \u221212%"
+        );
+    });
+
+    it("shows the move the way the rest of the product does", () => {
+        initDemoScreen();
+
+        expect(
+            document.querySelector("#demo-card .card-move")?.textContent
+        ).toBe("Move 31 · Q16");
+        expect(
+            document.querySelector("#demo-card .badge--black")?.textContent
+        ).toBe("Black");
     });
 });

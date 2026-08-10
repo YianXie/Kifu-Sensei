@@ -1,6 +1,7 @@
 import {
     CLAUDE_MODELS,
     CLAUDE_MODEL_LABELS,
+    COLOR_LABELS,
     COMMENTARY_LANGUAGES,
     COMMENTARY_LANGUAGE_LABELS,
     CUSTOM_INSTRUCTION_MAX,
@@ -10,12 +11,15 @@ import {
     MAX_TOKEN_MIN,
     NUM_COMMENTS_MAX,
     NUM_COMMENTS_MIN,
+    SEVERITY_LABELS,
     clampCommentaryConfig,
     colorForTurn,
+    coordinateForTurn,
     formatDelta,
     readCommentaryConfig,
     severityForDelta,
 } from "@shared/commentary";
+import { downloadAnnotatedSgf } from "@shared/download";
 import {
     ERROR_ACTION_LABELS,
     type ErrorAction,
@@ -458,25 +462,31 @@ export function buildCard(
     const header = document.createElement("div");
     header.className = "card-header";
 
+    // "Move 31 · Q16", the same header the website renders. The coordinate was
+    // missing here even though `moves` — the only thing needed to derive it — was
+    // already in hand for `colorForTurn`.
+    const coordinate = coordinateForTurn(moves, item.turn);
     const move = document.createElement("span");
     move.className = "card-move";
-    move.textContent = `Move ${item.turn}`;
+    move.textContent = coordinate
+        ? `Move ${item.turn} · ${coordinate}`
+        : `Move ${item.turn}`;
 
     const badges = document.createElement("div");
     badges.className = "card-badges";
 
     const colourBadge = document.createElement("span");
     colourBadge.className = `badge badge--${colour === "B" ? "black" : "white"}`;
-    colourBadge.textContent = colour;
+    colourBadge.textContent = COLOR_LABELS[colour];
     badges.append(colourBadge);
 
-    const deltaText = formatDelta(item.winrate_delta);
-    if (deltaText !== "") {
-        const deltaBadge = document.createElement("span");
-        deltaBadge.className = `badge badge--${severity}`;
-        deltaBadge.textContent = deltaText;
-        badges.append(deltaBadge);
-    }
+    // Severity used to reach the user only as the rail colour and tint, so it was
+    // conveyed by colour alone — invisible to a screen reader and to anyone who
+    // cannot separate the two reds. The website has always spelled it out.
+    const severityBadge = document.createElement("span");
+    severityBadge.className = `badge badge--${severity}`;
+    severityBadge.textContent = SEVERITY_LABELS[severity];
+    badges.append(severityBadge);
 
     header.append(move, badges);
 
@@ -488,6 +498,19 @@ export function buildCard(
     body.append(text);
 
     card.append(header, body);
+
+    // The swing moves out of the badge row and onto its own line, so the badges
+    // carry the two labels and this carries the number — as on the website.
+    const deltaText = formatDelta(item.winrate_delta);
+    if (deltaText !== "") {
+        const stats = document.createElement("div");
+        stats.className = "card-stats";
+        const winRate = document.createElement("span");
+        winRate.textContent = `Win rate ${deltaText}`;
+        stats.append(winRate);
+        card.append(stats);
+    }
+
     return card;
 }
 
@@ -502,18 +525,12 @@ const SCROLL_DELTA_MIN = 8;
 const SCROLL_TOP_GRACE = 24;
 
 // The annotated record for the commentary currently on screen.
-let downloadableSgf: { content: string; fileName: string } | null = null;
+let downloadableSgf: { content: string; sgfFileName: string } | null = null;
 let downloadConfirmTimer: number | null = null;
 let lastListScrollTop = 0;
 
 function downloadButton(): HTMLButtonElement | null {
     return el<HTMLButtonElement>("btn-download-sgf");
-}
-
-/** `ogs-12345.sgf` → `ogs-12345_annotated.sgf`, matching the website. */
-export function annotatedFileName(sgfFileName: string): string {
-    const base = sgfFileName.replace(/\.sgf$/i, "").trim();
-    return base === "" ? "annotated.sgf" : `${base}_annotated.sgf`;
 }
 
 function setDockHidden(hidden: boolean): void {
@@ -530,7 +547,7 @@ function prepareDownload(result: CommentaryResponse): void {
         result.annotated_sgf_content !== ""
             ? {
                   content: result.annotated_sgf_content,
-                  fileName: annotatedFileName(result.sgf_file_name),
+                  sgfFileName: result.sgf_file_name,
               }
             : null;
 
@@ -545,27 +562,12 @@ function prepareDownload(result: CommentaryResponse): void {
     setDockHidden(false);
 }
 
-/**
- * Save the annotated SGF, same as the website's download button.
- *
- * The backend has already injected the comments, so this is purely a client-side
- * save of `annotated_sgf_content` — no extra request, and it still works offline.
- */
-function downloadAnnotatedSgf(): void {
+/** Save the annotated SGF and confirm on the button. */
+function saveAnnotatedSgf(): void {
     if (downloadableSgf === null) {
         return;
     }
-    const blob = new Blob([downloadableSgf.content], {
-        type: "application/x-go-sgf",
-    });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = downloadableSgf.fileName;
-    anchor.click();
-    // Revoked on a later tick: Chrome cancels the download if the blob URL dies
-    // before it has read it.
-    setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    downloadAnnotatedSgf(downloadableSgf.content, downloadableSgf.sgfFileName);
 
     const button = downloadButton();
     if (button) {
@@ -798,7 +800,30 @@ function initHeader(): void {
     });
 }
 
-function initDemoScreen(): void {
+/**
+ * The preview a signed-out visitor sees.
+ *
+ * Rendered through `buildCard` rather than written into `panel.html`, so the
+ * severity tier, the colour and the coordinate are all derived by the same rules
+ * a real card uses. The static version had drifted: −12% labelled "mistake" when
+ * `severityForDelta` calls that a blunder.
+ */
+const DEMO_COMMENT: CommentaryItem = {
+    turn: 31,
+    comment:
+        "This push abandoned the corner too early. White's R16 immediately threatened the weak group on the left, forcing a heavy defensive response.",
+    winrate_delta: -12,
+    color: "B",
+};
+
+/** Just enough of a move list for turn 31 to be Black playing Q16. */
+const DEMO_MOVES: GameMove[] = Array.from({ length: 31 }, (_, index) =>
+    index === 30 ? ["B", [15, 15]] : [index % 2 === 0 ? "B" : "W", null]
+);
+
+export function initDemoScreen(): void {
+    el("demo-card")?.replaceChildren(buildCard(DEMO_COMMENT, DEMO_MOVES));
+
     document.getElementById("btn-register")?.addEventListener("click", () => {
         chrome.tabs.create({
             url: `${FRONTEND_URL}/register?source=extension`,
@@ -1029,7 +1054,7 @@ function initCommentaryScreen(): void {
         "click",
         () => void rerunCommentary()
     );
-    downloadButton()?.addEventListener("click", downloadAnnotatedSgf);
+    downloadButton()?.addEventListener("click", saveAnnotatedSgf);
     watchListScroll();
 }
 

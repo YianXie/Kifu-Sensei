@@ -32,24 +32,14 @@
                             See what commentary looks like:
                         </p>
                     </div>
-                    <!-- Hardcoded demo card -->
-                    <div class="card card--mistake">
-                        <div class="card-header">
-                            <span class="card-move">Move 31</span>
-                            <div class="card-badges">
-                                <span class="badge badge--black">B</span>
-                                <span class="badge badge--mistake">−12%</span>
-                            </div>
-                        </div>
-                        <div class="card-body">
-                            <p class="card-text">
-                                "This push abandoned the corner too early.
-                                White's R16 immediately threatened the weak
-                                group on the left, forcing a heavy defensive
-                                response."
-                            </p>
-                        </div>
-                    </div>
+                    <!--
+                        Built by buildCard() from DEMO_COMMENT in panel.ts, not
+                        written out here. As static markup it drifted: it showed
+                        −12% tagged "mistake", but severityForDelta calls anything
+                        at or below −10 a blunder, and the two tiers look different.
+                        Markup can contradict the rule; a call to it cannot.
+                    -->
+                    <div id="demo-card"></div>
                     <!-- Slogan -->
                     <p class="slogan">
                         Understand your mistakes in words, not just numbers.

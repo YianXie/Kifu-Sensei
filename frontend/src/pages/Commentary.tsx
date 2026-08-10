@@ -11,6 +11,7 @@ import {
     coordinateForTurn,
     severityForDelta,
 } from "@shared/commentary";
+import { downloadAnnotatedSgf } from "@shared/download";
 import {
     type ClaudeModel,
     CommentaryLanguage,
@@ -124,21 +125,15 @@ export default function Commentary() {
             toast.error("No annotated sgf file content found in the frontend!");
             return;
         }
-        const blob = new Blob([result.annotated_sgf_content], {
-            type: "text/plain",
-        });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement("a");
-        anchor.href = url;
         // `result.sgf_file_name` is what the backend actually annotated — unlike
         // `file`, it's also there when viewing a result loaded from History, where
-        // nothing was ever uploaded in this session.
-        const baseName = result.sgf_file_name || file?.name || "annotated.sgf";
-        anchor.download = baseName.toLowerCase().endsWith(".sgf")
-            ? baseName
-            : `${baseName}.sgf`;
-        anchor.click();
-        URL.revokeObjectURL(url);
+        // nothing was ever uploaded in this session. The helper suffixes it with
+        // `_annotated`; this screen used to hand the browser the uploaded name
+        // verbatim, so downloading landed on top of the file just picked.
+        downloadAnnotatedSgf(
+            result.annotated_sgf_content,
+            result.sgf_file_name || file?.name || "commentary"
+        );
     }
 
     async function handleGenerate() {

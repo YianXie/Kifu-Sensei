@@ -1,14 +1,13 @@
 import type { ReactNode } from "react";
 
-import type { CommentarySeverity } from "@shared/commentary";
+import {
+    COLOR_LABELS,
+    type CommentarySeverity,
+    SEVERITY_LABELS,
+    formatDelta,
+} from "@shared/commentary";
 
 import { Badge } from "@/components/ui";
-
-const SEVERITY_LABEL: Record<CommentarySeverity, string> = {
-    blunder: "Blunder",
-    mistake: "Mistake",
-    notable: "Notable",
-};
 
 /** One commented move in a scrollable list — the extension panel's card. */
 export default function CommentaryCard({
@@ -44,18 +43,15 @@ export default function CommentaryCard({
                 </span>
                 <span className="ks-commentary__badges">
                     <Badge tone={color === "B" ? "black" : "white"}>
-                        {color === "B" ? "Black" : "White"}
+                        {COLOR_LABELS[color]}
                     </Badge>
-                    <Badge tone={severity}>{SEVERITY_LABEL[severity]}</Badge>
+                    <Badge tone={severity}>{SEVERITY_LABELS[severity]}</Badge>
                 </span>
             </header>
             <div className="ks-commentary__body">{children}</div>
             {winRateDelta != null ? (
                 <div className="ks-commentary__stats">
-                    <span>
-                        Win rate {winRateDelta > 0 ? "+" : ""}
-                        {Math.round(winRateDelta)}%
-                    </span>
+                    <span>Win rate {formatDelta(winRateDelta)}</span>
                 </div>
             ) : null}
         </>

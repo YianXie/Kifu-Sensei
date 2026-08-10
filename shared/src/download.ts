@@ -22,11 +22,17 @@ export function annotatedFileName(sgfFileName: string): string {
 }
 
 /**
+ * How long to wait before revoking the object URL. Chrome cancels the download if
+ * the blob URL dies before it has read it, so this cannot be synchronous — the web
+ * app revoked immediately and was relying on luck.
+ */
+const REVOKE_DELAY_MS = 1_000;
+
+/**
  * Save `content` as the annotated record for `sgfFileName`.
  *
- * The object URL is revoked on the next task rather than synchronously: Safari has
- * historically cancelled an in-flight download when the URL is revoked in the same
- * tick as the click.
+ * The backend has already injected the comments, so this is purely a client-side
+ * save — no extra request, and it still works offline.
  */
 export function downloadAnnotatedSgf(
     content: string,
@@ -39,5 +45,5 @@ export function downloadAnnotatedSgf(
     anchor.href = url;
     anchor.download = annotatedFileName(sgfFileName);
     anchor.click();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
+    setTimeout(() => URL.revokeObjectURL(url), REVOKE_DELAY_MS);
 }
