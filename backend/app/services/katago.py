@@ -50,18 +50,34 @@ c_handler.setLevel(logging.INFO)  # Show only INFO and above on console
 c_handler.setFormatter(c_format)
 logger.addHandler(c_handler)
 
-try:
-    os.makedirs("logs", exist_ok=True)
-    # Rotating rather than a bare FileHandler: the per-move prompt logged at DEBUG
-    # below (the full ASCII board and ownership map, repeated per move per run) would
-    # otherwise grow this file without bound as traffic accumulates. 10 MB * 5 backups
-    # is generous for a single-instance deployment while still bounding disk use.
-    f_handler = RotatingFileHandler(log_path, maxBytes=10_000_000, backupCount=5)
-    f_handler.setLevel(logging.DEBUG)
-    f_handler.setFormatter(f_format)
-    logger.addHandler(f_handler)
-except OSError as e:
-    logger.warning("Could not set up file logging (%s); console only.", e)
+
+def configure_file_logging() -> None:
+    """Attach the rotating file handler. Called once from the app lifespan.
+
+    Deliberately *not* done at import time: creating a ``logs/`` directory and opening
+    a file are side effects of running the app, not of importing a service module.
+    Doing them on import means every ``pytest`` run, every ``alembic`` command, and any
+    tool that so much as imports this module writes log files into whatever directory
+    it happened to be invoked from.
+
+    Idempotent, so a second call (e.g. a ``TestClient`` context re-entering the
+    lifespan) does not stack duplicate handlers and double every line.
+    """
+    if any(isinstance(handler, RotatingFileHandler) for handler in logger.handlers):
+        return
+    try:
+        os.makedirs("logs", exist_ok=True)
+        # Rotating rather than a bare FileHandler: the per-move prompt logged at DEBUG
+        # below (the full ASCII board and ownership map, repeated per move per run) would
+        # otherwise grow this file without bound as traffic accumulates. 10 MB * 5 backups
+        # is generous for a single-instance deployment while still bounding disk use.
+        f_handler = RotatingFileHandler(log_path, maxBytes=10_000_000, backupCount=5)
+        f_handler.setLevel(logging.DEBUG)
+        f_handler.setFormatter(f_format)
+        logger.addHandler(f_handler)
+    except OSError as e:
+        logger.warning("Could not set up file logging (%s); console only.", e)
+
 
 # KataGo column labels skip the letter "I": A-H, then J-T for a 19x19 board.
 _KATAGO_COLUMNS = "ABCDEFGHJKLMNOPQRSTUVWXYZ"

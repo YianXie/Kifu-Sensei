@@ -11,11 +11,12 @@ from app.errors import CatchUnhandledErrors, MaxBodySizeMiddleware, register_exc
 from app.models import Commentary, User
 from app.routers import auth, go
 from app.routers.go import close_pipeline_executor, reap_abandoned_jobs
-from app.services.katago import close_http_client
+from app.services.katago import close_http_client, configure_file_logging
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    configure_file_logging()
     init_db()
     reap_abandoned_jobs()
     yield
@@ -36,7 +37,12 @@ app.add_middleware(CatchUnhandledErrors)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
-    allow_credentials=True,
+    # Authentication is Bearer-only, read from localStorage by the front end and from
+    # chrome.storage by the extension — no cookie is ever sent cross-origin, so
+    # credentialed CORS buys nothing. Left off so that widening ``cors_origins`` later
+    # cannot accidentally start exposing cookie-authenticated responses (the SQLAdmin
+    # dashboard, mounted on this same app, does use a session cookie).
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

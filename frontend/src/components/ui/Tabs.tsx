@@ -22,6 +22,7 @@ export default function Tabs<T extends string>({
                     role="tab"
                     className="ks-tab"
                     aria-selected={value === tab}
+                    tabIndex={value === tab ? 0 : -1}
                     onClick={() => onChange?.(tab)}
                 >
                     {tab}

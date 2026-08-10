@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 import anthropic
 import httpx
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, delete, select
 
@@ -31,7 +32,7 @@ from app.schemas import (
     GenerateCommentaryRequest,
     GenerateCommentaryResponse,
 )
-from app.services.katago import generate_commentary
+from app.services.katago import generate_commentary, get_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +105,38 @@ async def _run_pipeline(*args: object, **kwargs: object) -> dict:
 
 @router.get("/health/")
 async def health() -> dict[str, str]:
+    """Liveness: is this process up and serving? Deliberately checks nothing else, so a
+    dead upstream never causes the platform to restart a perfectly healthy container."""
     return {"status": "ok"}
+
+
+@router.get("/ready/")
+async def ready() -> JSONResponse:
+    """Readiness: can this process actually complete a review?
+
+    ``/health/`` answers ``ok`` whether or not KataGo is reachable, so it cannot
+    distinguish "up" from "up, but every review will fail with ``katago_unavailable``".
+    This probes the analysis server with a short timeout of its own — much shorter than
+    ``api_timeout``, which is sized for a real multi-second analysis, not for a
+    liveness-style check — and reports 503 when it is down, so the failure is visible
+    on a dashboard rather than only in users' error toasts.
+    """
+    client = get_http_client()
+    try:
+        response = await asyncio.to_thread(client.get, "/", timeout=5.0)
+        # Any non-5xx answer means something is listening and healthy enough to route
+        # a request — a 404 is the expected reply from an analysis server that only
+        # serves ``/analyze``, and treating it as failure would report every correctly
+        # configured deployment as degraded.
+        reachable = not response.is_server_error
+    except httpx.HTTPError as exc:
+        logger.warning("Readiness probe could not reach KataGo: %s", exc)
+        reachable = False
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK if reachable else status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={"status": "ready" if reachable else "degraded", "katago": reachable},
+    )
 
 
 def _retry_after_seconds(exc: anthropic.APIStatusError) -> int | None:

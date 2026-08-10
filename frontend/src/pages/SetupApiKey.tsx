@@ -129,7 +129,7 @@ export default function SetupApiKey() {
                 <a
                     href="https://console.anthropic.com/settings/keys"
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                 >
                     Get one from the Anthropic Console
                 </a>
