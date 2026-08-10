@@ -965,3 +965,76 @@ select.field-input {
         transform: rotate(360deg);
     }
 }
+
+/* ── History screen ──────────────────────────────────────────────── */
+.history-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.history-row {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: 100%;
+    padding: 9px 11px;
+    text-align: left;
+    background: var(--surface-card);
+    border: 1px solid var(--ks-light);
+    border-radius: 6px;
+    transition: background 0.15s;
+}
+.history-row:hover {
+    background: var(--surface-hover);
+}
+
+.history-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ks-black);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.history-meta {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ks-mid);
+}
+
+/* ── Panel footer ────────────────────────────────────────────────────
+   The panel had no route back into the web app at all — no Settings, no
+   History, and no privacy policy, even though its own error copy told users
+   to "check it under Settings on the website" and the policy has a section
+   about this extension. */
+.panel-footer {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+    padding: 10px 14px 12px;
+    border-top: 1px solid var(--ks-light);
+    font-size: 11px;
+    color: var(--ks-mid);
+    flex-shrink: 0;
+}
+.panel-footer button {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: inherit;
+    color: var(--ks-mid);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+.panel-footer button:hover {
+    color: var(--ks-accent);
+}

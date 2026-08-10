@@ -8,7 +8,11 @@ import {
 
 import { isAuthObject, setCurrentAuth } from "./shared/api";
 import { FRONTEND_URL } from "./shared/config";
-import { AUTH_STORAGE_KEY, CONFIG_STORAGE_KEY } from "./shared/constants";
+import {
+    ACCOUNT_STATE_KEY,
+    AUTH_STORAGE_KEY,
+    CONFIG_STORAGE_KEY,
+} from "./shared/constants";
 import {
     clearJob,
     isTerminal,
@@ -17,6 +21,7 @@ import {
     runJobPoller,
     startCommentaryJob,
 } from "./shared/jobs";
+import type { AccountState } from "./shared/types";
 
 /**
  * Wakes the worker if Chrome tore it down mid-run. One minute is the documented
@@ -132,13 +137,21 @@ async function handleMessage(message: PanelMessage): Promise<MessageResult> {
             return { ok: job.status !== "failed" };
         }
         case "start-from-button": {
-            // The button carries no configuration of its own; it uses whatever the
-            // panel last saved, falling back to the shared defaults.
-            const stored = await chrome.storage.local.get(CONFIG_STORAGE_KEY);
+            // The button shows no config screen, so it uses the last config chosen
+            // in the panel, then the account's own default, and only then the
+            // shared defaults. That last fallback used to be the only one after the
+            // panel's local copy, so an account's carefully chosen defaults were
+            // ignored entirely by the one entry point that never asks.
+            const stored = await chrome.storage.local.get([
+                CONFIG_STORAGE_KEY,
+                ACCOUNT_STATE_KEY,
+            ]);
             const saved = stored[CONFIG_STORAGE_KEY] as
                 CommentaryConfig | undefined;
+            const account = stored[ACCOUNT_STATE_KEY] as
+                AccountState | undefined;
             const config = clampCommentaryConfig(
-                saved ?? DEFAULT_COMMENTARY_CONFIG
+                saved ?? account?.commentaryConfig ?? DEFAULT_COMMENTARY_CONFIG
             );
             const job = await startCommentaryJob(message.gameId, config);
             if (!isTerminal(job.status)) {

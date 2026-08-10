@@ -6,6 +6,7 @@ export default function Footer() {
             <span>© {new Date().getFullYear()} Kifu-Sensei</span>
             <div className="ks-footer__links">
                 <Link to="/privacy">Privacy policy</Link>
+                <Link to="/extension-ready">Browser extension</Link>
                 <a
                     href="https://github.com/YianXie/Kifu-Sensei"
                     target="_blank"

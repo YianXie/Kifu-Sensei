@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "react-toastify";
 
+import { looksLikeApiKey } from "@shared/commentary";
+
 import api from "@/api";
 import { Alert, Button, Field, Icon, Input } from "@/components/ui";
 import { ENDPOINTS } from "@/constants/global/endpoints";
@@ -65,7 +67,21 @@ export default function SetupApiKey() {
             {error && <Alert severity="error">{error}</Alert>}
 
             <form onSubmit={handleSave} className="ks-auth__form">
-                <Field label="Claude API key" htmlFor="setup-key">
+                <Field
+                    label="Claude API key"
+                    htmlFor="setup-key"
+                    // The panel has always shown this reassurance and the website
+                    // showed none, so a mistyped key got a green tick in one place
+                    // and silence in the other. The real check is still the backend
+                    // accepting it — this only says "that looks like a key".
+                    hint={
+                        apiKey.trim() === ""
+                            ? "Starts with sk-ant-"
+                            : looksLikeApiKey(apiKey)
+                              ? "That looks like a Claude API key."
+                              : "Claude keys start with sk-ant- — check you pasted the whole thing."
+                    }
+                >
                     <Input
                         id="setup-key"
                         type="password"
@@ -73,6 +89,7 @@ export default function SetupApiKey() {
                         placeholder="sk-ant-..."
                         value={apiKey}
                         onChange={(e) => setApiKey(e.target.value)}
+                        valid={apiKey.trim() !== "" && looksLikeApiKey(apiKey)}
                         required
                         autoFocus
                         autoComplete="off"

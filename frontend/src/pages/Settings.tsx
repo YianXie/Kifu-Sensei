@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { toast } from "react-toastify";
 
 import { readCommentaryConfig } from "@shared/commentary";
@@ -44,6 +45,7 @@ export default function Settings() {
 
     const { user, userSettings, updateUserSettings, updateUserEmail, logout } =
         useAuth();
+    const navigate = useNavigate();
     const { preference: themePreference, setPreference: setThemePreference } =
         useTheme();
 
@@ -562,6 +564,39 @@ export default function Settings() {
                                 {themeLoading ? "Updating…" : "Update theme"}
                             </Button>
                         </div>
+                    </section>
+
+                    <Divider spacing="8px" />
+
+                    {/*
+                        The website never mentioned the extension anywhere a user
+                        would look — not on Home, not here, not in the footer. The
+                        only page that names it is /extension-ready, which you
+                        cannot reach without already having it installed.
+                    */}
+                    <section className="ks-form-stack">
+                        <h2 className="ks-heading" style={{ margin: 0 }}>
+                            Browser extension
+                        </h2>
+                        <p className="ks-page__lead">
+                            Kifu-Sensei has a Chrome side panel that reviews
+                            your finished online-go.com games in place. It
+                            shares this account, so your default commentary
+                            config and your history are the same on both.
+                        </p>
+                        <div className="ks-row ks-row--wrap">
+                            <Button
+                                variant="outline"
+                                startIcon="extension"
+                                onClick={() => navigate("/extension-ready")}
+                            >
+                                Connect the extension
+                            </Button>
+                        </div>
+                        <p className="ks-page__meta">
+                            Already installed? This signs it in with a fresh
+                            token for this account.
+                        </p>
                     </section>
 
                     <Divider spacing="8px" />

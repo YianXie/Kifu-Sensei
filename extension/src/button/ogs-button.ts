@@ -13,7 +13,8 @@
 
 const HOST_ID = "kifu-sensei-root";
 
-export type ButtonKind = "signed-out" | "ready" | "running" | "done" | "hint";
+export type ButtonKind =
+    "signed-out" | "needs-key" | "ready" | "running" | "done" | "hint";
 
 export interface ButtonState {
     kind: ButtonKind;
@@ -23,7 +24,10 @@ export interface ButtonState {
 
 const DEFAULT_LABELS: Record<ButtonKind, string> = {
     "signed-out": "Sign in to review",
-    ready: "Review with Kifu-Sensei",
+    "needs-key": "Add your API key to review",
+    // Priced, because this is a one-click paid action with no confirmation step
+    // and no config screen in front of it.
+    ready: "Review with Kifu-Sensei (~$0.03)",
     running: "Reviewing…",
     done: "View commentary",
     hint: "Open the Kifu-Sensei icon",
@@ -198,7 +202,9 @@ export function createOgsButton(
             button.title =
                 state.kind === "hint"
                     ? "Chrome would not let the panel open automatically. Click the Kifu-Sensei toolbar icon."
-                    : label.textContent;
+                    : state.kind === "ready"
+                      ? "Generates commentary using your own Claude API key."
+                      : label.textContent;
             if (state.kind === "running") {
                 if (spinner.parentElement === null) {
                     logo.replaceWith(spinner);

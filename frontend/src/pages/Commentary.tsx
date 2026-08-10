@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { toast } from "react-toastify";
 
-import { readCommentaryConfig } from "@shared/commentary";
+import { CLAUDE_MODEL_LABELS, readCommentaryConfig } from "@shared/commentary";
 import {
     type CommentarySeverity,
     colorForTurn,
@@ -35,6 +35,18 @@ function isSgfFile(file: File) {
     return file.name.toLowerCase().endsWith(".sgf");
 }
 
+/**
+ * Roughly how many moves a record contains, for bounding the comment count.
+ *
+ * Counts move properties rather than parsing: this only has to be close enough to
+ * stop the form offering 100 comments on a 40-move game, and the backend clamps to
+ * what it actually finds either way. Handicap stones use `AB`/`AW`, not `B`/`W`, so
+ * they are correctly excluded.
+ */
+function countMoves(sgf: string): number {
+    return (sgf.match(/;[BW]\[/g) ?? []).length;
+}
+
 export default function Commentary() {
     usePageTitle("Commentary");
 
@@ -46,6 +58,7 @@ export default function Commentary() {
     const defaultConfig = readCommentaryConfig(userSettings?.preferences);
 
     const [file, setFile] = useState<File | null>(null);
+    const [moveCount, setMoveCount] = useState<number | undefined>(undefined);
     const [error, setError] = useState(false);
     const [result, setResult] = useState<CommentaryResponse | null>(null);
 
@@ -130,6 +143,12 @@ export default function Commentary() {
         }
         setError(false);
         setFile(uploadedFile);
+        // Read once here so the config form can bound itself to the real game,
+        // rather than offering more comments than the record has moves.
+        void uploadedFile
+            .text()
+            .then((text) => setMoveCount(countMoves(text)))
+            .catch(() => setMoveCount(undefined));
     }
 
     function handleDownloadSGF() {
@@ -263,6 +282,21 @@ export default function Commentary() {
                             {boardSize}×{boardSize} · {moves.length} moves ·{" "}
                             {commentCount} comments ·{" "}
                             {toTitleCase(result.language)}
+                            {/*
+                                What the run actually cost, and which model wrote
+                                it. Both are typed and persisted, and the panel has
+                                always shown them — the website rendered neither,
+                                so it never told the user what they had spent.
+                            */}
+                            {result.model
+                                ? ` · ${CLAUDE_MODEL_LABELS[result.model]}`
+                                : ""}
+                            {result.usage
+                                ? ` · ${(
+                                      result.usage.input_tokens +
+                                      result.usage.output_tokens
+                                  ).toLocaleString()} tokens`
+                                : ""}
                         </p>
                     </div>
                     <div style={{ display: "flex", gap: "var(--space-8)" }}>
@@ -277,6 +311,7 @@ export default function Commentary() {
                             onClick={() => {
                                 setResult(null);
                                 setFile(null);
+                                setMoveCount(undefined);
                                 setCurrentMoveIndex(0);
                             }}
                         >
@@ -381,6 +416,7 @@ export default function Commentary() {
                         setMaxToken={setMaxToken}
                         customInstruction={customInstruction}
                         setCustomInstruction={setCustomInstruction}
+                        moveCount={moveCount}
                     />
                 </div>
             </div>

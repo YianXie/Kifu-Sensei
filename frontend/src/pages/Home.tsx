@@ -33,6 +33,18 @@ const FEATURES: { icon: IconName; title: string; body: ReactNode }[] = [
         ),
     },
     {
+        icon: "extension",
+        title: "Review straight from online-go.com",
+        body: (
+            <>
+                The Kifu-Sensei browser extension puts the same commentary in a
+                side panel next to your finished OGS games — no downloading and
+                re-uploading the record. It shares this account, so your saved
+                defaults and your reviews follow you between the two.
+            </>
+        ),
+    },
+    {
         icon: "code",
         title: "Open-source and affordable",
         body: (

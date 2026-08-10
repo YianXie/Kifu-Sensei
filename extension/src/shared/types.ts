@@ -4,6 +4,7 @@
 // shapes, the error codes — lives in `@shared/types`, which the web app compiles
 // from the same source. Both used to keep their own copy and the two had drifted in
 // membership and in optionality.
+import type { CommentaryConfig } from "@shared/commentary";
 
 export interface ExtensionAuthObject {
     accessToken: string;
@@ -32,4 +33,16 @@ export interface OgsGameSummary {
          */
         moves?: unknown[];
     };
+}
+
+/**
+ * What the panel knows about the account, cached for the contexts that cannot ask.
+ *
+ * Written by `syncAuthState` after it reads `/auth/user/settings/`; read by the
+ * service worker (for one-click reviews) and the injected button (to know whether
+ * a review can succeed at all).
+ */
+export interface AccountState {
+    hasClaudeApiKey: boolean;
+    commentaryConfig: CommentaryConfig;
 }

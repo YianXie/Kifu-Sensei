@@ -16,6 +16,7 @@ import {
     colorForTurn,
     coordinateForTurn,
     formatDelta,
+    looksLikeApiKey,
     readCommentaryConfig,
     severityForDelta,
 } from "@shared/commentary";
@@ -28,10 +29,12 @@ import {
 import type {
     ClaudeModel,
     CommentaryApiError,
+    CommentaryHistoryItem,
     CommentaryItem,
     CommentaryLanguage,
     CommentaryResponse,
     GameMove,
+    UserCommentaryHistory,
 } from "@shared/types";
 
 import {
@@ -44,6 +47,7 @@ import {
 } from "../src/shared/api";
 import { ENDPOINTS, FRONTEND_URL } from "../src/shared/config";
 import {
+    ACCOUNT_STATE_KEY,
     AUTH_STORAGE_KEY,
     CONFIG_STORAGE_KEY,
     JOB_SESSION_KEY,
@@ -56,7 +60,7 @@ import {
     checkOgsGame,
     parseOgsGameId,
 } from "../src/shared/ogs";
-import type { ExtensionAuthObject } from "../src/shared/types";
+import type { AccountState, ExtensionAuthObject } from "../src/shared/types";
 import { adoptAccountTheme, initTheme } from "./theme";
 
 // Frontend origins where the website may hold a stale extension_auth entry.
@@ -76,13 +80,10 @@ export const SCREEN_IDS = [
     "screen-config",
     "screen-generating",
     "screen-commentary",
+    "screen-history",
     "screen-error",
     "screen-waiting",
 ] as const;
-
-// Anthropic keys look like `sk-ant-api03-…`. Used only to show the reassuring
-// format hint — the real check is the backend accepting the key.
-const API_KEY_HINT_PATTERN = /^sk-ant-\S{16,}$/;
 
 export type ScreenId = (typeof SCREEN_IDS)[number];
 
@@ -111,6 +112,7 @@ const SCREEN_TITLES: Record<ScreenId, string> = {
     "screen-config": "Review settings",
     "screen-generating": "Generating commentary",
     "screen-commentary": "Commentary",
+    "screen-history": "Past reviews",
     "screen-error": "Something went wrong",
     "screen-waiting": "Waiting for a finished game",
 };
@@ -319,21 +321,86 @@ async function showConfigScreen(
         }`;
     }
 
+    // The last config used on this device wins, but only until the account's own
+    // default *changes*. Preferring the local copy unconditionally meant that after
+    // the very first review in a profile, the account default was dead code here —
+    // saving new defaults on the website had no effect on the panel, ever.
+    //
+    // Same shape as `ThemeContext`'s `lastServerPreference`: adopt the server value
+    // when it moves, and otherwise leave the local choice alone.
     const stored = await chrome.storage.local.get(CONFIG_STORAGE_KEY);
     const saved = stored[CONFIG_STORAGE_KEY] as CommentaryConfig | undefined;
+    const accountChanged =
+        lastAccountConfig !== null &&
+        JSON.stringify(lastAccountConfig) !== JSON.stringify(accountConfig);
     const config =
-        saved !== undefined
+        saved !== undefined && !accountChanged
             ? clampCommentaryConfig(
                   readCommentaryConfig({ commentary_config: saved })
               )
             : accountConfig;
+    lastAccountConfig = accountConfig;
 
     writeConfigForm(config, game.summary.gamedata?.moves?.length ?? 0);
+    syncSaveDefaultState();
     showScreen("screen-config");
+}
+
+/**
+ * Persist what is on the config screen as the account's default.
+ *
+ * The panel could read `preferences.commentary_config` but never write it, so a
+ * config chosen here stayed on this device and the two surfaces could not agree on
+ * a default even in principle.
+ */
+async function saveConfigAsDefault(): Promise<void> {
+    const button = el<HTMLButtonElement>("btn-save-default");
+    const config = readConfigForm();
+    if (button) {
+        button.disabled = true;
+        button.textContent = "Saving…";
+    }
+
+    const response = await authedFetch(ENDPOINTS.userSettings, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        // Shallow-merged server-side, so sending only this key leaves `theme` and
+        // the rest of the blob untouched.
+        body: JSON.stringify({ preferences: { commentary_config: config } }),
+    });
+
+    if (response !== null && response.ok) {
+        accountConfig = config;
+        lastAccountConfig = config;
+        await writeAccountState({
+            hasClaudeApiKey: true,
+            commentaryConfig: config,
+        });
+        if (button) button.textContent = "Saved as default";
+        return;
+    }
+    if (button) {
+        button.disabled = false;
+        button.textContent = "Could not save — try again";
+    }
+}
+
+/** Re-enable the button whenever the form moves away from what was saved. */
+function syncSaveDefaultState(): void {
+    const button = el<HTMLButtonElement>("btn-save-default");
+    if (button === null) return;
+    const matchesAccount =
+        JSON.stringify(readConfigForm()) === JSON.stringify(accountConfig);
+    button.disabled = matchesAccount;
+    button.textContent = matchesAccount
+        ? "Saved as default"
+        : "Save as my default";
 }
 
 // Defaults read from the account once per panel open.
 let accountConfig: CommentaryConfig = DEFAULT_COMMENTARY_CONFIG;
+/** The account default as of the last config screen, to notice when it moves. */
+let lastAccountConfig: CommentaryConfig | null = null;
 
 /**
  * Render the signed-in landing for whatever the active tab is showing.
@@ -787,6 +854,10 @@ async function handleDeadSession(): Promise<void> {
 // the demo screen; signed-in users get the key-entry screen or the welcome
 // screen depending on whether their account already has a Claude API key.
 // Runs on every panel open, so the key state can't go stale between sessions.
+async function writeAccountState(state: AccountState): Promise<void> {
+    await chrome.storage.local.set({ [ACCOUNT_STATE_KEY]: state });
+}
+
 async function syncAuthState(): Promise<void> {
     const stored = await chrome.storage.local.get(AUTH_STORAGE_KEY);
     const auth = stored[AUTH_STORAGE_KEY];
@@ -821,6 +892,14 @@ async function syncAuthState(): Promise<void> {
         settings = (await response.json()) as typeof settings;
         accountConfig = readCommentaryConfig(settings.preferences);
         void adoptAccountTheme(settings.preferences?.theme);
+        // Cache what the worker and the injected button cannot fetch for
+        // themselves. Without it the one-click OGS review fell back to the shared
+        // defaults, so an account's saved config was ignored by the very entry
+        // point that never shows a config screen.
+        void writeAccountState({
+            hasClaudeApiKey: settings.has_claude_api_key === true,
+            commentaryConfig: accountConfig,
+        });
     } catch (error) {
         console.error(
             "[Kifu-Sensei panel] Malformed settings response:",
@@ -835,6 +914,21 @@ async function syncAuthState(): Promise<void> {
     } else {
         showApiKeyScreen();
     }
+}
+
+/**
+ * The panel's only outbound links used to be register/login, the Anthropic
+ * console, and OGS — so its own copy ("Check it under Settings on the website")
+ * pointed at a page it could not open, and the privacy policy that covers this
+ * extension was unreachable from it.
+ */
+function initFooter(): void {
+    const open = (path: string) => () => {
+        void chrome.tabs.create({ url: `${FRONTEND_URL}${path}` });
+    };
+    el("link-settings")?.addEventListener("click", open("/settings"));
+    el("link-history")?.addEventListener("click", open("/history"));
+    el("link-privacy")?.addEventListener("click", open("/privacy"));
 }
 
 function initHeader(): void {
@@ -942,7 +1036,7 @@ async function signOut(): Promise<void> {
     // someone else on the same profile and reopening the same game rendered the
     // previous user's commentary back to them.
     await clearJob();
-    await chrome.storage.local.remove(CONFIG_STORAGE_KEY);
+    await chrome.storage.local.remove([CONFIG_STORAGE_KEY, ACCOUNT_STATE_KEY]);
 
     // Clearing the stored session flips the panel back to the demo screen via
     // the storage-change listener.
@@ -988,7 +1082,7 @@ function syncKeyFieldState(): void {
         return;
     }
     const key = input.value.trim();
-    const looksValid = API_KEY_HINT_PATTERN.test(key);
+    const looksValid = looksLikeApiKey(key);
 
     const button = saveKeyButton();
     if (button) {
@@ -1065,6 +1159,13 @@ async function saveApiKey(): Promise<void> {
 }
 
 function initApiKeyScreen(): void {
+    el("btn-skip-key")?.addEventListener("click", () => {
+        const auth = getCurrentAuth();
+        // Straight to the signed-in landing. Generation is gated server-side
+        // regardless, so nothing here is unsafe — it just stops the gate being a
+        // room with one door.
+        if (auth !== null) void renderSignedIn(auth);
+    });
     keyInput()?.addEventListener("input", () => {
         hideApiKeyError();
         syncKeyFieldState();
@@ -1090,6 +1191,20 @@ function initApiKeyScreen(): void {
 function initConfigScreen(): void {
     el("btn-generate")?.addEventListener("click", () => void startGeneration());
     el("config-instruction")?.addEventListener("input", syncInstructionCount);
+    el("btn-save-default")?.addEventListener(
+        "click",
+        () => void saveConfigAsDefault()
+    );
+    for (const id of [
+        "config-model",
+        "config-language",
+        "config-comments",
+        "config-max-token",
+        "config-instruction",
+    ]) {
+        el(id)?.addEventListener("input", syncSaveDefaultState);
+        el(id)?.addEventListener("change", syncSaveDefaultState);
+    }
 }
 
 function initGeneratingScreen(): void {
@@ -1098,6 +1213,114 @@ function initGeneratingScreen(): void {
             await chrome.runtime.sendMessage({ type: "cancel-commentary" });
             await refreshAfterJobCleared();
         })();
+    });
+}
+
+// ── History ─────────────────────────────────────────────────────────────────
+
+/** Matches the website's page size, so "Load more" means the same thing on both. */
+const HISTORY_PAGE_SIZE = 20;
+
+let historyOffset = 0;
+let historyTotal = 0;
+
+export function historyRow(item: CommentaryHistoryItem): HTMLElement {
+    const row = document.createElement("button");
+    row.className = "history-row";
+    row.type = "button";
+
+    const name = document.createElement("span");
+    name.className = "history-name";
+    name.textContent = item.sgf_file_name;
+
+    const meta = document.createElement("span");
+    meta.className = "history-meta";
+    // The same summary line the website's HistoryCard renders.
+    meta.textContent = `${item.board_size}×${item.board_size} · ${item.moves.length} moves · ${item.comment_count} comments · ${new Date(item.created_at).toLocaleDateString()}`;
+
+    row.append(name, meta);
+    row.addEventListener("click", () => void openHistoryEntry(item.id));
+    return row;
+}
+
+async function openHistoryEntry(id: number): Promise<void> {
+    const status = el("history-status");
+    if (status) status.textContent = "Opening…";
+
+    const response = await authedFetch(
+        ENDPOINTS.userCommentaryHistoryDetail(id)
+    );
+    if (response === null || !response.ok) {
+        if (status) status.textContent = "Could not open that review.";
+        return;
+    }
+    try {
+        const result = (await response.json()) as CommentaryResponse;
+        if (status) status.textContent = "";
+        // Reuses the commentary screen wholesale, download dock included. The
+        // record is not tied to an OGS game, so nothing here touches activeGameId.
+        renderCommentary(result);
+    } catch {
+        if (status) status.textContent = "Could not read that review.";
+    }
+}
+
+async function loadHistoryPage(): Promise<void> {
+    const status = el("history-status");
+    const list = el("history-list");
+    const more = el<HTMLButtonElement>("btn-history-more");
+    if (status && historyOffset === 0) status.textContent = "Loading…";
+
+    const response = await authedFetch(
+        `${ENDPOINTS.userCommentaryHistory}?limit=${HISTORY_PAGE_SIZE}&offset=${historyOffset}`
+    );
+    if (response === null || !response.ok) {
+        if (status) status.textContent = "Could not load your past reviews.";
+        return;
+    }
+
+    let page: UserCommentaryHistory;
+    try {
+        page = (await response.json()) as UserCommentaryHistory;
+    } catch {
+        if (status) status.textContent = "Could not read your past reviews.";
+        return;
+    }
+
+    historyTotal = page.total;
+    historyOffset += page.commentaries.length;
+    list?.append(...page.commentaries.map(historyRow));
+
+    if (status) {
+        status.textContent =
+            historyTotal === 0
+                ? "No reviews yet. Generate one from a finished game."
+                : `${historyOffset} of ${historyTotal}`;
+    }
+    more?.classList.toggle("hidden", historyOffset >= historyTotal);
+}
+
+async function showHistoryScreen(): Promise<void> {
+    historyOffset = 0;
+    historyTotal = 0;
+    el("history-list")?.replaceChildren();
+    el("btn-history-more")?.classList.add("hidden");
+    showScreen("screen-history");
+    await loadHistoryPage();
+}
+
+function initHistoryScreen(): void {
+    el("btn-open-history")?.addEventListener(
+        "click",
+        () => void showHistoryScreen()
+    );
+    el("btn-history-more")?.addEventListener(
+        "click",
+        () => void loadHistoryPage()
+    );
+    el("btn-history-back")?.addEventListener("click", () => {
+        const auth = getCurrentAuth();
+        if (auth !== null) void renderSignedIn(auth);
     });
 }
 
@@ -1213,12 +1436,14 @@ function init(): void {
     // would be worse than one that never turned.
     initTheme();
     initHeader();
+    initFooter();
     initDemoScreen();
     initWelcomeScreen();
     initApiKeyScreen();
     initKeySavedScreen();
     initConfigScreen();
     initGeneratingScreen();
+    initHistoryScreen();
     initCommentaryScreen();
     initErrorScreen();
     watchAuthState();

@@ -14,6 +14,7 @@ import {
     SCREEN_IDS,
     buildCard,
     decodeEmailFromToken,
+    historyRow,
     initDemoScreen,
     showError,
     showScreen,
@@ -297,5 +298,51 @@ describe("the signed-out preview", () => {
         expect(
             document.querySelector("#demo-card .badge--black")?.textContent
         ).toBe("Black");
+    });
+});
+
+describe("past reviews", () => {
+    // Every review already lands in the website's History — the job path calls
+    // _save_commentary exactly like the sync one — but the extension declared no
+    // history endpoints at all, so a finished panel review became recoverable only
+    // from the website, which the panel never mentioned either.
+    it("summarises a review the way the website's history card does", () => {
+        const row = historyRow({
+            id: 7,
+            board_size: 19,
+            sgf_file_name: "ogs-65097807_annotated.sgf",
+            language: "english",
+            created_at: "2026-03-04T10:00:00Z",
+            moves: [
+                ["B", [3, 3]],
+                ["W", [15, 15]],
+            ],
+            initial_stones: [],
+            comment_count: 12,
+        });
+
+        expect(row.querySelector(".history-name")?.textContent).toBe(
+            "ogs-65097807_annotated.sgf"
+        );
+        const meta = row.querySelector(".history-meta")?.textContent ?? "";
+        expect(meta).toContain("19×19");
+        expect(meta).toContain("2 moves");
+        expect(meta).toContain("12 comments");
+    });
+
+    it("is a real button, so it is keyboard-reachable", () => {
+        const row = historyRow({
+            id: 1,
+            board_size: 9,
+            sgf_file_name: "x.sgf",
+            language: "english",
+            created_at: "2026-03-04T10:00:00Z",
+            moves: [],
+            initial_stones: [],
+            comment_count: 0,
+        });
+
+        expect(row.tagName).toBe("BUTTON");
+        expect(row).toHaveProperty("type", "button");
     });
 });

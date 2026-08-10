@@ -7,12 +7,14 @@
 //
 // Reading OGS's own API *is* fine from here: the content script is same-origin with it.
 import {
+    ACCOUNT_STATE_KEY,
     AUTH_STORAGE_KEY,
     JOB_STATUS_KEY,
     OGS_ORIGIN,
 } from "../shared/constants";
 import { JOB_DEADLINE_MS, type PublicJobStatus } from "../shared/jobs";
 import { type OgsGameCheck, checkOgsGame } from "../shared/ogs";
+import type { AccountState } from "../shared/types";
 import { findMountPoint, watchForMount } from "./mount";
 import { type ButtonKind, createOgsButton } from "./ogs-button";
 
@@ -29,6 +31,22 @@ async function readSignedIn(): Promise<boolean> {
         auth !== null &&
         typeof (auth as { accessToken?: unknown }).accessToken === "string"
     );
+}
+
+/**
+ * Whether the account can actually pay for a review.
+ *
+ * The button gated on being signed in and nothing else, so a keyless account got
+ * one click, a downloaded game record, and a run that failed at the first Anthropic
+ * call. `undefined` means the panel has not cached the account yet — treated as
+ * "probably fine", since the alternative is refusing to offer a review to someone
+ * who has a key but has not opened the panel this session. The backend gates it
+ * either way; this is only about not promising something that cannot happen.
+ */
+async function readHasApiKey(): Promise<boolean> {
+    const stored = await chrome.storage.local.get(ACCOUNT_STATE_KEY);
+    const account = stored[ACCOUNT_STATE_KEY] as AccountState | undefined;
+    return account === undefined ? true : account.hasClaudeApiKey;
 }
 
 async function readJobStatus(): Promise<PublicJobStatus | null> {
@@ -61,6 +79,11 @@ async function render(): Promise<void> {
     }
     if (!(await readSignedIn())) {
         button.setState({ kind: "signed-out" });
+        return;
+    }
+
+    if (!(await readHasApiKey())) {
+        button.setState({ kind: "needs-key" });
         return;
     }
 
@@ -97,6 +120,12 @@ async function handleClick(kind: ButtonKind): Promise<void> {
     }
     if (kind === "signed-out") {
         await chrome.runtime.sendMessage({ type: "open-login" });
+        return;
+    }
+    if (kind === "needs-key") {
+        // The panel is where a key can be entered, so open it and stop — starting
+        // a run that will fail at the first Anthropic call helps nobody.
+        await chrome.runtime.sendMessage({ type: "open-side-panel" });
         return;
     }
 

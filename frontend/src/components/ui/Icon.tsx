@@ -19,6 +19,7 @@ import DescriptionRounded from "@mui/icons-material/DescriptionRounded";
 import DownloadRounded from "@mui/icons-material/DownloadRounded";
 import EastRounded from "@mui/icons-material/EastRounded";
 import ErrorRounded from "@mui/icons-material/ErrorRounded";
+import ExtensionRounded from "@mui/icons-material/ExtensionRounded";
 import FastForwardRounded from "@mui/icons-material/FastForwardRounded";
 import FastRewindRounded from "@mui/icons-material/FastRewindRounded";
 import GridOffRounded from "@mui/icons-material/GridOffRounded";
@@ -68,6 +69,7 @@ const GLYPHS = {
     download: DownloadRounded,
     east: EastRounded,
     error: ErrorRounded,
+    extension: ExtensionRounded,
     fast_forward: FastForwardRounded,
     fast_rewind: FastRewindRounded,
     grid_off: GridOffRounded,

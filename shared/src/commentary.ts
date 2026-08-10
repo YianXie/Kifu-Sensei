@@ -239,3 +239,16 @@ export function formatDelta(delta: number | null | undefined): string {
     const sign = rounded > 0 ? "+" : rounded < 0 ? "−" : "";
     return `${sign}${Math.abs(rounded)}%`;
 }
+
+/**
+ * What an Anthropic key looks like: `sk-ant-api03-…`.
+ *
+ * Only ever used to show a reassuring "that looks right" hint — the real check is
+ * the backend accepting the key. The panel had this and the website had nothing, so
+ * a mistyped key got a green tick in one place and silence in the other.
+ */
+export const API_KEY_HINT_PATTERN = /^sk-ant-\S{16,}$/;
+
+export function looksLikeApiKey(value: string): boolean {
+    return API_KEY_HINT_PATTERN.test(value.trim());
+}

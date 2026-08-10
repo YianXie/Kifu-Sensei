@@ -83,21 +83,27 @@
 
                     <ol class="welcome-steps">
                         <li>
-                            <span class="welcome-step-num" aria-hidden="true">1</span>
+                            <span class="welcome-step-num" aria-hidden="true"
+                                >1</span
+                            >
                             <span
                                 >Open a finished game on
                                 <strong>online-go.com</strong></span
                             >
                         </li>
                         <li>
-                            <span class="welcome-step-num" aria-hidden="true">2</span>
+                            <span class="welcome-step-num" aria-hidden="true"
+                                >2</span
+                            >
                             <span
                                 >Click the Kifu-Sensei icon to open this
                                 panel</span
                             >
                         </li>
                         <li>
-                            <span class="welcome-step-num" aria-hidden="true">3</span>
+                            <span class="welcome-step-num" aria-hidden="true"
+                                >3</span
+                            >
                             <span
                                 >Read move-by-move commentary on your
                                 mistakes</span
@@ -106,8 +112,19 @@
                     </ol>
 
                     <div class="welcome-actions">
-                        <button id="btn-open-ogs" class="btn btn--primary">
+                        <button
+                            id="btn-open-ogs"
+                            class="btn btn--primary"
+                            type="button"
+                        >
                             Browse games on OGS →
+                        </button>
+                        <button
+                            id="btn-open-history"
+                            class="btn btn-outline"
+                            type="button"
+                        >
+                            Past reviews
                         </button>
                         <p class="sub-action">
                             <!--
@@ -187,17 +204,40 @@
                             never shared.
                         </p>
                     </div>
-                    <button id="btn-save-key" class="btn btn--primary" disabled>
+                    <button
+                        id="btn-save-key"
+                        class="btn btn--primary"
+                        type="button"
+                        disabled
+                    >
                         Save &amp; Continue
                     </button>
-                    <p id="apikey-error" class="error-inline hidden" role="alert"></p>
+                    <!--
+                        A way out. This was the only branch out of syncAuthState
+                        for a signed-in account with no key, and its single action
+                        meant a user who did not have a key to hand was stuck on
+                        it with nothing else to click. The website's equivalent
+                        gate has always been dismissible.
+                    -->
+                    <button id="btn-skip-key" class="btn-link" type="button">
+                        Skip for now
+                    </button>
+                    <p
+                        id="apikey-error"
+                        class="error-inline hidden"
+                        role="alert"
+                    ></p>
                 </div>
             </div>
 
             <!-- ── KEY SAVED SCREEN (shown right after saving a key) ─────── -->
             <div id="screen-key-saved" class="screen hidden">
                 <div class="screen-body screen-body--centered">
-                    <span class="welcome-check welcome-check--lg" aria-hidden="true">✓</span>
+                    <span
+                        class="welcome-check welcome-check--lg"
+                        aria-hidden="true"
+                        >✓</span
+                    >
                     <h1 class="saved-heading">You're in!</h1>
                     <p class="saved-lead">
                         Your API key is saved. Open a finished game on
@@ -280,10 +320,30 @@
                         <p id="config-instruction-count" class="field-note"></p>
                     </div>
 
-                    <button id="btn-generate" class="btn btn--primary">
+                    <button
+                        id="btn-generate"
+                        class="btn btn--primary"
+                        type="button"
+                    >
                         Generate commentary
                     </button>
-                    <p id="config-error" class="error-inline hidden" role="alert"></p>
+                    <!--
+                        The panel could read the account's commentary_config but
+                        never write it, so a config chosen here stayed on this
+                        device forever.
+                    -->
+                    <button
+                        id="btn-save-default"
+                        class="btn-link"
+                        type="button"
+                    >
+                        Save as my default
+                    </button>
+                    <p
+                        id="config-error"
+                        class="error-inline hidden"
+                        role="alert"
+                    ></p>
                 </div>
             </div>
 
@@ -292,7 +352,12 @@
                 <div class="screen-body">
                     <div>
                         <h1 class="screen-heading">Analyzing your game…</h1>
-                        <p id="gen-subtitle" class="gen-subtitle" role="status" aria-live="polite">
+                        <p
+                            id="gen-subtitle"
+                            class="gen-subtitle"
+                            role="status"
+                            aria-live="polite"
+                        >
                             Move 0 of 20 key moves
                         </p>
                     </div>
@@ -382,10 +447,53 @@
                 <footer class="commentary-footer">
                     <p id="commentary-stats" class="footer-age"></p>
                     <p class="footer-disclaimer">
-                        Kifu-Sensei analysis — values may differ from OGS's
-                        review.
+                        <!--
+                            Every review lands in the website's History — the job
+                            path calls _save_commentary exactly as the sync one
+                            does — but the panel never said so, and its own copy
+                            of a finished run is wiped on a browser restart.
+                        -->
+                        Saved to your History. Kifu-Sensei commentary is written
+                        by Claude — values may differ from OGS's review.
                     </p>
                 </footer>
+            </div>
+
+            <!-- ── HISTORY SCREEN ───────────────────────────────────────── -->
+            <!--
+                Every review already lands in the website's History — the job path
+                calls _save_commentary exactly like the sync one — but the panel
+                had no way to reach it, and chrome.storage.session is wiped on a
+                browser restart, so a finished panel review became recoverable
+                only from the website, which the panel never mentioned either.
+            -->
+            <div id="screen-history" class="screen hidden">
+                <div class="screen-body">
+                    <div class="history-head">
+                        <h1 class="screen-heading">Past reviews</h1>
+                        <button
+                            id="btn-history-back"
+                            class="btn-link"
+                            type="button"
+                        >
+                            Back
+                        </button>
+                    </div>
+                    <p
+                        id="history-status"
+                        class="field-note"
+                        role="status"
+                        aria-live="polite"
+                    ></p>
+                    <div id="history-list" class="history-list"></div>
+                    <button
+                        id="btn-history-more"
+                        class="btn btn-outline hidden"
+                        type="button"
+                    >
+                        Load more
+                    </button>
+                </div>
             </div>
 
             <!-- ── ERROR SCREEN ───────────────────────────────────────────── -->
@@ -409,6 +517,18 @@
                     </p>
                 </div>
             </div>
+
+            <!-- ── Footer (always visible) ──────────────────────────────────
+                 The panel's only outbound links were register/login, the
+                 Anthropic console and OGS — so its own error copy ("Check it
+                 under Settings on the website") pointed somewhere it could not
+                 open, and the privacy policy that has a section about this
+                 extension was unreachable from the extension. -->
+            <footer class="panel-footer">
+                <button id="link-settings" type="button">Settings</button>
+                <button id="link-history" type="button">History</button>
+                <button id="link-privacy" type="button">Privacy</button>
+            </footer>
         </div>
         <script type="module" src="./panel.ts"></script>
     </body>
