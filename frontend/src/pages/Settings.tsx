@@ -42,7 +42,8 @@ const THEME_OPTIONS = [
 export default function Settings() {
     usePageTitle("Settings");
 
-    const { user, userSettings, updateUserSettings, logout } = useAuth();
+    const { user, userSettings, updateUserSettings, updateUserEmail, logout } =
+        useAuth();
     const { preference: themePreference, setPreference: setThemePreference } =
         useTheme();
 
@@ -220,8 +221,14 @@ export default function Settings() {
                 email: newEmail,
                 password: emailPassword,
             });
-            toast.success("Email updated. Please log in again.");
-            logout();
+            // No sign-out: update-email does not bump token_version, so this
+            // session is still valid. Calling logout() here *did* revoke it —
+            // and every other device with it, including the extension — for a
+            // change the backend deliberately does not treat as a revocation.
+            updateUserEmail(newEmail.trim().toLowerCase());
+            setNewEmail("");
+            setEmailPassword("");
+            toast.success("Email updated.");
         } catch (err) {
             setEmailError(getErrorMessage(err, "Failed to update email."));
         } finally {
@@ -242,10 +249,15 @@ export default function Settings() {
                 current_password: currentPassword,
                 new_password: newPassword,
             });
-            toast.success("Password updated.");
             setCurrentPassword("");
             setNewPassword("");
             setConfirmPassword("");
+            // update-password *does* bump token_version, so every token this
+            // account holds is already dead — including the extension's. Saying
+            // so and signing out beats leaving the user on a page whose next
+            // request 401s them to /login with no explanation.
+            toast.success("Password updated. Please sign in again.");
+            logout();
         } catch (err) {
             setPasswordError(
                 getErrorMessage(err, "Failed to update password.")

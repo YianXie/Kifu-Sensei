@@ -28,6 +28,8 @@ interface AuthContextValue {
     login: (email: string, password: string) => Promise<void>;
     logout: () => void;
     updateUserSettings: (settings: UserSettings) => void;
+    /** Reflect an email change locally; the JWT still carries the old one. */
+    updateUserEmail: (email: string) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -66,6 +68,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Revoke the extension handoff too, so logging out of the website
         // doesn't leave a stale session the extension can silently pick up.
         localStorage.removeItem("extension_auth");
+        // `api.ts` sets this on every successful refresh, and axios merges
+        // `defaults.headers.common` into every request. The request interceptor
+        // only ever *assigns* the header, so clearing localStorage alone left the
+        // previous user's bearer token attached to everything that followed —
+        // including the next POST /auth/token/.
+        delete api.defaults.headers.common.Authorization;
         setAccessToken(null);
         setRefreshToken(null);
         setUser(null);
@@ -134,6 +142,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUserSettings(settings);
     }, []);
 
+    // POST /auth/user/update-email/ deliberately does not bump token_version —
+    // changing an address is not a credential compromise — so the session stays
+    // valid and only the `email` claim in the current JWT is stale. Patching it
+    // locally is enough until the next refresh mints a token carrying the new one.
+    const updateUserEmail = useCallback((email: string) => {
+        setUser((previous) =>
+            previous === null ? previous : { ...previous, email }
+        );
+    }, []);
+
     const updateUserSettings = useCallback((settings: UserSettings) => {
         setUserSettings(settings);
     }, []);
@@ -150,6 +168,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 login,
                 logout,
                 updateUserSettings,
+                updateUserEmail,
             }}
         >
             {children}

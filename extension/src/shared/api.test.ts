@@ -24,6 +24,19 @@ import { AUTH_STORAGE_KEY } from "./constants";
 const AUTH = { accessToken: "access-1", refreshToken: "refresh-1" };
 const REFRESHED = { accessToken: "access-2", refreshToken: "refresh-2" };
 
+/**
+ * A realistically signed-in context.
+ *
+ * `currentAuth` is a cache in front of `chrome.storage.local`, never an
+ * independent source: every caller of `setCurrentAuth` populates it from a stored
+ * value. The refresh path compares against storage before writing the rotated pair
+ * back, so seeding only the cache models a state production cannot reach.
+ */
+async function signedIn(): Promise<void> {
+    setCurrentAuth(AUTH);
+    await fakeChrome().storage.local.set({ [AUTH_STORAGE_KEY]: AUTH });
+}
+
 function response(status: number, body: unknown = {}): Response {
     return {
         ok: status >= 200 && status < 300,
@@ -174,7 +187,7 @@ describe("authedFetch", () => {
     });
 
     it("refreshes on a 401 and retries with the new token", async () => {
-        setCurrentAuth(AUTH);
+        await signedIn();
         fetchMock
             .mockResolvedValueOnce(response(401))
             .mockResolvedValueOnce(
@@ -191,7 +204,7 @@ describe("authedFetch", () => {
     });
 
     it("persists the refreshed pair for the next service-worker wake-up", async () => {
-        setCurrentAuth(AUTH);
+        await signedIn();
         fetchMock
             .mockResolvedValueOnce(response(401))
             .mockResolvedValueOnce(
@@ -210,7 +223,7 @@ describe("authedFetch", () => {
     it("returns the original 401 when the refresh token is dead too", async () => {
         // Not null: the caller has to tell a genuinely dead session apart from
         // being offline, and only the former should sign the user out.
-        setCurrentAuth(AUTH);
+        await signedIn();
         fetchMock
             .mockResolvedValueOnce(response(401))
             .mockResolvedValueOnce(response(401));
@@ -218,6 +231,45 @@ describe("authedFetch", () => {
         const result = await authedFetch("https://api.test/thing");
 
         expect(result?.status).toBe(401);
+    });
+
+    // The single choke point: handling used to be spread over four call sites, two
+    // of which recorded the failure and left the dead tokens in place — so the
+    // injected OGS button kept offering runs that could only fail.
+    it("clears the session when nothing it holds can authenticate", async () => {
+        await signedIn();
+        fetchMock
+            .mockResolvedValueOnce(response(401))
+            .mockResolvedValueOnce(response(401));
+
+        await authedFetch("https://api.test/thing");
+
+        expect(getCurrentAuth()).toBeNull();
+        expect(fakeChrome().storage.local._dump()).toEqual({});
+    });
+
+    it("does not revive a session that was signed out mid-refresh", async () => {
+        await signedIn();
+        fetchMock
+            .mockResolvedValueOnce(response(401))
+            .mockImplementationOnce(async () => {
+                // Sign-out lands while the refresh is in flight.
+                await clearStoredAuth();
+                return response(200, {
+                    access: "access-2",
+                    refresh: "refresh-2",
+                });
+            })
+            .mockResolvedValueOnce(response(200));
+
+        const result = await authedFetch("https://api.test/thing");
+
+        expect(result?.status).toBe(401);
+        expect(getCurrentAuth()).toBeNull();
+        // Writing the rotated pair back unconditionally would have restored it.
+        expect(fakeChrome().storage.local._dump()).toEqual({});
+        // Never retried with the revived token.
+        expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
     it("returns null when the request cannot be sent", async () => {
@@ -228,7 +280,7 @@ describe("authedFetch", () => {
     });
 
     it("does not retry more than once", async () => {
-        setCurrentAuth(AUTH);
+        await signedIn();
         fetchMock
             .mockResolvedValueOnce(response(401))
             .mockResolvedValueOnce(

@@ -50,7 +50,7 @@ import {
     OGS_GAMES_URL,
     REVOKED_AUTH_KEY,
 } from "../src/shared/constants";
-import { type StoredJob, readJob } from "../src/shared/jobs";
+import { type StoredJob, clearJob, readJob } from "../src/shared/jobs";
 import {
     type OgsGameCheck,
     checkOgsGame,
@@ -746,12 +746,24 @@ async function refreshGameState(): Promise<void> {
         return;
     }
 
+    // `has_claude_api_key` is read once per panel open, so a key added on the
+    // website with the panel already open left it stuck on this gate forever.
+    // Any tab activity is a good moment to ask again — but not while the user is
+    // part-way through typing a key into the field right here.
+    if (
+        currentScreen === "screen-api-key" &&
+        (keyInput()?.value ?? "") === ""
+    ) {
+        await syncAuthState();
+        return;
+    }
+
     const isGameBoundScreen =
         currentScreen === "screen-commentary" ||
         currentScreen === "screen-generating" ||
         currentScreen === "screen-error";
     if (!isGameBoundScreen) {
-        return; // screen-demo, screen-api-key, screen-key-saved: untouched.
+        return; // screen-demo, screen-key-saved: untouched.
     }
 
     const [tab] = await chrome.tabs.query({
@@ -923,6 +935,15 @@ async function signOut(): Promise<void> {
             [REVOKED_AUTH_KEY]: auth.refreshToken,
         });
     }
+    // Everything the previous account left in this profile goes with it. Only the
+    // token pair used to be cleared, so `chrome.storage.session` kept the whole
+    // StoredJob — the downloaded record and the entire CommentaryResponse — and
+    // `commentary_config` kept their free-text custom_instruction. Signing in as
+    // someone else on the same profile and reopening the same game rendered the
+    // previous user's commentary back to them.
+    await clearJob();
+    await chrome.storage.local.remove(CONFIG_STORAGE_KEY);
+
     // Clearing the stored session flips the panel back to the demo screen via
     // the storage-change listener.
     await clearStoredAuth();

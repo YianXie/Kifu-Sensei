@@ -77,6 +77,9 @@ api.interceptors.response.use(
             processQueue(err, null);
             localStorage.removeItem("access_token");
             localStorage.removeItem("refresh_token");
+            // Same reason as in AuthContext.logout: the default header outlives
+            // localStorage, so a dead session would keep sending its bearer.
+            delete api.defaults.headers.common.Authorization;
             window.location.href = "/login";
             return Promise.reject(err);
         } finally {

@@ -68,11 +68,23 @@ export interface FakeChrome {
         lastError: undefined;
         sendMessage: ReturnType<typeof vi.fn>;
         onMessage: { addListener: ReturnType<typeof vi.fn> };
+        onStartup: { addListener: ReturnType<typeof vi.fn> };
     };
     tabs: {
         query: ReturnType<typeof vi.fn>;
         create: ReturnType<typeof vi.fn>;
         sendMessage: ReturnType<typeof vi.fn>;
+    };
+    // The service worker's own surface, so `background.ts` can be imported.
+    sidePanel: {
+        setPanelBehavior: ReturnType<typeof vi.fn>;
+        open: ReturnType<typeof vi.fn>;
+    };
+    alarms: {
+        get: ReturnType<typeof vi.fn>;
+        create: ReturnType<typeof vi.fn>;
+        clear: ReturnType<typeof vi.fn>;
+        onAlarm: { addListener: ReturnType<typeof vi.fn> };
     };
 }
 
@@ -88,11 +100,22 @@ function makeChrome(): FakeChrome {
             lastError: undefined,
             sendMessage: vi.fn(async () => undefined),
             onMessage: { addListener: vi.fn() },
+            onStartup: { addListener: vi.fn() },
         },
         tabs: {
             query: vi.fn(async () => []),
             create: vi.fn(async () => ({})),
             sendMessage: vi.fn(async () => undefined),
+        },
+        sidePanel: {
+            setPanelBehavior: vi.fn(async () => undefined),
+            open: vi.fn(async () => undefined),
+        },
+        alarms: {
+            get: vi.fn(async () => undefined),
+            create: vi.fn(async () => undefined),
+            clear: vi.fn(async () => true),
+            onAlarm: { addListener: vi.fn() },
         },
     };
 }

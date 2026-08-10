@@ -6,8 +6,9 @@ import {
     clampCommentaryConfig,
 } from "@shared/commentary";
 
+import { isAuthObject, setCurrentAuth } from "./shared/api";
 import { FRONTEND_URL } from "./shared/config";
-import { CONFIG_STORAGE_KEY } from "./shared/constants";
+import { AUTH_STORAGE_KEY, CONFIG_STORAGE_KEY } from "./shared/constants";
 import {
     clearJob,
     isTerminal,
@@ -74,6 +75,25 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 chrome.runtime.onStartup.addListener(() => {
     void clearPollAlarm();
     void clearJob();
+});
+
+/**
+ * Keep the worker's cached session from outliving a sign-out.
+ *
+ * `shared/api.ts` caches the token pair in module scope and only consults storage
+ * when that cache is empty — right for a worker Chrome tears down constantly, but
+ * it meant nothing could ever *clear* the cache. Neither sign-out path touched it:
+ * the panel and the content script both write to `chrome.storage.local`, and the
+ * worker was the one context not listening. A worker that survived the sign-out
+ * kept a live session in memory, and its next refresh wrote the rotated pair
+ * straight back to storage — reviving the session the user had just ended.
+ */
+chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== "local" || !(AUTH_STORAGE_KEY in changes)) {
+        return;
+    }
+    const { newValue } = changes[AUTH_STORAGE_KEY];
+    setCurrentAuth(isAuthObject(newValue) ? newValue : null);
 });
 
 type PanelMessage =

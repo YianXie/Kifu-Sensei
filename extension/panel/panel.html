@@ -110,9 +110,14 @@
                             Browse games on OGS →
                         </button>
                         <p class="sub-action">
-                            Not you?
+                            <!--
+                                Not "Not you?" — that reads as switching accounts
+                                on this device. Signing out here posts the same
+                                /auth/logout/ the website does, which bumps
+                                token_version and ends the session everywhere.
+                            -->
                             <button id="btn-signout" class="btn-link">
-                                Sign out
+                                Sign out of all devices
                             </button>
                         </p>
                     </div>

@@ -240,11 +240,14 @@ export async function submitJob(job: StoredJob): Promise<StoredJob> {
     }
 
     if (response.status === 401) {
-        // authedFetch already tried the refresh token, so the session is genuinely
-        // dead rather than merely stale.
+        // `authedFetch` already tried the refresh token and cleared the stored
+        // session on the way out, so this is only about recording why the run
+        // stopped. It used to be the *only* thing that happened, which left the
+        // dead tokens in storage and the OGS button still offering "Review this
+        // game" — every click starting another doomed run.
         const failed = fail(job, {
             code: "session_expired",
-            detail: "Your session expired. Sign in again on the Kifu-Sensei website.",
+            detail: "",
             retryAfter: null,
         });
         await writeJob(failed);
@@ -315,9 +318,10 @@ async function pollOnce(job: StoredJob): Promise<StoredJob | null> {
         return job;
     }
     if (response.status === 401) {
+        // Session already cleared by `authedFetch`; see the note in `submitJob`.
         return fail(job, {
             code: "session_expired",
-            detail: "Your session expired. Sign in again on the Kifu-Sensei website.",
+            detail: "",
             retryAfter: null,
         });
     }

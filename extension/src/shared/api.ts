@@ -90,6 +90,13 @@ export async function refreshTokens(
  * Returns null when the backend is unreachable, so callers can tell "offline" apart
  * from a 401 meaning the session is genuinely dead. A rejected refresh returns the
  * original 401 response rather than null, for the same reason.
+ *
+ * THE one place a dead session is noticed. Handling used to be spread over four
+ * call sites with three different behaviours: `syncAuthState` and `saveApiKey`
+ * cleared the session, while `submitJob` and `pollOnce` only wrote
+ * `session_expired` into the stored job and left the tokens in place — so
+ * `readSignedIn` in the OGS button kept seeing a session, kept rendering "Review
+ * this game", and every click started another doomed run.
  */
 export async function authedFetch(
     url: string,
@@ -114,7 +121,18 @@ export async function authedFetch(
 
         const refreshed = await refreshTokens(auth.refreshToken);
         if (refreshed === null) {
-            // The refresh token is dead too; let the caller handle the 401.
+            // The refresh token is dead too, so nothing this extension holds can
+            // authenticate any more. Drop it here rather than leaving each caller
+            // to remember to.
+            await clearStoredAuth();
+            return response;
+        }
+        // Compare-and-set: a sign-out may have landed while the refresh was in
+        // flight, and writing the rotated pair back unconditionally would revive
+        // the session it just cleared.
+        const stored = await chrome.storage.local.get(AUTH_STORAGE_KEY);
+        if (!isAuthObject(stored[AUTH_STORAGE_KEY])) {
+            currentAuth = null;
             return response;
         }
         currentAuth = refreshed;
