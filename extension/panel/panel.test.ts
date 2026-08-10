@@ -209,7 +209,7 @@ describe("showError", () => {
 
         showError({ code: "session_expired", detail: "", retryAfter: null });
         expect(document.getElementById("btn-retry")?.textContent).toBe(
-            "Sign in again"
+            "Log in again"
         );
     });
 

@@ -23,11 +23,11 @@ export interface ButtonState {
 }
 
 const DEFAULT_LABELS: Record<ButtonKind, string> = {
-    "signed-out": "Sign in to review",
+    "signed-out": "Log in to review",
     "needs-key": "Add your API key to review",
     // Priced, because this is a one-click paid action with no confirmation step
     // and no config screen in front of it.
-    ready: "Review with Kifu-Sensei (~$0.03)",
+    ready: "Review with Kifu-Sensei (a few cents)",
     running: "Reviewing…",
     done: "View commentary",
     hint: "Open the Kifu-Sensei icon",

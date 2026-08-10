@@ -1,10 +1,9 @@
 # Kifu-Sensei Browser Extension
 
 > ⚠️ **Load unpacked, for development.** Not published to the Chrome Web Store.
-> The full flow — auth handoff, game detection, commentary generation, and the injected
-> OGS button — is implemented, but it has not yet been exercised end to end in a real
-> Chrome profile against a deployed backend. See the checklist in
-> [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for what still needs confirming.
+> The full flow — auth handoff, game detection, commentary generation, history, and
+> the injected OGS button — is implemented, but it has not yet been exercised end to
+> end in a real Chrome profile against a deployed backend.
 
 A Manifest V3 Chrome **side-panel** extension that brings Kifu-Sensei commentary next
 to online-go.com games. It shares an account with the web app: you sign in on the

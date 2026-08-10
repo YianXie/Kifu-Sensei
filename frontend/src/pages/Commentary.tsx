@@ -400,7 +400,7 @@ export default function Commentary() {
                     )}
                     <p className="ks-upload__note">
                         Only .sgf is supported. A 20-move commentary costs less
-                        than $0.10 against your own key.
+                        a few cents, under $0.10, against your own key.
                     </p>
                 </div>
 

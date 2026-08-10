@@ -24,7 +24,7 @@ export const COMMENTARY_ERROR_MESSAGES: Record<PanelErrorCode, string> = {
         "That review was interrupted before it finished. Start it again.",
     internal_error:
         "Something went wrong generating commentary. Please try again.",
-    session_expired: "Your session expired. Sign in again.",
+    session_expired: "Your session expired. Log in again.",
     network:
         "Could not reach Kifu-Sensei. Check your connection and try again.",
     timeout:
@@ -59,7 +59,7 @@ export function errorAction(code: PanelErrorCode | null): ErrorAction {
 export const ERROR_ACTION_LABELS: Record<ErrorAction, string> = {
     retry: "Try again",
     "api-key": "Add API key",
-    "sign-in": "Sign in again",
+    "sign-in": "Log in again",
     wait: "Back",
 };
 

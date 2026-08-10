@@ -1,4 +1,5 @@
 .PHONY: install install-backend install-frontend install-extension install-shared \
+        typecheck typecheck-frontend typecheck-extension typecheck-shared \
         run-backend run-frontend \
         format format-backend format-frontend format-extension format-shared \
         lint lint-backend lint-frontend lint-extension lint-shared \
@@ -57,6 +58,20 @@ lint-extension:
 
 lint-shared:
 	cd shared && npm run lint && npm run format:check
+
+# ── Typecheck (read-only) ─────────────────────────────────────────────────────
+# Both package.json files have always exposed this; there was no make target for
+# it, so type errors only ever surfaced through `build`.
+typecheck: typecheck-shared typecheck-frontend typecheck-extension
+
+typecheck-shared:
+	cd shared && npm run typecheck
+
+typecheck-frontend:
+	cd frontend && npm run typecheck
+
+typecheck-extension:
+	cd extension && npm run typecheck
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 test: test-shared test-backend test-frontend test-extension

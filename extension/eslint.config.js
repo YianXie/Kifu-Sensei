@@ -30,5 +30,15 @@ export default tseslint.config(
         // Config files run in Node, not in a browser or an extension context.
         files: ["*.config.{ts,js}", "vite.*.config.ts"],
         languageOptions: { globals: globals.node },
+    },
+    {
+        // `scripts/*.mjs` matched neither block, so the one script that decides
+        // which host permissions ship was linted with no rules and no Node globals.
+        files: ["scripts/**/*.mjs"],
+        extends: [js.configs.recommended],
+        languageOptions: {
+            globals: globals.node,
+            sourceType: "module",
+        },
     }
 );

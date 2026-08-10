@@ -15,10 +15,10 @@ Kifu-Sensei is a monorepo with three top-level components, all talking to the sa
 | Component     | Directory    | What it is                                                                                         | Status                  |
 | ------------- | ------------ | -------------------------------------------------------------------------------------------------- | ----------------------- |
 | **Backend**   | `backend/`   | FastAPI service: JWT auth, encrypted API-key storage, and the KataGo → Claude commentary pipeline. | Active                  |
-| **Frontend**  | `frontend/`  | React web app: upload an SGF, view the board, read/download commentary, manage your account.        | Active                  |
+| **Frontend**  | `frontend/`  | React web app: upload an SGF, view the board, read/download commentary, manage your account.       | Active                  |
 | **Extension** | `extension/` | Manifest V3 Chrome side-panel extension that overlays commentary on online-go.com games.           | ⚠️ **Work in progress** |
 
-> ⚠️ **The browser extension is a work in progress and is NOT ready for production use.** The authentication handoff between the web app and the extension works, but the in-panel commentary generation flow is still being built out. Load it unpacked for development only. See [`extension/README.md`](./extension/README.md) for details.
+> ⚠️ **The browser extension is not published to the Chrome Web Store.** The full flow — auth handoff, game detection, commentary generation, history, and the injected OGS button — is implemented, but it has not been exercised end to end in a real Chrome profile against a deployed backend. Load it unpacked for development. See [`extension/README.md`](./extension/README.md) for details.
 
 Each component has its own README with an in-depth walkthrough:
 
@@ -36,7 +36,7 @@ Each component has its own README with an in-depth walkthrough:
 4. Claude receives a structured prompt for each position — ASCII board with the played move and KataGo's top suggestion marked, win-rate before/after, score lead, ownership summary — and writes a few sentences of commentary.
 5. The commentary is injected back into the SGF and offered as a download. You can also step through the game interactively in the browser, and revisit past reviews from your history.
 
-LLM cost per game review is well under $0.10 with prompt caching. You supply your own Claude API key; it is encrypted with Fernet and never stored in plaintext.
+LLM cost per review is a few cents, under $0.10, with prompt caching. You supply your own Claude API key; it is encrypted with Fernet and never stored in plaintext.
 
 ---
 
@@ -54,14 +54,14 @@ LLM cost per game review is well under $0.10 with prompt caching. You supply you
 
 ## Tech Stack
 
-| Layer              | Technology                                                                         |
-| ------------------ | ---------------------------------------------------------------------------------- |
-| Analysis engine    | KataGo (self-hosted HTTP API)                                                      |
-| Commentary         | Claude (`claude-sonnet-5` by default; Fable/Opus/Haiku selectable) via Anthropic   |
-| Backend            | FastAPI, SQLModel, SQLite/PostgreSQL, JWT auth, Fernet encryption, SQLAdmin        |
-| Frontend           | React 19, TypeScript, Vite, the Kifu-Sensei design system, `@sabaki/go-board`      |
-| Extension          | Manifest V3, TypeScript, Vite (no UI framework)                                    |
-| Package management | `uv` (backend), `npm` (frontend & extension)                                       |
+| Layer              | Technology                                                                       |
+| ------------------ | -------------------------------------------------------------------------------- |
+| Analysis engine    | KataGo (self-hosted HTTP API)                                                    |
+| Commentary         | Claude (`claude-sonnet-5` by default; Fable/Opus/Haiku selectable) via Anthropic |
+| Backend            | FastAPI, SQLModel, SQLite/PostgreSQL, JWT auth, Fernet encryption, SQLAdmin      |
+| Frontend           | React 19, TypeScript, Vite, the Kifu-Sensei design system, `@sabaki/go-board`    |
+| Extension          | Manifest V3, TypeScript, Vite (no UI framework)                                  |
+| Package management | `uv` (backend), `npm` (frontend & extension)                                     |
 
 ---
 
