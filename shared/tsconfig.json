@@ -1,28 +1,7 @@
 {
-    "compilerOptions": {
-        "target": "ES2022",
-        "module": "ESNext",
-        "lib": ["ES2022", "DOM"],
-        "types": [],
-        "skipLibCheck": true,
-
-        /* Bundler mode — these sources are never emitted on their own. Both
-           consumers compile them from source through their own Vite build. */
-        "moduleResolution": "bundler",
-        "verbatimModuleSyntax": true,
-        "moduleDetection": "force",
-        "noEmit": true,
-
-        "strict": true,
-        "noUnusedLocals": true,
-        "noUnusedParameters": true,
-        "noFallthroughCasesInSwitch": true
-    },
-    /* Pinned to the frontend's TypeScript (~5.7), the older of the two consumers
-       and so the binding constraint: source that compiles here compiles in both.
-       That is also why `erasableSyntaxOnly` is not set — it needs TS >= 5.8. The
-       extension's own `tsc -b` covers these files and does enforce it, so syntax
-       it would reject still fails, just in the extension's job rather than here.
-       Both collapse into one setting when Phase 7 aligns the toolchains. */
-    "include": ["src"]
+    "files": [],
+    "references": [
+        { "path": "./tsconfig.src.json" },
+        { "path": "./tsconfig.test.json" }
+    ]
 }

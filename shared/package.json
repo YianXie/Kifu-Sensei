@@ -5,7 +5,7 @@
     "type": "module",
     "description": "Code the web app and the browser extension must agree on. Consumed by path alias (@shared) rather than as a dependency, so there is no build step and no publish.",
     "scripts": {
-        "typecheck": "tsc",
+        "typecheck": "tsc -b",
         "lint": "eslint .",
         "test": "vitest run",
         "test:watch": "vitest",
@@ -15,6 +15,7 @@
     "devDependencies": {
         "@eslint/js": "^10.0.1",
         "@trivago/prettier-plugin-sort-imports": "^4.3.0",
+        "@types/node": "^22.0.0",
         "eslint": "^10.8.0",
         "globals": "^15.15.0",
         "jsdom": "^29.1.1",

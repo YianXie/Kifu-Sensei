@@ -23,7 +23,10 @@ export function makeEndpoints(apiUrl: string) {
         updatePassword: `${apiUrl}/auth/user/update-password/`,
         claudeApiKey: `${apiUrl}/auth/user/claude-api-key/`,
         deleteAccount: `${apiUrl}/auth/user/delete/`,
+        /** Liveness: is this process up? Deliberately checks nothing else. */
         health: `${apiUrl}/api/health/`,
+        /** Readiness: can it actually complete a review? 503 when KataGo is down. */
+        ready: `${apiUrl}/api/ready/`,
 
         /** Synchronous commentary. One multi-minute request, no progress. */
         commentary: `${apiUrl}/api/commentary/`,

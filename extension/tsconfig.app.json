@@ -34,5 +34,10 @@
        so it has to be part of this project for `tsc -b` to check it — and this is
        where `erasableSyntaxOnly` gets applied to it, which shared's own tsconfig
        cannot do while it is pinned to the frontend's older TypeScript. */
-    "include": ["src", "panel", "../shared/src"]
+    "include": ["src", "panel", "../shared/src"],
+    /* Shared *sources* only. Its tests import vitest, which resolves from
+       shared/node_modules — a directory this project never installs, so including
+       them makes this build depend on someone having run `npm install` in a
+       sibling. They are type-checked by shared's own tsc, where they belong. */
+    "exclude": ["../shared/src/**/*.test.ts"]
 }
