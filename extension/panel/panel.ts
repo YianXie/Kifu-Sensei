@@ -57,7 +57,7 @@ const FRONTEND_MATCHES = [
 ];
 
 // Every top-level screen id, so we can flip to exactly one at a time.
-const SCREEN_IDS = [
+export const SCREEN_IDS = [
     "screen-demo",
     "screen-welcome",
     "screen-api-key",
@@ -73,7 +73,7 @@ const SCREEN_IDS = [
 // format hint — the real check is the backend accepting the key.
 const API_KEY_HINT_PATTERN = /^sk-ant-\S{16,}$/;
 
-type ScreenId = (typeof SCREEN_IDS)[number];
+export type ScreenId = (typeof SCREEN_IDS)[number];
 
 let currentScreen: ScreenId | null = null;
 
@@ -85,7 +85,7 @@ let gameCheckToken = 0;
 // does not hijack the view.
 let activeGameId: number | null = null;
 
-function showScreen(id: ScreenId): void {
+export function showScreen(id: ScreenId): void {
     currentScreen = id;
     for (const screenId of SCREEN_IDS) {
         document
@@ -97,7 +97,7 @@ function showScreen(id: ScreenId): void {
 // Best-effort extraction of the account email from the JWT payload so the
 // welcome screen can greet the user. Never throws — a missing/odd token just
 // yields null and the email line stays hidden.
-function decodeEmailFromToken(accessToken: string): string | null {
+export function decodeEmailFromToken(accessToken: string): string | null {
     try {
         const payload = accessToken.split(".")[1];
         if (!payload) {
@@ -147,7 +147,7 @@ function renderWelcome(auth: ExtensionAuthObject, game?: OgsGameCheck): void {
  * state to `OgsGameCheck` without giving it wording here is a compile error rather
  * than a silent fall-through to generic text.
  */
-function waitingMessage(
+export function waitingMessage(
     check: Exclude<OgsGameCheck, { state: "ready" } | { state: "no-game" }>
 ): string {
     switch (check.state) {
@@ -439,7 +439,10 @@ function renderProgress(progress: { done: number; total: number }): void {
     }
 }
 
-function buildCard(item: CommentaryItem, moves: GameMove[]): HTMLElement {
+export function buildCard(
+    item: CommentaryItem,
+    moves: GameMove[]
+): HTMLElement {
     const severity = severityForDelta(item.winrate_delta);
     const colour = colorForTurn(moves, item.turn, item.color);
 
@@ -502,7 +505,7 @@ function downloadButton(): HTMLButtonElement | null {
 }
 
 /** `ogs-12345.sgf` → `ogs-12345_annotated.sgf`, matching the website. */
-function annotatedFileName(sgfFileName: string): string {
+export function annotatedFileName(sgfFileName: string): string {
     const base = sgfFileName.replace(/\.sgf$/i, "").trim();
     return base === "" ? "annotated.sgf" : `${base}_annotated.sgf`;
 }
@@ -633,15 +636,15 @@ function renderCommentary(result: CommentaryResponse): void {
 }
 
 /** What the error screen's primary button should do, per failure. */
-type ErrorAction = "retry" | "api-key" | "sign-in";
+export type ErrorAction = "retry" | "api-key" | "sign-in";
 
-function errorAction(code: PanelErrorCode | null): ErrorAction {
+export function errorAction(code: PanelErrorCode | null): ErrorAction {
     if (code === "no_api_key") return "api-key";
     if (code === "session_expired") return "sign-in";
     return "retry";
 }
 
-const ERROR_MESSAGES: Record<PanelErrorCode, string> = {
+export const ERROR_MESSAGES: Record<PanelErrorCode, string> = {
     no_api_key:
         "Add your Claude API key to generate commentary. Kifu-Sensei uses your own key.",
     invalid_sgf:
@@ -666,7 +669,7 @@ const ERROR_MESSAGES: Record<PanelErrorCode, string> = {
 
 let pendingErrorAction: ErrorAction = "retry";
 
-function showError(error: {
+export function showError(error: {
     code: PanelErrorCode | null;
     detail: string;
     retryAfter: number | null;

@@ -74,7 +74,28 @@ run "extension: install"    extension npm ci
 run "extension: eslint"     extension npm run lint
 run "extension: prettier"   extension npm run format:check
 run "extension: vitest"     extension npm test
+
+# `npm run build` regenerates extension/manifest.json in *production* form, which
+# silently strips the localhost host permissions a `npm run build:dev` load-unpacked
+# session depends on. Nothing about running the checks should break the extension a
+# developer already has loaded in Chrome, so put back whatever was there.
+MANIFEST="extension/manifest.json"
+MANIFEST_BACKUP=""
+if [ -f "$MANIFEST" ]; then
+    MANIFEST_BACKUP="$(mktemp)"
+    cp "$MANIFEST" "$MANIFEST_BACKUP"
+fi
+
 run "extension: build"      extension npm run build
+
+if [ -n "$MANIFEST_BACKUP" ]; then
+    if cmp -s "$MANIFEST_BACKUP" "$MANIFEST"; then
+        rm -f "$MANIFEST_BACKUP"
+    else
+        mv "$MANIFEST_BACKUP" "$MANIFEST"
+        echo -e "${DIM}  restored extension/manifest.json (the build had replaced it with the production one)${NC}"
+    fi
+fi
 
 # ── Security ──────────────────────────────────────────────────────────────────
 section "Security"

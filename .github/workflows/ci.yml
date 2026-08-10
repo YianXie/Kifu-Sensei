@@ -128,13 +128,19 @@ jobs:
               working-directory: ./extension
               run: npm test
 
-            # `npm run build` starts with `tsc`, then builds all four Vite entry
-            # points (panel, background, content, inject).
+            # `npm run build` generates the production manifest, runs `tsc -b`
+            # (app sources + the build configs), then runs the three Vite builds:
+            # vite.config.ts covers panel + background as ES modules, while
+            # content and inject are built separately because they must be IIFEs.
+            #
+            # Deliberately no `env:` override here. The committed .env.production
+            # carries the real origins, and prefixed process.env would win over it
+            # — which used to bundle localhost URLs inside a production manifest,
+            # an artifact that ships nowhere and matched neither what a developer
+            # builds nor what a release does. Now CI builds what actually ships,
+            # and scripts/ci-local.sh runs the identical command.
             - name: Build
               working-directory: ./extension
-              env:
-                  VITE_API_URL: http://localhost:8000
-                  VITE_FRONTEND_URL: http://localhost:5173
               run: npm run build
 
     secret-scan:
