@@ -1,8 +1,9 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
+import { type CommentarySeverity, colorForTurn } from "@shared/commentary";
+import { GameMove } from "@shared/types";
+
 import { DEFAULT_BOARD_CANVAS_SIZE } from "@/constants/game/goBoard";
-import { GameMove } from "@/types/game";
-import { type CommentarySeverity, colorForTurn } from "@/utils/commentary";
 
 import CommentPanel from "./CommentPanel";
 import Controls from "./Controls";

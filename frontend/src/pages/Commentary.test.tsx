@@ -6,9 +6,10 @@ import { MemoryRouter } from "react-router";
 import axios from "axios";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { CommentaryResponse } from "@shared/types";
+
 import { useAuth } from "@/contexts/AuthContext";
 import Commentary from "@/pages/Commentary";
-import type { CommentaryResponse } from "@/types/commentary";
 
 vi.mock("@/api", () => ({
     default: { post: vi.fn() },

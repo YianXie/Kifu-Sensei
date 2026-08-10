@@ -3,12 +3,10 @@ import userEvent from "@testing-library/user-event";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { CommentaryHistoryItem, CommentaryResponse } from "@shared/types";
+
 import HistoryCard from "@/components/history/HistoryCard";
 import { ENDPOINTS } from "@/constants/global/endpoints";
-import type {
-    CommentaryHistoryItem,
-    CommentaryResponse,
-} from "@/types/commentary";
 
 vi.mock("@/api", () => ({
     default: { get: vi.fn(), delete: vi.fn() },

@@ -8,13 +8,12 @@
 // because the document is already complete.
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { COMMENTARY_ERROR_MESSAGES } from "@shared/errors";
+
 import {
-    ERROR_MESSAGES,
     SCREEN_IDS,
-    annotatedFileName,
     buildCard,
     decodeEmailFromToken,
-    errorAction,
     showError,
     showScreen,
     waitingMessage,
@@ -85,14 +84,22 @@ describe("buildCard", () => {
 
     it("reads the colour from the move list, not turn parity", () => {
         // Turn 2 is White here; a handicap game would invert naive parity.
-        const card = buildCard({ turn: 2, comment: "…" }, moves);
+        const card = buildCard(
+            { turn: 2, comment: "…", winrate_delta: null, color: null },
+            moves
+        );
 
         expect(card.querySelector(".badge--white")).not.toBe(null);
     });
 
     it("renders the comment text verbatim", () => {
         const card = buildCard(
-            { turn: 3, comment: "White's R16 threatened the weak group." },
+            {
+                turn: 3,
+                comment: "White's R16 threatened the weak group.",
+                winrate_delta: null,
+                color: null,
+            },
             moves
         );
 
@@ -102,14 +109,19 @@ describe("buildCard", () => {
     });
 
     it("omits the delta badge when the swing is unknown", () => {
-        const card = buildCard({ turn: 1, comment: "…" }, moves);
+        const card = buildCard(
+            { turn: 1, comment: "…", winrate_delta: null, color: null },
+            moves
+        );
 
         expect(card.querySelectorAll(".badge")).toHaveLength(1);
     });
 });
 
 describe("showError", () => {
-    it("prefers the backend's detail, which is written for the exact failure", () => {
+    // The panel used to show `detail` in preference to its own copy, which meant
+    // its message table never fired and raw sgfmill exceptions reached the user.
+    it("shows the client's copy rather than server prose", () => {
         showError({
             code: "invalid_sgf",
             detail: "Could not parse the SGF file: unexpected token at byte 12.",
@@ -117,16 +129,27 @@ describe("showError", () => {
         });
 
         expect(document.getElementById("error-msg")?.textContent).toBe(
-            "Could not parse the SGF file: unexpected token at byte 12."
+            COMMENTARY_ERROR_MESSAGES.invalid_sgf
         );
     });
 
-    it("falls back to the canned copy when there is no detail", () => {
+    it("explains a failure that arrived with no detail at all", () => {
         showError({ code: "katago_unavailable", detail: "", retryAfter: null });
 
         expect(document.getElementById("error-msg")?.textContent).toBe(
-            ERROR_MESSAGES.katago_unavailable
+            COMMENTARY_ERROR_MESSAGES.katago_unavailable
         );
+    });
+
+    // Retrying a 409 earns the same 409.
+    it("does not offer a retry while another run holds the slot", () => {
+        showError({
+            code: "job_already_running",
+            detail: "",
+            retryAfter: null,
+        });
+
+        expect(document.getElementById("btn-retry")?.textContent).toBe("Back");
     });
 
     it("names the wait when the backend supplied retry_after", () => {
@@ -164,17 +187,6 @@ describe("showError", () => {
     });
 });
 
-describe("errorAction", () => {
-    it.each([
-        ["no_api_key", "api-key"],
-        ["session_expired", "sign-in"],
-        ["internal_error", "retry"],
-        [null, "retry"],
-    ] as const)("maps %s to %s", (code, expected) => {
-        expect(errorAction(code)).toBe(expected);
-    });
-});
-
 describe("copy helpers", () => {
     it("explains every non-ready game state", () => {
         expect(
@@ -204,11 +216,6 @@ describe("copy helpers", () => {
         expect(waitingMessage({ state: "offline", gameId: 1 })).toContain(
             "Could not reach online-go.com"
         );
-    });
-
-    it("suffixes the annotated record without doubling the extension", () => {
-        expect(annotatedFileName("ogs-123.sgf")).toBe("ogs-123_annotated.sgf");
-        expect(annotatedFileName("ogs-123")).toBe("ogs-123_annotated.sgf");
     });
 
     it("reads the account email out of the JWT payload", () => {

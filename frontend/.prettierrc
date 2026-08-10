@@ -3,7 +3,9 @@
     "tabWidth": 4,
     "semi": true,
     "singleQuote": false,
-    "plugins": ["@trivago/prettier-plugin-sort-imports"],
+    "plugins": [
+        "@trivago/prettier-plugin-sort-imports"
+    ],
     "importOrder": [
         "^react",
         "^react-dom",
@@ -11,6 +13,7 @@
         "^@mui/",
         "^@emotion/",
         "^[a-z]",
+        "^@shared/",
         "^@/",
         "^[./]"
     ],

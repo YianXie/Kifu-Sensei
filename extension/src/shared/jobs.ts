@@ -8,35 +8,39 @@
 // mid-run is restarted by an alarm and picks up from the stored job id.
 //
 // Runs here, never in the panel: the panel document dies the moment it is closed.
-import { authedFetch, readErrorResponse } from "./api";
-import { type CommentaryConfig, clampCommentaryConfig } from "./commentary";
-import { ENDPOINTS } from "./config";
-import { JOB_SESSION_KEY, JOB_STATUS_KEY } from "./constants";
-import { fetchOgsSgf } from "./ogs";
+import {
+    type CommentaryConfig,
+    clampCommentaryConfig,
+} from "@shared/commentary";
+import {
+    JOB_DEADLINE_MS,
+    POLL_INTERVAL_MS,
+    POLL_TIMEOUT_MS,
+    SUBMIT_TIMEOUT_MS,
+} from "@shared/jobs";
+import { isCommentaryErrorCode } from "@shared/types";
 import type {
     CommentaryApiError,
     CommentaryJobCreated,
     CommentaryJobState,
     CommentaryResponse,
     JobStatus,
-} from "./types";
+} from "@shared/types";
 
-/** Submitting is quick; anything slower than this is a failure, not a wait. */
-export const SUBMIT_TIMEOUT_MS = 30_000;
-/** Each poll is a small read. Kept far below the worker's 30s fetch limit. */
-const POLL_TIMEOUT_MS = 15_000;
-/** Gap between polls. Short enough that the worker's 30s idle timer keeps resetting. */
-export const POLL_INTERVAL_MS = 3_000;
+import { authedFetch, readErrorResponse } from "./api";
+import { ENDPOINTS } from "./config";
+import { JOB_SESSION_KEY, JOB_STATUS_KEY } from "./constants";
+import { fetchOgsSgf } from "./ogs";
 
-/**
- * How long a single run may take before the panel gives up on it.
- *
- * Derived from the worst case rather than guessed: three KataGo passes at the
- * backend's 120s `API_TIMEOUT` is 360s, plus up to 100 sequential Claude calls. Fifteen
- * minutes covers a long game at default settings with room to spare; past that,
- * something is wrong rather than slow.
- */
-export const JOB_DEADLINE_MS = 900_000;
+// Timing lives in @shared/jobs so the web app waits the same amount of time
+// for the same backend. Re-exported: the panel and the worker import them
+// from here, which is where the job machinery lives.
+export {
+    JOB_DEADLINE_MS,
+    POLL_INTERVAL_MS,
+    POLL_TIMEOUT_MS,
+    SUBMIT_TIMEOUT_MS,
+} from "@shared/jobs";
 
 export interface StoredJob {
     jobId: string;
@@ -336,8 +340,13 @@ async function pollOnce(job: StoredJob): Promise<StoredJob | null> {
     }
 
     if (state.status === "failed") {
+        // Validate rather than trust: this used to be a bare
+        // `state.error?.code ?? "internal_error"`, which typed whatever the backend
+        // sent as a member of the union. `job_abandoned` reached the panel that way
+        // — a code nothing downstream knew how to explain.
+        const code = state.error?.code;
         return fail(job, {
-            code: state.error?.code ?? "internal_error",
+            code: isCommentaryErrorCode(code) ? code : "internal_error",
             detail: state.error?.detail ?? "Failed to generate commentary.",
             retryAfter: state.error?.retry_after ?? null,
         });

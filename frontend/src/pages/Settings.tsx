@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { toast } from "react-toastify";
 
+import { readCommentaryConfig } from "@shared/commentary";
+import { type ClaudeModel, CommentaryLanguage } from "@shared/types";
+
 import api from "@/api";
 import CommentaryConfig from "@/components/commentary/CommentaryConfig";
 import {
@@ -19,11 +22,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import type { UserSettings } from "@/types/auth";
-import {
-    type ClaudeModel,
-    CommentaryLanguage,
-    readCommentaryConfig,
-} from "@/types/commentary";
 import { type ThemePreference, isThemePreference } from "@/types/theme";
 import { getErrorMessage } from "@/utils/errorFormatting";
 import { readPlayStoneSound } from "@/utils/preferences";

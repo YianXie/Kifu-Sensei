@@ -1,0 +1,26 @@
+{
+    "name": "shared",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "description": "Code the web app and the browser extension must agree on. Consumed by path alias (@shared) rather than as a dependency, so there is no build step and no publish.",
+    "scripts": {
+        "typecheck": "tsc",
+        "lint": "eslint .",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "format": "prettier --write 'src/**/*.ts' 'styles/**/*.css' '*.{ts,js,json}'",
+        "format:check": "prettier --check 'src/**/*.ts' 'styles/**/*.css' '*.{ts,js,json}'"
+    },
+    "devDependencies": {
+        "@eslint/js": "^10.0.1",
+        "@trivago/prettier-plugin-sort-imports": "^4.3.0",
+        "eslint": "^10.8.0",
+        "globals": "^15.15.0",
+        "jsdom": "^29.1.1",
+        "prettier": "^3.9.6",
+        "typescript": "~5.7.0",
+        "typescript-eslint": "^8.65.0",
+        "vitest": "^4.1.10"
+    }
+}

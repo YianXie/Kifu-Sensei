@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-import { GameMove, isValidMove } from "@/types/game";
+import { GameMove, isValidMove } from "@shared/types";
 
 export default function MiniBoardThumb({
     boardSize,

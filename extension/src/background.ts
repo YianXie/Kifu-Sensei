@@ -4,7 +4,8 @@ import {
     type CommentaryConfig,
     DEFAULT_COMMENTARY_CONFIG,
     clampCommentaryConfig,
-} from "./shared/commentary";
+} from "@shared/commentary";
+
 import { FRONTEND_URL } from "./shared/config";
 import { CONFIG_STORAGE_KEY } from "./shared/constants";
 import {

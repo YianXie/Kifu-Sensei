@@ -1,20 +1,10 @@
 import {
-    authedFetch,
-    clearStoredAuth,
-    getCurrentAuth,
-    isAuthObject,
-    readErrorResponse,
-    setCurrentAuth,
-} from "../src/shared/api";
-import {
     CLAUDE_MODELS,
     CLAUDE_MODEL_LABELS,
     COMMENTARY_LANGUAGES,
     COMMENTARY_LANGUAGE_LABELS,
     CUSTOM_INSTRUCTION_MAX,
-    type ClaudeModel,
     type CommentaryConfig,
-    type CommentaryLanguage,
     DEFAULT_COMMENTARY_CONFIG,
     MAX_TOKEN_MAX,
     MAX_TOKEN_MIN,
@@ -25,7 +15,29 @@ import {
     formatDelta,
     readCommentaryConfig,
     severityForDelta,
-} from "../src/shared/commentary";
+} from "@shared/commentary";
+import {
+    ERROR_ACTION_LABELS,
+    type ErrorAction,
+    resolveCommentaryError,
+} from "@shared/errors";
+import type {
+    ClaudeModel,
+    CommentaryApiError,
+    CommentaryItem,
+    CommentaryLanguage,
+    CommentaryResponse,
+    GameMove,
+} from "@shared/types";
+
+import {
+    authedFetch,
+    clearStoredAuth,
+    getCurrentAuth,
+    isAuthObject,
+    readErrorResponse,
+    setCurrentAuth,
+} from "../src/shared/api";
 import { ENDPOINTS, FRONTEND_URL } from "../src/shared/config";
 import {
     AUTH_STORAGE_KEY,
@@ -40,13 +52,7 @@ import {
     checkOgsGame,
     parseOgsGameId,
 } from "../src/shared/ogs";
-import type {
-    CommentaryItem,
-    CommentaryResponse,
-    ExtensionAuthObject,
-    GameMove,
-    PanelErrorCode,
-} from "../src/shared/types";
+import type { ExtensionAuthObject } from "../src/shared/types";
 
 // Frontend origins where the website may hold a stale extension_auth entry.
 // Wildcarded because production serves the app from www — the bare apex only
@@ -635,68 +641,27 @@ function renderCommentary(result: CommentaryResponse): void {
     showScreen("screen-commentary");
 }
 
-/** What the error screen's primary button should do, per failure. */
-export type ErrorAction = "retry" | "api-key" | "sign-in";
-
-export function errorAction(code: PanelErrorCode | null): ErrorAction {
-    if (code === "no_api_key") return "api-key";
-    if (code === "session_expired") return "sign-in";
-    return "retry";
-}
-
-export const ERROR_MESSAGES: Record<PanelErrorCode, string> = {
-    no_api_key:
-        "Add your Claude API key to generate commentary. Kifu-Sensei uses your own key.",
-    invalid_sgf:
-        "Kifu-Sensei could not read this game's record. It may be an unsupported format.",
-    upstream_rate_limited:
-        "Anthropic is rate-limiting your API key. Please wait and try again.",
-    upstream_auth_failed:
-        "Anthropic rejected your API key. Check it under Settings on the website.",
-    upstream_error: "Claude could not be reached. Please try again.",
-    katago_unavailable:
-        "The analysis engine is unavailable right now. Please try again shortly.",
-    internal_error:
-        "Something went wrong generating commentary. Please try again.",
-    session_expired:
-        "Your session expired. Sign in again on the Kifu-Sensei website.",
-    network:
-        "Could not reach Kifu-Sensei. Check your connection and try again.",
-    timeout:
-        "This review took too long and was stopped. Try again with fewer comments.",
-    sgf_unavailable: "Could not download this game from online-go.com.",
-};
-
 let pendingErrorAction: ErrorAction = "retry";
 
-export function showError(error: {
-    code: PanelErrorCode | null;
-    detail: string;
-    retryAfter: number | null;
-}): void {
-    // The backend's `detail` is written for this exact failure (e.g. why an SGF
-    // failed to parse); the canned copy below is only a fallback for when it is
-    // missing, not a replacement for it.
-    let message =
-        error.detail ||
-        (error.code !== null ? ERROR_MESSAGES[error.code] : undefined) ||
-        "Something went wrong. Please try again.";
-    if (error.code === "upstream_rate_limited" && error.retryAfter !== null) {
-        message = `Anthropic is rate-limiting your API key. Try again in ${error.retryAfter}s.`;
-    }
+/**
+ * Render a failure.
+ *
+ * The wording, the precedence and the button's job all come from `@shared/errors`,
+ * so the website explains the same failure with the same words. The panel used to
+ * prefer the backend's `detail` over its own copy — which meant its message table
+ * never fired at all (every caller supplies a detail) and server prose like
+ * "Could not parse the SGF file: {sgfmill exception}" reached the user.
+ */
+export function showError(error: CommentaryApiError): void {
+    const resolved = resolveCommentaryError(error);
 
     const msgEl = el("error-msg");
-    if (msgEl) msgEl.textContent = message;
+    if (msgEl) msgEl.textContent = resolved.message;
 
-    pendingErrorAction = errorAction(error.code);
+    pendingErrorAction = resolved.action;
     const retry = el<HTMLButtonElement>("btn-retry");
     if (retry) {
-        retry.textContent =
-            pendingErrorAction === "api-key"
-                ? "Add API key"
-                : pendingErrorAction === "sign-in"
-                  ? "Sign in again"
-                  : "Try Again";
+        retry.textContent = ERROR_ACTION_LABELS[resolved.action];
     }
     showScreen("screen-error");
 }

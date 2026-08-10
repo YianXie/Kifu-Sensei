@@ -13,6 +13,14 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url));
 export default defineConfig({
     base: "",
 
+    resolve: {
+        alias: {
+            // Code the web app and the extension must agree on. Compiled from
+            // source by this build — no package to install, no build step.
+            "@shared": resolve(__dirname, "../shared/src"),
+        },
+    },
+
     build: {
         outDir: "dist",
         emptyOutDir: false,

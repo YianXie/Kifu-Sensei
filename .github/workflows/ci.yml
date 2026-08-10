@@ -21,6 +21,43 @@ env:
     NODE_VERSION: "22"
 
 jobs:
+    # Both front ends compile these sources, so a failure here is the explanation
+    # for a failure in either of theirs.
+    shared:
+        name: Shared
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Set up Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+                  cache: "npm"
+                  cache-dependency-path: shared/package-lock.json
+
+            - name: Install dependencies
+              working-directory: ./shared
+              run: npm ci
+
+            - name: ESLint
+              working-directory: ./shared
+              run: npm run lint
+
+            - name: Prettier (format check)
+              working-directory: ./shared
+              run: npm run format:check
+
+            - name: Typecheck
+              working-directory: ./shared
+              run: npm run typecheck
+
+            - name: Tests
+              working-directory: ./shared
+              run: npm test
+
     backend:
         name: Backend
         runs-on: ubuntu-latest

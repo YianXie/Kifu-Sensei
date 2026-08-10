@@ -1,4 +1,4 @@
-import { CommentaryResponse } from "../../types/commentary";
+import type { CommentaryResponse } from "@shared/types";
 
 export const DEMO_DATA: CommentaryResponse = {
     board_size: 19,

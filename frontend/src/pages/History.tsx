@@ -2,13 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "react-toastify";
 
+import { CommentaryHistoryItem, CommentaryResponse } from "@shared/types";
+
 import api from "@/api";
 import HistoryCard from "@/components/history/HistoryCard";
 import { Button, Card, EmptyState, Spinner } from "@/components/ui";
 import { ENDPOINTS } from "@/constants/global/endpoints";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { UserCommentaryHistory } from "@/types/auth";
-import { CommentaryHistoryItem, CommentaryResponse } from "@/types/commentary";
 import { getErrorMessage } from "@/utils/errorFormatting";
 
 const PAGE_SIZE = 20;

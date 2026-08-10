@@ -24,7 +24,15 @@
         "noUnusedLocals": true,
         "noUnusedParameters": true,
         "erasableSyntaxOnly": true,
-        "noFallthroughCasesInSwitch": true
+        "noFallthroughCasesInSwitch": true,
+
+        "paths": {
+            "@shared/*": ["../shared/src/*"]
+        }
     },
-    "include": ["src", "panel"]
+    /* ../shared is compiled from source rather than consumed as a built package,
+       so it has to be part of this project for `tsc -b` to check it — and this is
+       where `erasableSyntaxOnly` gets applied to it, which shared's own tsconfig
+       cannot do while it is pinned to the frontend's older TypeScript. */
+    "include": ["src", "panel", "../shared/src"]
 }

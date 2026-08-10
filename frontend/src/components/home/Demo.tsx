@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 
+import { type CommentarySeverity, severityForDelta } from "@shared/commentary";
+
 import { DEMO_DATA } from "@/constants/commentary/demo";
 import { useAuth } from "@/contexts/AuthContext";
-import { type CommentarySeverity, severityForDelta } from "@/utils/commentary";
 import { readPlayStoneSound } from "@/utils/preferences";
 
 import GameViewer from "../game/GameViewer";

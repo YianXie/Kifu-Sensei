@@ -49,6 +49,17 @@ skip() {
 
 echo "🚀 Running local CI checks..."
 
+# ── Shared ────────────────────────────────────────────────────────────────────
+# First: both front ends compile these sources, so a failure here explains a
+# failure in either of the two jobs below.
+section "Shared"
+
+run "shared: install"       shared npm ci
+run "shared: eslint"        shared npm run lint
+run "shared: prettier"      shared npm run format:check
+run "shared: typecheck"     shared npm run typecheck
+run "shared: vitest"        shared npm test
+
 # ── Backend ───────────────────────────────────────────────────────────────────
 section "Backend"
 

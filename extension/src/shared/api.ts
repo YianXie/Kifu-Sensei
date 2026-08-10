@@ -8,13 +8,11 @@
 // and the backend's CORS allowlist covers only the frontend origins — a request from
 // `https://online-go.com` would be blocked. Extension pages bypass CORS for hosts in
 // `host_permissions`, which already covers the API.
+import type { CommentaryApiError, CommentaryErrorCode } from "@shared/types";
+
 import { ENDPOINTS } from "./config";
 import { AUTH_STORAGE_KEY } from "./constants";
-import type {
-    CommentaryApiError,
-    CommentaryErrorCode,
-    ExtensionAuthObject,
-} from "./types";
+import type { ExtensionAuthObject } from "./types";
 
 // The session backing requests from this context. Service workers are torn down
 // aggressively, so this is a cache in front of chrome.storage.local, never the

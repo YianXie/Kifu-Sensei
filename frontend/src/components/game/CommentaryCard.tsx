@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 
+import type { CommentarySeverity } from "@shared/commentary";
+
 import { Badge } from "@/components/ui";
-import type { CommentarySeverity } from "@/utils/commentary";
 
 const SEVERITY_LABEL: Record<CommentarySeverity, string> = {
     blunder: "Blunder",

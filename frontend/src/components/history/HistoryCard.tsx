@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { toast } from "react-toastify";
 
+import { CommentaryHistoryItem, CommentaryResponse } from "@shared/types";
+
 import api from "@/api";
 import { Alert, Badge, Button, Card, IconButton } from "@/components/ui";
 import Dialog from "@/components/ui/Dialog";
 import { ENDPOINTS } from "@/constants/global/endpoints";
-import { CommentaryHistoryItem, CommentaryResponse } from "@/types/commentary";
 import { getErrorMessage } from "@/utils/errorFormatting";
 import { toTitleCase } from "@/utils/string";
 

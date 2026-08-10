@@ -1,4 +1,13 @@
 import {
+    CUSTOM_INSTRUCTION_MAX,
+    MAX_TOKEN_MAX,
+    MAX_TOKEN_MIN,
+    NUM_COMMENTS_MAX,
+    NUM_COMMENTS_MIN,
+} from "@shared/commentary";
+import type { ClaudeModel, CommentaryLanguage } from "@shared/types";
+
+import {
     Divider,
     Field,
     Input,
@@ -6,14 +15,6 @@ import {
     Select,
     Textarea,
 } from "@/components/ui";
-import {
-    CUSTOM_INSTRUCTION_MAX,
-    MAX_TOKEN_MAX,
-    MAX_TOKEN_MIN,
-    NUM_COMMENTS_MAX,
-    NUM_COMMENTS_MIN,
-} from "@/constants/commentary/config";
-import type { ClaudeModel, CommentaryLanguage } from "@/types/commentary";
 
 const MODEL_OPTIONS: { value: ClaudeModel; label: string }[] = [
     { value: "claude-fable-5", label: "Claude Fable 5" },

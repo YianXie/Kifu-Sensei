@@ -4,6 +4,20 @@ import { toast } from "react-toastify";
 
 import axios from "axios";
 
+import { readCommentaryConfig } from "@shared/commentary";
+import {
+    type CommentarySeverity,
+    colorForTurn,
+    coordinateForTurn,
+    severityForDelta,
+} from "@shared/commentary";
+import {
+    type ClaudeModel,
+    CommentaryLanguage,
+    type CommentaryResponse,
+} from "@shared/types";
+import type { GameMove } from "@shared/types";
+
 import api from "@/api";
 import CommentaryConfig from "@/components/commentary/CommentaryConfig";
 import SgfDropzone from "@/components/commentary/SgfDropzone";
@@ -13,19 +27,6 @@ import { Button, EmptyState, Icon, Panel, Spinner } from "@/components/ui";
 import { ENDPOINTS } from "@/constants/global/endpoints";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import {
-    type ClaudeModel,
-    CommentaryLanguage,
-    type CommentaryResponse,
-    readCommentaryConfig,
-} from "@/types/commentary";
-import type { GameMove } from "@/types/game";
-import {
-    type CommentarySeverity,
-    colorForTurn,
-    coordinateForTurn,
-    severityForDelta,
-} from "@/utils/commentary";
 import { getCommentaryError } from "@/utils/errorFormatting";
 import { readPlayStoneSound } from "@/utils/preferences";
 import { toTitleCase } from "@/utils/string";

@@ -18,8 +18,11 @@
         "noFallthroughCasesInSwitch": true,
         "noUncheckedSideEffectImports": true,
         "paths": {
-            "@/*": ["./src/*"]
+            "@/*": ["./src/*"],
+            "@shared/*": ["../shared/src/*"]
         }
     },
-    "include": ["src"]
+    /* ../shared is compiled from source rather than consumed as a built package,
+       so it has to be part of this project for `tsc -b` to check it. */
+    "include": ["src", "../shared/src"]
 }

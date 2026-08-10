@@ -1,6 +1,10 @@
 import { AxiosError } from "axios";
 
-import type { CommentaryErrorCode } from "@/types/commentary";
+import {
+    type ResolvedCommentaryError,
+    resolveCommentaryError,
+} from "@shared/errors";
+import { type PanelErrorCode, isCommentaryErrorCode } from "@shared/types";
 
 export function getErrorMessage(
     error: unknown,
@@ -27,51 +31,41 @@ export function getErrorMessage(
     return fallback;
 }
 
-const COMMENTARY_ERROR_MESSAGES: Record<CommentaryErrorCode, string> = {
-    no_api_key: "Add your Claude API key to start generating commentary.",
-    invalid_sgf:
-        "That SGF file could not be read. Check that it is a valid game record.",
-    upstream_rate_limited:
-        "Anthropic is rate-limiting your API key. Please wait and try again.",
-    upstream_auth_failed:
-        "Anthropic rejected your API key. Check it under Settings.",
-    upstream_error: "Claude could not be reached. Please try again.",
-    katago_unavailable:
-        "The analysis engine is unavailable. Please try again shortly.",
-    internal_error:
-        "Something went wrong generating commentary. Please try again.",
-};
-
 /**
- * Resolve a commentary failure into a code the caller can branch on and a message
- * worth showing the user. Falls back to {@link getErrorMessage} for anything that is
- * not one of the backend's tagged commentary errors — a network failure, for example,
- * never reaches the server and so carries no code.
+ * Turn a failed commentary request into a code to branch on, copy to show, and an
+ * action for the primary button.
+ *
+ * The wording and the precedence live in `@shared/errors`, so the extension explains
+ * the same failure with the same words; this only bridges Axios's error shape onto
+ * the shared resolver. A request that never reached the server carries no code from
+ * the backend, but "network" is a better thing to say about it than nothing.
  */
-export function getCommentaryError(error: unknown): {
-    code: CommentaryErrorCode | null;
-    message: string;
-} {
+export function getCommentaryError(error: unknown): ResolvedCommentaryError {
     if (error instanceof AxiosError) {
         const data = error.response?.data as
-            | { code?: CommentaryErrorCode; retry_after?: number | null }
+            | { code?: unknown; detail?: unknown; retry_after?: unknown }
             | undefined;
-        const code = data?.code;
-        if (code && code in COMMENTARY_ERROR_MESSAGES) {
-            if (
-                code === "upstream_rate_limited" &&
-                typeof data?.retry_after === "number"
-            ) {
-                return {
-                    code,
-                    message: `Anthropic is rate-limiting your API key. Try again in ${data.retry_after}s.`,
-                };
-            }
-            return { code, message: COMMENTARY_ERROR_MESSAGES[code] };
-        }
+
+        const code: PanelErrorCode | null = isCommentaryErrorCode(data?.code)
+            ? data.code
+            : error.response === undefined
+              ? "network"
+              : null;
+
+        return resolveCommentaryError({
+            code,
+            detail:
+                typeof data?.detail === "string"
+                    ? data.detail
+                    : getErrorMessage(error, "Error generating commentary."),
+            retryAfter:
+                typeof data?.retry_after === "number" ? data.retry_after : null,
+        });
     }
-    return {
+
+    return resolveCommentaryError({
         code: null,
-        message: getErrorMessage(error, "Error generating commentary."),
-    };
+        detail: getErrorMessage(error, "Error generating commentary."),
+        retryAfter: null,
+    });
 }
