@@ -46,6 +46,11 @@ api.interceptors.response.use(
             return new Promise<string>((resolve, reject) => {
                 failedQueue.push({ resolve, reject });
             }).then((token) => {
+                // Marked before the replay, exactly as the request that triggered the
+                // refresh marks itself below: without it, a queued request whose
+                // replay also comes back 401 falls through to this branch again and
+                // starts a second refresh cycle instead of being rejected.
+                originalRequest._retry = true;
                 originalRequest.headers.Authorization = `Bearer ${token}`;
                 return api(originalRequest);
             });
@@ -69,7 +74,6 @@ api.interceptors.response.use(
             if (data.refresh) {
                 localStorage.setItem("refresh_token", data.refresh);
             }
-            api.defaults.headers.common.Authorization = `Bearer ${newAccess}`;
             processQueue(null, newAccess);
             originalRequest.headers.Authorization = `Bearer ${newAccess}`;
             return api(originalRequest);

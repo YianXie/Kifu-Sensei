@@ -10,11 +10,15 @@ from datetime import UTC, datetime, timedelta
 import anthropic
 import httpx
 import pytest
+import respx
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
 from app.errors import InvalidSgfError, MissingApiKeyError
 from app.models import Commentary, CommentaryJob, User
+
+# Matches the ``API_ENDPOINT`` conftest sets before ``app.config`` is imported.
+KATAGO_BASE_URL = "http://katago.invalid"
 
 REQUEST_BODY = {
     "sgf_content": "(;FF[4]GM[1]SZ[19];B[dd];W[pp])",
@@ -76,6 +80,50 @@ def test_health_is_public(client: TestClient) -> None:
     response = client.get("/api/health/")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_health_stays_ok_when_katago_is_down(client: TestClient) -> None:
+    """Liveness must not depend on an upstream — a dead KataGo is not a reason for the
+    platform to restart an otherwise healthy container."""
+    # ``assert_all_called=False`` because the route going *unused* is the assertion:
+    # liveness must not touch KataGo at all.
+    with respx.mock(base_url=KATAGO_BASE_URL, assert_all_called=False) as router:
+        route = router.get("/").mock(side_effect=httpx.ConnectError("refused"))
+
+        assert client.get("/api/health/").status_code == 200
+        assert not route.called
+
+
+def test_ready_reports_ok_when_katago_answers(client: TestClient) -> None:
+    with respx.mock(base_url=KATAGO_BASE_URL) as router:
+        router.get("/").mock(return_value=httpx.Response(200))
+
+        response = client.get("/api/ready/")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ready", "katago": True}
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        pytest.param(httpx.ConnectError("refused"), id="unreachable"),
+        pytest.param(httpx.Response(503), id="server-error"),
+    ],
+)
+def test_ready_reports_503_when_katago_is_unusable(client: TestClient, outcome) -> None:
+    """Both a refused connection and a 5xx mean a review would fail — the point of this
+    endpoint is that neither is reported as ``ok`` the way ``/health/`` does."""
+    with respx.mock(base_url=KATAGO_BASE_URL) as router:
+        if isinstance(outcome, httpx.Response):
+            router.get("/").mock(return_value=outcome)
+        else:
+            router.get("/").mock(side_effect=outcome)
+
+        response = client.get("/api/ready/")
+
+    assert response.status_code == 503
+    assert response.json() == {"status": "degraded", "katago": False}
 
 
 # ── Synchronous commentary ────────────────────────────────────────────────────
