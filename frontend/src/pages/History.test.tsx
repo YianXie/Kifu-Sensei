@@ -5,8 +5,9 @@ import { MemoryRouter } from "react-router";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { CommentaryHistoryItem } from "@shared/types";
+
 import History from "@/pages/History";
-import type { CommentaryHistoryItem } from "@/types/commentary";
 
 vi.mock("@/api", () => ({
     default: { get: vi.fn() },

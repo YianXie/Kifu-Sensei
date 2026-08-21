@@ -45,11 +45,17 @@ function injectPageScript(): void {
 }
 
 function notifyUser(message: string): void {
+    // Logged, not alerted. This runs on the Kifu-Sensei website itself, so a
+    // blocking native modal appeared on top of a page with its own toast system —
+    // and the claim that it "only fires on a genuine authentication failure" was
+    // not true: every fetch error was read as one, so a momentary offline blip
+    // told the user to log in again.
+    //
+    // Nothing is lost by not shouting. A handoff that does not complete leaves the
+    // panel on its signed-out screen, which says what to do, and `inject.ts` keeps
+    // polling so a recovered connection completes it without the user doing
+    // anything.
     console.warn(`[Kifu-Sensei content] ${message}`);
-    // A blocking alert is the only user-facing notification channel available
-    // from a content script without extra permissions. It only fires on a
-    // genuine authentication failure, which is rare.
-    window.alert(message);
 }
 
 // Confirms the access token is currently accepted by the backend.
@@ -58,31 +64,44 @@ function notifyUser(message: string): void {
 // context. It is safe only because it runs on the frontend origins, which the
 // backend's CORS allowlist covers — the same request from online-go.com would be
 // blocked. Anything else that talks to the API belongs in the panel or the worker.
-async function isAccessTokenValid(accessToken: string): Promise<boolean> {
+type TokenCheck = "valid" | "rejected" | "unreachable";
+
+async function checkAccessToken(accessToken: string): Promise<TokenCheck> {
     try {
         const response = await fetch(ENDPOINTS.userSettings, {
             headers: { Authorization: `Bearer ${accessToken}` },
         });
-        return response.ok;
+        return response.ok ? "valid" : "rejected";
     } catch (error) {
-        console.error(
-            "[Kifu-Sensei content] Token verification request failed:",
+        // Distinguished from a rejection rather than folded into one. This used to
+        // return false for any thrown error, so being offline for a moment was
+        // indistinguishable from a revoked token — the same conflation
+        // `AuthContext` was deliberately fixed not to make.
+        console.warn(
+            "[Kifu-Sensei content] Could not reach the backend to verify the session:",
             error
         );
-        return false;
+        return "unreachable";
     }
 }
 
-// Returns a verified (possibly refreshed) token pair, or null if the tokens
-// cannot authenticate the user.
+/**
+ * A verified (possibly refreshed) token pair, or why it could not be verified.
+ *
+ * `"unreachable"` is not a failure to report — the tokens may be perfectly good.
+ */
 async function authorize(
     auth: ExtensionAuthObject
-): Promise<ExtensionAuthObject | null> {
-    if (await isAccessTokenValid(auth.accessToken)) {
+): Promise<ExtensionAuthObject | "rejected" | "unreachable"> {
+    const check = await checkAccessToken(auth.accessToken);
+    if (check === "valid") {
         return auth;
     }
-    // The access token is expired/invalid; fall back to the refresh token.
-    return refreshTokens(auth.refreshToken);
+    if (check === "unreachable") {
+        return "unreachable";
+    }
+    // The access token is expired or revoked; fall back to the refresh token.
+    return (await refreshTokens(auth.refreshToken)) ?? "rejected";
 }
 
 async function handleAuthUpdate(
@@ -130,7 +149,15 @@ async function handleAuthUpdate(
     }
 
     const verified = await authorize(updatedObject);
-    if (verified === null) {
+    if (verified === "unreachable") {
+        // Leave `authenticatedToken` unset so the next poll tries again once the
+        // connection is back, rather than treating this as settled.
+        notifyUser(
+            "Could not reach Kifu-Sensei to verify the sign-in; will retry."
+        );
+        return;
+    }
+    if (verified === "rejected") {
         notifyUser(
             "Kifu-Sensei could not verify your sign-in. Please log in again."
         );

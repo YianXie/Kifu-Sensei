@@ -9,8 +9,9 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { DEFAULT_COMMENTARY_CONFIG } from "@shared/commentary";
+
 import { fakeChrome } from "../test/setup";
-import { DEFAULT_COMMENTARY_CONFIG } from "./commentary";
 import { ENDPOINTS } from "./config";
 import { AUTH_STORAGE_KEY, JOB_SESSION_KEY, JOB_STATUS_KEY } from "./constants";
 import {

@@ -1,6 +1,7 @@
+import type { CommentarySeverity } from "@shared/commentary";
+import type { GameMove } from "@shared/types";
+
 import { Badge } from "@/components/ui";
-import type { GameMove } from "@/types/game";
-import type { CommentarySeverity } from "@/utils/commentary";
 
 const SEVERITY_LABEL: Record<CommentarySeverity, string> = {
     blunder: "Blunder",

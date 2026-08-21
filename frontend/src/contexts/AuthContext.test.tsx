@@ -10,12 +10,20 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 // The context is the only consumer of the axios instance under test here; the
 // instance's own behaviour is covered in `api.test.ts`.
 vi.mock("@/api", () => ({
-    default: { get: vi.fn(), post: vi.fn() },
+    // `defaults.headers.common` is part of the surface AuthContext uses, not
+    // incidental: logout has to clear the Authorization header the refresh
+    // interceptor leaves there, or the SPA keeps sending a revoked bearer.
+    default: {
+        get: vi.fn(),
+        post: vi.fn(),
+        defaults: { headers: { common: {} as Record<string, string> } },
+    },
 }));
 
 const api = (await import("@/api")).default as unknown as {
     get: ReturnType<typeof vi.fn>;
     post: ReturnType<typeof vi.fn>;
+    defaults: { headers: { common: Record<string, string> } };
 };
 
 /** A JWT with a readable payload — only `jwtDecode` reads it, never verified here. */
@@ -215,6 +223,8 @@ describe("logout", () => {
             "extension_auth",
             JSON.stringify({ accessToken: "a", refreshToken: "b" })
         );
+        // What a successful refresh leaves behind, and what logout must clear.
+        api.defaults.headers.common.Authorization = "Bearer stale";
         api.get.mockResolvedValue({ data: SETTINGS });
         api.post.mockResolvedValue({ data: { detail: "Logged out." } });
         renderProbe();
@@ -229,6 +239,10 @@ describe("logout", () => {
         expect(localStorage.getItem("access_token")).toBeNull();
         expect(localStorage.getItem("refresh_token")).toBeNull();
         expect(localStorage.getItem("extension_auth")).toBeNull();
+        // Axios merges defaults.headers.common into every request, and the
+        // request interceptor only ever assigns — so a stale default here means
+        // the SPA keeps sending the previous user's bearer token.
+        expect(api.defaults.headers.common.Authorization).toBeUndefined();
         expect(screen.getByTestId("authenticated")).toHaveTextContent("false");
         expect(screen.getByTestId("email")).toHaveTextContent("-");
     });

@@ -1,7 +1,8 @@
 import { AxiosError, AxiosHeaders } from "axios";
 import { describe, expect, it } from "vitest";
 
-import type { CommentaryErrorCode } from "@/types/commentary";
+import type { CommentaryErrorCode } from "@shared/types";
+
 import { getCommentaryError, getErrorMessage } from "@/utils/errorFormatting";
 
 /** Build an AxiosError carrying `data` as the response body. */
@@ -120,18 +121,28 @@ describe("getCommentaryError", () => {
         expect(result.message).toBe("Something else.");
     });
 
-    it("returns a null code for a network failure, which never reached the server", () => {
+    // A request with no response never reached the backend, so there is no code to
+    // read — but "network" is a truer thing to say about it than the generic branch.
+    it("reports a request that never reached the server as a network failure", () => {
         const result = getCommentaryError(
             new AxiosError("Network Error", "ERR_NETWORK")
         );
-        expect(result.code).toBeNull();
-        expect(result.message).toBe("Error generating commentary.");
+        expect(result.code).toBe("network");
+        expect(result.message).toContain("Check your connection");
     });
 
     it("returns a null code for a non-Axios throw", () => {
-        expect(getCommentaryError(new Error("boom"))).toEqual({
+        expect(getCommentaryError(new Error("boom"))).toMatchObject({
             code: null,
             message: "boom",
         });
+    });
+
+    it("hands the caller an action for the primary button", () => {
+        expect(
+            getCommentaryError(
+                axiosErrorWith({ detail: "", code: "no_api_key" })
+            ).action
+        ).toBe("api-key");
     });
 });

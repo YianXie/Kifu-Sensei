@@ -33,6 +33,18 @@ const FEATURES: { icon: IconName; title: string; body: ReactNode }[] = [
         ),
     },
     {
+        icon: "extension",
+        title: "Review straight from online-go.com",
+        body: (
+            <>
+                The Kifu-Sensei browser extension puts the same commentary in a
+                side panel next to your finished OGS games — no downloading and
+                re-uploading the record. It shares this account, so your saved
+                defaults and your reviews follow you between the two.
+            </>
+        ),
+    },
+    {
         icon: "code",
         title: "Open-source and affordable",
         body: (
@@ -45,8 +57,9 @@ const FEATURES: { icon: IconName; title: string; body: ReactNode }[] = [
                 >
                     open-source on GitHub
                 </a>
-                . With prompt-caching, a 20-move commentary costs well under
-                $0.10 — you only pay for your own Claude API key.
+                . With prompt-caching, a 20-move commentary costs well under a
+                few cents — under $0.10 — and you only pay for your own Claude
+                API key.
             </>
         ),
     },
@@ -99,7 +112,8 @@ export default function Home() {
                             </Button>
                         </div>
                         <p className="ks-hero__note">
-                            A 20-move commentary costs less than $0.10.
+                            A 20-comment review typically costs a few cents,
+                            under $0.10.
                         </p>
                     </div>
                     <div className="ks-hero__demo">
@@ -154,8 +168,8 @@ export default function Home() {
                         Start analyzing your games today
                     </h2>
                     <p className="ks-section__lead">
-                        A 20-move commentary costs less than $0.10. Upload your
-                        first SGF and see the difference.
+                        A 20-comment review typically costs a few cents, under
+                        $0.10. Upload your first SGF and see the difference.
                     </p>
                     <div style={{ marginTop: "var(--space-2)" }}>
                         <Button size="lg" endIcon="east" onClick={startCta}>

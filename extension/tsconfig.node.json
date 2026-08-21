@@ -1,0 +1,27 @@
+{
+    "compilerOptions": {
+        "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+        "target": "ES2023",
+        "lib": ["ES2023"],
+        "types": ["node"],
+        "module": "ESNext",
+        "skipLibCheck": true,
+        "moduleResolution": "bundler",
+        "allowImportingTsExtensions": true,
+        "moduleDetection": "force",
+        "noEmit": true,
+        "strict": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noFallthroughCasesInSwitch": true
+    },
+    /* The build configs are TypeScript too, and they decide which host permissions
+       ship and whether content/inject come out as IIFEs. Left out of the app
+       project because they need Node types, which extension source must not have. */
+    "include": [
+        "vite.config.ts",
+        "vite.content.config.ts",
+        "vite.inject.config.ts",
+        "vitest.config.ts"
+    ]
+}

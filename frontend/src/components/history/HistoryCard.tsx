@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { toast } from "react-toastify";
 
+import { downloadAnnotatedSgf } from "@shared/download";
+import { CommentaryHistoryItem, CommentaryResponse } from "@shared/types";
+
 import api from "@/api";
 import { Alert, Badge, Button, Card, IconButton } from "@/components/ui";
 import Dialog from "@/components/ui/Dialog";
 import { ENDPOINTS } from "@/constants/global/endpoints";
-import { CommentaryHistoryItem, CommentaryResponse } from "@/types/commentary";
 import { getErrorMessage } from "@/utils/errorFormatting";
 import { toTitleCase } from "@/utils/string";
 
@@ -60,16 +62,7 @@ export default function HistoryCard({
         setIsDownloading(true);
         try {
             const detail = await fetchDetail();
-            const blob = new Blob([detail.annotated_sgf_content], {
-                type: "application/x-go-sgf",
-            });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download =
-                sgf_file_name.replace(/\.sgf$/i, "") + "_annotated.sgf";
-            a.click();
-            URL.revokeObjectURL(url);
+            downloadAnnotatedSgf(detail.annotated_sgf_content, sgf_file_name);
         } catch (error) {
             toast.error(
                 getErrorMessage(error, "Could not download this session.")

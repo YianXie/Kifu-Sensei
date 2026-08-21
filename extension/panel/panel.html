@@ -18,7 +18,13 @@
                     />
                     <span class="header-title">Kifu-Sensei</span>
                 </div>
-                <button id="btn-close" class="btn-icon" title="Close panel">
+                <button
+                    id="btn-close"
+                    class="btn-icon"
+                    type="button"
+                    aria-label="Close panel"
+                    title="Close panel"
+                >
                     ✕
                 </button>
             </header>
@@ -28,28 +34,18 @@
                 <div class="screen-body">
                     <div>
                         <p class="screen-label">Preview</p>
-                        <p class="screen-heading">
+                        <h1 class="screen-heading">
                             See what commentary looks like:
-                        </p>
+                        </h1>
                     </div>
-                    <!-- Hardcoded demo card -->
-                    <div class="card card--mistake">
-                        <div class="card-header">
-                            <span class="card-move">Move 31</span>
-                            <div class="card-badges">
-                                <span class="badge badge--black">B</span>
-                                <span class="badge badge--mistake">−12%</span>
-                            </div>
-                        </div>
-                        <div class="card-body">
-                            <p class="card-text">
-                                "This push abandoned the corner too early.
-                                White's R16 immediately threatened the weak
-                                group on the left, forcing a heavy defensive
-                                response."
-                            </p>
-                        </div>
-                    </div>
+                    <!--
+                        Built by buildCard() from DEMO_COMMENT in panel.ts, not
+                        written out here. As static markup it drifted: it showed
+                        −12% tagged "mistake", but severityForDelta calls anything
+                        at or below −10 a blunder, and the two tiers look different.
+                        Markup can contradict the rule; a call to it cannot.
+                    -->
+                    <div id="demo-card"></div>
                     <!-- Slogan -->
                     <p class="slogan">
                         Understand your mistakes in words, not just numbers.
@@ -61,8 +57,12 @@
                         </button>
                         <p class="sub-action">
                             Already a member?
-                            <button id="btn-login" class="btn-link">
-                                Sign in
+                            <button
+                                id="btn-login"
+                                class="btn-link"
+                                type="button"
+                            >
+                                Log in
                             </button>
                         </p>
                     </div>
@@ -73,9 +73,9 @@
             <div id="screen-welcome" class="screen hidden">
                 <div class="screen-body welcome-body">
                     <div class="welcome-hero">
-                        <span class="welcome-check">✓</span>
+                        <span class="welcome-check" aria-hidden="true">✓</span>
                         <p class="welcome-eyebrow">You're signed in</p>
-                        <h2 class="welcome-heading">Welcome to Kifu-Sensei</h2>
+                        <h1 class="welcome-heading">Welcome to Kifu-Sensei</h1>
                         <p id="welcome-email" class="welcome-email hidden"></p>
                     </div>
 
@@ -87,21 +87,27 @@
 
                     <ol class="welcome-steps">
                         <li>
-                            <span class="welcome-step-num">1</span>
+                            <span class="welcome-step-num" aria-hidden="true"
+                                >1</span
+                            >
                             <span
                                 >Open a finished game on
                                 <strong>online-go.com</strong></span
                             >
                         </li>
                         <li>
-                            <span class="welcome-step-num">2</span>
+                            <span class="welcome-step-num" aria-hidden="true"
+                                >2</span
+                            >
                             <span
                                 >Click the Kifu-Sensei icon to open this
                                 panel</span
                             >
                         </li>
                         <li>
-                            <span class="welcome-step-num">3</span>
+                            <span class="welcome-step-num" aria-hidden="true"
+                                >3</span
+                            >
                             <span
                                 >Read move-by-move commentary on your
                                 mistakes</span
@@ -110,13 +116,29 @@
                     </ol>
 
                     <div class="welcome-actions">
-                        <button id="btn-open-ogs" class="btn btn--primary">
+                        <button
+                            id="btn-open-ogs"
+                            class="btn btn--primary"
+                            type="button"
+                        >
                             Browse games on OGS →
                         </button>
+                        <button
+                            id="btn-open-history"
+                            class="btn btn-outline"
+                            type="button"
+                        >
+                            Past reviews
+                        </button>
                         <p class="sub-action">
-                            Not you?
+                            <!--
+                                Not "Not you?" — that reads as switching accounts
+                                on this device. Signing out here posts the same
+                                /auth/logout/ the website does, which bumps
+                                token_version and ends the session everywhere.
+                            -->
                             <button id="btn-signout" class="btn-link">
-                                Sign out
+                                Log out of all devices
                             </button>
                         </p>
                     </div>
@@ -126,13 +148,13 @@
             <!-- ── API KEY SCREEN ────────────────────────────────────────── -->
             <div id="screen-api-key" class="screen hidden">
                 <div class="screen-body">
-                    <h2 class="apikey-heading">
+                    <h1 class="apikey-heading">
                         Add your Claude API key<br />to continue
-                    </h2>
+                    </h1>
                     <div class="info-box">
                         Kifu-Sensei uses Claude AI to explain your moves. You
                         bring your own key —
-                        <strong>each game costs ~$0.03</strong>.
+                        <strong>each review costs a few cents, under $0.10</strong>.
                     </div>
                     <a
                         id="link-get-key"
@@ -145,7 +167,13 @@
                         <span class="btn-sub">(Opens Anthropic console)</span>
                     </a>
                     <div class="accordion">
-                        <button id="accordion-toggle" class="accordion-trigger">
+                        <button
+                            id="accordion-toggle"
+                            class="accordion-trigger"
+                            type="button"
+                            aria-expanded="false"
+                            aria-controls="accordion-body"
+                        >
                             <span>▾ What is an API key?</span>
                             <span
                                 id="accordion-chevron"
@@ -180,18 +208,41 @@
                             never shared.
                         </p>
                     </div>
-                    <button id="btn-save-key" class="btn btn--primary" disabled>
+                    <button
+                        id="btn-save-key"
+                        class="btn btn--primary"
+                        type="button"
+                        disabled
+                    >
                         Save &amp; Continue
                     </button>
-                    <p id="apikey-error" class="error-inline hidden"></p>
+                    <!--
+                        A way out. This was the only branch out of syncAuthState
+                        for a signed-in account with no key, and its single action
+                        meant a user who did not have a key to hand was stuck on
+                        it with nothing else to click. The website's equivalent
+                        gate has always been dismissible.
+                    -->
+                    <button id="btn-skip-key" class="btn-link" type="button">
+                        Skip for now
+                    </button>
+                    <p
+                        id="apikey-error"
+                        class="error-inline hidden"
+                        role="alert"
+                    ></p>
                 </div>
             </div>
 
             <!-- ── KEY SAVED SCREEN (shown right after saving a key) ─────── -->
             <div id="screen-key-saved" class="screen hidden">
                 <div class="screen-body screen-body--centered">
-                    <span class="welcome-check welcome-check--lg">✓</span>
-                    <h2 class="saved-heading">You're in!</h2>
+                    <span
+                        class="welcome-check welcome-check--lg"
+                        aria-hidden="true"
+                        >✓</span
+                    >
+                    <h1 class="saved-heading">You're in!</h1>
                     <p class="saved-lead">
                         Your API key is saved. Open a finished game on
                         online-go.com and Kifu-Sensei will turn the key moments
@@ -208,7 +259,7 @@
                 <div class="screen-body">
                     <div>
                         <p class="screen-label">Ready to review</p>
-                        <p id="config-game" class="screen-heading"></p>
+                        <h1 id="config-game" class="screen-heading"></h1>
                     </div>
 
                     <div class="field-row">
@@ -273,10 +324,30 @@
                         <p id="config-instruction-count" class="field-note"></p>
                     </div>
 
-                    <button id="btn-generate" class="btn btn--primary">
+                    <button
+                        id="btn-generate"
+                        class="btn btn--primary"
+                        type="button"
+                    >
                         Generate commentary
                     </button>
-                    <p id="config-error" class="error-inline hidden"></p>
+                    <!--
+                        The panel could read the account's commentary_config but
+                        never write it, so a config chosen here stayed on this
+                        device forever.
+                    -->
+                    <button
+                        id="btn-save-default"
+                        class="btn-link"
+                        type="button"
+                    >
+                        Save as my default
+                    </button>
+                    <p
+                        id="config-error"
+                        class="error-inline hidden"
+                        role="alert"
+                    ></p>
                 </div>
             </div>
 
@@ -284,12 +355,24 @@
             <div id="screen-generating" class="screen hidden">
                 <div class="screen-body">
                     <div>
-                        <p class="screen-heading">Analyzing your game…</p>
-                        <p id="gen-subtitle" class="gen-subtitle">
+                        <h1 class="screen-heading">Analyzing your game…</h1>
+                        <p
+                            id="gen-subtitle"
+                            class="gen-subtitle"
+                            role="status"
+                            aria-live="polite"
+                        >
                             Move 0 of 20 key moves
                         </p>
                     </div>
-                    <div class="progress-track">
+                    <div
+                        class="progress-track"
+                        role="progressbar"
+                        aria-label="Review progress"
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                        aria-valuenow="0"
+                    >
                         <div
                             id="progress-fill"
                             class="progress-fill"
@@ -321,8 +404,19 @@
                             </div>
                         </div>
                     </div>
-                    <button id="btn-cancel-generating" class="btn-link">
-                        Cancel
+                    <!--
+                        Not "Cancel". Nothing cancels a run: there is no cancel
+                        route, the pipeline runs to completion on the server and
+                        still saves its result. This only stops watching — and it
+                        used to leave the backend row holding the one-active-run
+                        slot, so the next attempt earned a 409.
+                    -->
+                    <button
+                        id="btn-cancel-generating"
+                        class="btn-link"
+                        type="button"
+                    >
+                        Stop watching
                     </button>
                 </div>
             </div>
@@ -330,7 +424,12 @@
             <!-- ── COMMENTARY SCREEN ─────────────────────────────────────── -->
             <div id="screen-commentary" class="screen hidden">
                 <div class="commentary-toolbar">
-                    <span id="commentary-count" class="commentary-count"></span>
+                    <span
+                        id="commentary-count"
+                        class="commentary-count"
+                        role="status"
+                        aria-live="polite"
+                    ></span>
                     <button id="btn-regenerate" class="btn-outline">
                         ↻ Regenerate
                     </button>
@@ -352,17 +451,60 @@
                 <footer class="commentary-footer">
                     <p id="commentary-stats" class="footer-age"></p>
                     <p class="footer-disclaimer">
-                        Kifu-Sensei analysis — values may differ from OGS's
-                        review.
+                        <!--
+                            Every review lands in the website's History — the job
+                            path calls _save_commentary exactly as the sync one
+                            does — but the panel never said so, and its own copy
+                            of a finished run is wiped on a browser restart.
+                        -->
+                        Saved to your History. Kifu-Sensei commentary is written
+                        by Claude — values may differ from OGS's review.
                     </p>
                 </footer>
+            </div>
+
+            <!-- ── HISTORY SCREEN ───────────────────────────────────────── -->
+            <!--
+                Every review already lands in the website's History — the job path
+                calls _save_commentary exactly like the sync one — but the panel
+                had no way to reach it, and chrome.storage.session is wiped on a
+                browser restart, so a finished panel review became recoverable
+                only from the website, which the panel never mentioned either.
+            -->
+            <div id="screen-history" class="screen hidden">
+                <div class="screen-body">
+                    <div class="history-head">
+                        <h1 class="screen-heading">Past reviews</h1>
+                        <button
+                            id="btn-history-back"
+                            class="btn-link"
+                            type="button"
+                        >
+                            Back
+                        </button>
+                    </div>
+                    <p
+                        id="history-status"
+                        class="field-note"
+                        role="status"
+                        aria-live="polite"
+                    ></p>
+                    <div id="history-list" class="history-list"></div>
+                    <button
+                        id="btn-history-more"
+                        class="btn btn-outline hidden"
+                        type="button"
+                    >
+                        Load more
+                    </button>
+                </div>
             </div>
 
             <!-- ── ERROR SCREEN ───────────────────────────────────────────── -->
             <div id="screen-error" class="screen hidden">
                 <div class="screen-body screen-body--centered">
-                    <span class="error-icon">⚠</span>
-                    <p id="error-msg" class="error-text"></p>
+                    <span class="error-icon" aria-hidden="true">⚠</span>
+                    <p id="error-msg" class="error-text" role="alert"></p>
                     <button id="btn-retry" class="btn btn--primary">
                         Try Again
                     </button>
@@ -373,12 +515,24 @@
             <!-- ── WAITING SCREEN (ready, no game loaded) ────────────────── -->
             <div id="screen-waiting" class="screen hidden">
                 <div class="screen-body screen-body--centered">
-                    <span class="waiting-icon">♟</span>
+                    <span class="waiting-icon" aria-hidden="true">♟</span>
                     <p id="waiting-text" class="waiting-text">
                         Open a finished game on OGS to get AI commentary.
                     </p>
                 </div>
             </div>
+
+            <!-- ── Footer (always visible) ──────────────────────────────────
+                 The panel's only outbound links were register/login, the
+                 Anthropic console and OGS — so its own error copy ("Check it
+                 under Settings on the website") pointed somewhere it could not
+                 open, and the privacy policy that has a section about this
+                 extension was unreachable from the extension. -->
+            <footer class="panel-footer">
+                <button id="link-settings" type="button">Settings</button>
+                <button id="link-history" type="button">History</button>
+                <button id="link-privacy" type="button">Privacy</button>
+            </footer>
         </div>
         <script type="module" src="./panel.ts"></script>
     </body>

@@ -1,4 +1,4 @@
-import { CommentaryHistoryItem } from "./commentary";
+import type { CommentaryHistoryItem } from "@shared/types";
 
 export interface JwtPayload {
     /** The user id, as a string — the backend issues it as the standard JWT `sub` claim. */

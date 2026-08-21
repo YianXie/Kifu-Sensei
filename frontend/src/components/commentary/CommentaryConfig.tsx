@@ -1,4 +1,13 @@
 import {
+    CUSTOM_INSTRUCTION_MAX,
+    MAX_TOKEN_MAX,
+    MAX_TOKEN_MIN,
+    NUM_COMMENTS_MAX,
+    NUM_COMMENTS_MIN,
+} from "@shared/commentary";
+import type { ClaudeModel, CommentaryLanguage } from "@shared/types";
+
+import {
     Divider,
     Field,
     Input,
@@ -6,14 +15,6 @@ import {
     Select,
     Textarea,
 } from "@/components/ui";
-import {
-    CUSTOM_INSTRUCTION_MAX,
-    MAX_TOKEN_MAX,
-    MAX_TOKEN_MIN,
-    NUM_COMMENTS_MAX,
-    NUM_COMMENTS_MIN,
-} from "@/constants/commentary/config";
-import type { ClaudeModel, CommentaryLanguage } from "@/types/commentary";
 
 const MODEL_OPTIONS: { value: ClaudeModel; label: string }[] = [
     { value: "claude-fable-5", label: "Claude Fable 5" },
@@ -59,6 +60,15 @@ export default function CommentaryConfig({
     lead = "Tune how the AI generates analysis for your game.",
     /** Keeps the two instances of this form from sharing element ids. */
     idPrefix = "cfg",
+    /**
+     * Moves in the game being reviewed, when there is one.
+     *
+     * There is no point asking for more comments than there are moves — the
+     * pipeline picks the N worst moves, so anything past the move count is
+     * silently ignored. The extension's config screen has always clamped to this;
+     * the website offered 100 comments on a 40-move game.
+     */
+    moveCount,
 }: {
     model: ClaudeModel;
     setModel: (value: ClaudeModel) => void;
@@ -73,7 +83,13 @@ export default function CommentaryConfig({
     heading?: string;
     lead?: string;
     idPrefix?: string;
+    moveCount?: number;
 }) {
+    const maxComments =
+        moveCount !== undefined && moveCount > 0
+            ? Math.min(NUM_COMMENTS_MAX, moveCount)
+            : NUM_COMMENTS_MAX;
+
     return (
         <Panel heading={heading} lead={lead}>
             <Divider spacing="20px" />
@@ -113,20 +129,24 @@ export default function CommentaryConfig({
                 <Field
                     label="Number of comments"
                     htmlFor={`${idPrefix}-num-comments`}
-                    hint="Recommended: 15-30"
+                    hint={
+                        moveCount !== undefined && moveCount > 0
+                            ? `${NUM_COMMENTS_MIN}–${maxComments} (this game has ${moveCount} moves). Recommended: 15-30`
+                            : "Recommended: 15-30"
+                    }
                 >
                     <Input
                         id={`${idPrefix}-num-comments`}
                         type="number"
                         mono
                         min={NUM_COMMENTS_MIN}
-                        max={NUM_COMMENTS_MAX}
+                        max={maxComments}
                         value={numComments}
                         onChange={(event) => {
                             const next = parseBoundedInt(
                                 event.target.value,
                                 NUM_COMMENTS_MIN,
-                                NUM_COMMENTS_MAX
+                                maxComments
                             );
                             if (next !== undefined) {
                                 setNumComments(next);
@@ -138,7 +158,7 @@ export default function CommentaryConfig({
                 <Field
                     label="Max token"
                     htmlFor={`${idPrefix}-max-token`}
-                    hint="Recommended: 512-2048"
+                    hint={`${MAX_TOKEN_MIN}–${MAX_TOKEN_MAX} per comment. Recommended: 512-2048`}
                 >
                     <Input
                         id={`${idPrefix}-max-token`}
@@ -176,6 +196,9 @@ export default function CommentaryConfig({
                                 setCustomInstruction(event.target.value)
                             }
                         />
+                        <p className="ks-field__hint" aria-live="polite">
+                            {customInstruction.length}/{CUSTOM_INSTRUCTION_MAX}
+                        </p>
                     </Field>
                 </div>
             </div>

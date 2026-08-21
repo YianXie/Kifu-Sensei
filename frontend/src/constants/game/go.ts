@@ -1,1 +1,0 @@
-export const GTP_LETTERS = "ABCDEFGHJKLMNOPQRSTUVWXYZ".split("");

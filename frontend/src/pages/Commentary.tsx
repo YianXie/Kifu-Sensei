@@ -1,48 +1,50 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { toast } from "react-toastify";
 
-import axios from "axios";
-
-import api from "@/api";
-import CommentaryConfig from "@/components/commentary/CommentaryConfig";
-import SgfDropzone from "@/components/commentary/SgfDropzone";
-import CommentaryCard from "@/components/game/CommentaryCard";
-import GameViewer from "@/components/game/GameViewer";
-import { Button, EmptyState, Icon, Panel, Spinner } from "@/components/ui";
-import { ENDPOINTS } from "@/constants/global/endpoints";
-import { useAuth } from "@/contexts/AuthContext";
-import { usePageTitle } from "@/hooks/usePageTitle";
-import {
-    type ClaudeModel,
-    CommentaryLanguage,
-    type CommentaryResponse,
-    readCommentaryConfig,
-} from "@/types/commentary";
-import type { GameMove } from "@/types/game";
+import { CLAUDE_MODEL_LABELS, readCommentaryConfig } from "@shared/commentary";
 import {
     type CommentarySeverity,
     colorForTurn,
     coordinateForTurn,
     severityForDelta,
-} from "@/utils/commentary";
-import { getCommentaryError } from "@/utils/errorFormatting";
+} from "@shared/commentary";
+import { downloadAnnotatedSgf } from "@shared/download";
+import {
+    type ClaudeModel,
+    CommentaryLanguage,
+    type CommentaryResponse,
+} from "@shared/types";
+import type { GameMove } from "@shared/types";
+
+import CommentaryConfig from "@/components/commentary/CommentaryConfig";
+import SgfDropzone from "@/components/commentary/SgfDropzone";
+import CommentaryCard from "@/components/game/CommentaryCard";
+import GameViewer from "@/components/game/GameViewer";
+import { Button, EmptyState, Panel, Progress, Spinner } from "@/components/ui";
+import { useAuth } from "@/contexts/AuthContext";
+import { useCommentaryJob } from "@/hooks/useCommentaryJob";
+import { usePageTitle } from "@/hooks/usePageTitle";
 import { readPlayStoneSound } from "@/utils/preferences";
 import { toTitleCase } from "@/utils/string";
-
-/** The stages a review moves through, in order. */
-const PIPELINE_STEPS = [
-    "Reading the SGF",
-    "KataGo first pass — every move scanned",
-    "Second pass on the key positions",
-    "Claude writing the commentary",
-];
 
 const REVIEW_BOARD_SIZE = 460;
 const REVIEW_COMMENT_PANEL_HEIGHT = 196;
 
 function isSgfFile(file: File) {
     return file.name.toLowerCase().endsWith(".sgf");
+}
+
+/**
+ * Roughly how many moves a record contains, for bounding the comment count.
+ *
+ * Counts move properties rather than parsing: this only has to be close enough to
+ * stop the form offering 100 comments on a 40-move game, and the backend clamps to
+ * what it actually finds either way. Handicap stones use `AB`/`AW`, not `B`/`W`, so
+ * they are correctly excluded.
+ */
+function countMoves(sgf: string): number {
+    return (sgf.match(/;[BW]\[/g) ?? []).length;
 }
 
 export default function Commentary() {
@@ -56,9 +58,35 @@ export default function Commentary() {
     const defaultConfig = readCommentaryConfig(userSettings?.preferences);
 
     const [file, setFile] = useState<File | null>(null);
+    const [moveCount, setMoveCount] = useState<number | undefined>(undefined);
     const [error, setError] = useState(false);
-    const [isLoading, setIsLoading] = useState(false);
     const [result, setResult] = useState<CommentaryResponse | null>(null);
+
+    const {
+        isRunning,
+        progress,
+        isAttached,
+        start: startJob,
+        stopWatching,
+    } = useCommentaryJob({
+        onResult: setResult,
+        onError: (error) => {
+            if (error.code === "no_api_key") {
+                toast.error(error.message);
+                // The key was removed after this page loaded, so the guard screen
+                // below did not catch it — send them where they can fix it.
+                navigate("/setup-api-key");
+                return;
+            }
+            // The pipeline saves its result server-side whether or not this client
+            // is still watching, so a failure to *watch* is not a failure to run.
+            toast.error(
+                error.detail
+                    ? `${error.message} ${error.detail}`
+                    : error.message
+            );
+        },
+    });
     const [model, setModel] = useState<ClaudeModel>(defaultConfig.model);
     const [language, setLanguage] = useState<CommentaryLanguage>(
         defaultConfig.language
@@ -70,7 +98,6 @@ export default function Commentary() {
     const [customInstruction, setCustomInstruction] = useState<string>(
         defaultConfig.custom_instruction
     );
-    const abortControllerRef = useRef<AbortController | null>(null);
 
     const commentsByTurn = useMemo(() => {
         const map: Record<number, string> = {};
@@ -116,6 +143,12 @@ export default function Commentary() {
         }
         setError(false);
         setFile(uploadedFile);
+        // Read once here so the config form can bound itself to the real game,
+        // rather than offering more comments than the record has moves.
+        void uploadedFile
+            .text()
+            .then((text) => setMoveCount(countMoves(text)))
+            .catch(() => setMoveCount(undefined));
     }
 
     function handleDownloadSGF() {
@@ -123,118 +156,90 @@ export default function Commentary() {
             toast.error("No annotated sgf file content found in the frontend!");
             return;
         }
-        const blob = new Blob([result.annotated_sgf_content], {
-            type: "text/plain",
-        });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement("a");
-        anchor.href = url;
         // `result.sgf_file_name` is what the backend actually annotated — unlike
         // `file`, it's also there when viewing a result loaded from History, where
-        // nothing was ever uploaded in this session.
-        const baseName = result.sgf_file_name || file?.name || "annotated.sgf";
-        anchor.download = baseName.toLowerCase().endsWith(".sgf")
-            ? baseName
-            : `${baseName}.sgf`;
-        anchor.click();
-        URL.revokeObjectURL(url);
+        // nothing was ever uploaded in this session. The helper suffixes it with
+        // `_annotated`; this screen used to hand the browser the uploaded name
+        // verbatim, so downloading landed on top of the file just picked.
+        downloadAnnotatedSgf(
+            result.annotated_sgf_content,
+            result.sgf_file_name || file?.name || "commentary"
+        );
     }
 
     async function handleGenerate() {
-        const controller = new AbortController();
-        abortControllerRef.current = controller;
-        try {
-            setIsLoading(true);
-            const sgfContent = await file?.text();
-            const sgfFileName = file?.name;
-            const { data } = await api.post<CommentaryResponse>(
-                ENDPOINTS.commentary,
-                {
-                    sgf_file_name: sgfFileName,
-                    sgf_content: sgfContent,
-                    model,
-                    language,
-                    num_comments: numComments,
-                    max_token: maxToken,
-                    custom_instruction: customInstruction,
-                },
-                { signal: controller.signal }
-            );
-            setResult(data);
-        } catch (err) {
-            if (axios.isCancel(err)) {
-                // User-initiated: the request may still be running server-side
-                // (aborting the client fetch does not stop the pipeline once
-                // it's started), so the run could still land in History shortly.
-                toast.info(
-                    "Cancelled. If the review had already started, it may still finish — check History in a bit."
-                );
-                return;
-            }
-            console.error("Error generating commentary:", err);
-            const { code, message } = getCommentaryError(err);
-            if (code === "no_api_key") {
-                toast.error(message);
-                // The key was removed after this page loaded, so the guard screen
-                // above didn't catch it — send them where they can fix it.
-                navigate("/setup-api-key");
-            } else if (code === null) {
-                // Unclassified — most often a dropped connection rather than a
-                // failure the backend reported. The pipeline runs to completion and
-                // saves its result server-side independent of whether this response
-                // ever arrives, so the run may already be sitting in History even
-                // though this request failed.
-                toast.error(
-                    `${message} If your review had already started, check History — it may already be there.`
-                );
-            } else {
-                toast.error(message);
-            }
-        } finally {
-            abortControllerRef.current = null;
-            setIsLoading(false);
+        const sgfContent = await file?.text();
+        if (file === null || sgfContent === undefined) {
+            return;
         }
+        await startJob({
+            sgf_file_name: file.name,
+            sgf_content: sgfContent,
+            model,
+            language,
+            num_comments: numComments,
+            max_token: maxToken,
+            custom_instruction: customInstruction,
+        });
     }
 
     // ── Generating ────────────────────────────────────────────────────────
-    if (isLoading) {
+    if (isRunning) {
+        // Two stages, and only the second has a size: KataGo scans every move and
+        // then re-reads the worst ones before the first comment is written, so
+        // `total` stays 0 until that is done. Saying so beats a bar that pretends.
         return (
             <div className="ks-generating">
                 <Spinner size={48} />
                 <div style={{ textAlign: "center" }}>
                     <h1 className="ks-page__title ks-page__title--sm">
-                        Generating commentary…
+                        {isAttached
+                            ? "Picking up your review…"
+                            : "Generating commentary…"}
                     </h1>
-                    <p className="ks-page__lead">
-                        This may take a minute depending on game length.
+                    <p
+                        className="ks-page__lead"
+                        role="status"
+                        aria-live="polite"
+                    >
+                        {progress === null
+                            ? "Finding the key moments…"
+                            : `Move ${progress.done} of ${progress.total} key moments`}
                     </p>
                 </div>
 
                 <Panel style={{ width: "100%" }}>
-                    <span className="ks-eyebrow">Pipeline</span>
-                    <div className="ks-pipeline">
-                        {PIPELINE_STEPS.map((step) => (
-                            <div className="ks-pipeline__step" key={step}>
-                                <Icon name="radio_button_unchecked" size="sm" />
-                                <span>{step}</span>
-                            </div>
-                        ))}
-                    </div>
+                    <Progress
+                        label="Review progress"
+                        value={progress?.done}
+                        max={progress?.total}
+                        valueText={
+                            progress === null
+                                ? "Finding the key moments"
+                                : `Move ${progress.done} of ${progress.total}`
+                        }
+                    />
                     <p
                         className="ks-page__meta"
                         style={{ marginTop: "var(--space-9)" }}
                     >
-                        Stages run in order; progress is not reported until the
-                        review finishes.
+                        {isAttached
+                            ? "A review was already running on your account — this is that one."
+                            : "You can close this tab; the review keeps going and lands in History."}
                     </p>
                 </Panel>
 
                 <Button
                     variant="outline"
                     tone="danger"
-                    onClick={() => abortControllerRef.current?.abort()}
+                    onClick={() => {
+                        stopWatching();
+                        toast.info(
+                            "Stopped watching. The review keeps running and will appear in History."
+                        );
+                    }}
                 >
-                    Cancel
+                    Stop watching
                 </Button>
             </div>
         );
@@ -277,6 +282,21 @@ export default function Commentary() {
                             {boardSize}×{boardSize} · {moves.length} moves ·{" "}
                             {commentCount} comments ·{" "}
                             {toTitleCase(result.language)}
+                            {/*
+                                What the run actually cost, and which model wrote
+                                it. Both are typed and persisted, and the panel has
+                                always shown them — the website rendered neither,
+                                so it never told the user what they had spent.
+                            */}
+                            {result.model
+                                ? ` · ${CLAUDE_MODEL_LABELS[result.model]}`
+                                : ""}
+                            {result.usage
+                                ? ` · ${(
+                                      result.usage.input_tokens +
+                                      result.usage.output_tokens
+                                  ).toLocaleString()} tokens`
+                                : ""}
                         </p>
                     </div>
                     <div style={{ display: "flex", gap: "var(--space-8)" }}>
@@ -291,6 +311,7 @@ export default function Commentary() {
                             onClick={() => {
                                 setResult(null);
                                 setFile(null);
+                                setMoveCount(undefined);
                                 setCurrentMoveIndex(0);
                             }}
                         >
@@ -379,7 +400,7 @@ export default function Commentary() {
                     )}
                     <p className="ks-upload__note">
                         Only .sgf is supported. A 20-move commentary costs less
-                        than $0.10 against your own key.
+                        a few cents, under $0.10, against your own key.
                     </p>
                 </div>
 
@@ -395,6 +416,7 @@ export default function Commentary() {
                         setMaxToken={setMaxToken}
                         customInstruction={customInstruction}
                         setCustomInstruction={setCustomInstruction}
+                        moveCount={moveCount}
                     />
                 </div>
             </div>

@@ -1,0 +1,24 @@
+{
+    "compilerOptions": {
+        "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo",
+        "target": "ES2022",
+        "module": "ESNext",
+        "lib": ["ES2022", "DOM"],
+        /* Node types live here and only here. The sources project deliberately has
+           `types: []` — these modules run in a browser tab and an extension page, so
+           a `node:fs` import in one of them would break both consumers at runtime.
+           Only the tests may reach for the filesystem, and only to read a sibling
+           project's source. */
+        "types": ["node"],
+        "skipLibCheck": true,
+        "moduleResolution": "bundler",
+        "verbatimModuleSyntax": true,
+        "moduleDetection": "force",
+        "noEmit": true,
+        "strict": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noFallthroughCasesInSwitch": true
+    },
+    "include": ["src/**/*.test.ts"]
+}

@@ -37,5 +37,18 @@ export const JOB_STATUS_KEY = "commentary_job_status";
 /** Last-used commentary configuration, so Regenerate can reuse it. */
 export const CONFIG_STORAGE_KEY = "commentary_config";
 
+/**
+ * A snapshot of the account's own settings, cached where every extension context
+ * can read it.
+ *
+ * Only the panel can fetch `/auth/user/settings/`; the service worker and the
+ * injected button cannot (the worker has no reason to hold a session's settings,
+ * and a content script's fetch would be blocked by CORS). Without a cache the
+ * worker fell back to `DEFAULT_COMMENTARY_CONFIG` for one-click reviews — so an
+ * account's carefully chosen defaults were ignored by the OGS button — and the
+ * button had no way to know whether a key was even set.
+ */
+export const ACCOUNT_STATE_KEY = "account_state";
+
 export const OGS_ORIGIN = "https://online-go.com";
 export const OGS_GAMES_URL = `${OGS_ORIGIN}/observe-games/`;

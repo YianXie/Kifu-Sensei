@@ -1,3 +1,5 @@
+import { makeEndpoints } from "@shared/endpoints";
+
 import { OGS_ORIGIN } from "./constants";
 
 // Base URL of the Kifu-Sensei backend. Mirrors the web app's convention so the
@@ -11,19 +13,11 @@ export const FRONTEND_URL =
     import.meta.env.VITE_FRONTEND_URL ?? "http://localhost:5173";
 
 export const ENDPOINTS = {
-    tokenRefresh: `${API_URL}/auth/token/refresh/`,
-    logout: `${API_URL}/auth/logout/`,
-    userSettings: `${API_URL}/auth/user/settings/`,
-    claudeApiKey: `${API_URL}/auth/user/claude-api-key/`,
-
-    // Async commentary. The extension uses these rather than the synchronous
-    // `/api/commentary/` the web app calls: a Manifest V3 service worker is killed
-    // when a single fetch response takes more than 30 seconds, so a multi-minute
-    // request cannot be held open. Submitting a job and polling it keeps every
-    // request short and yields real progress.
-    commentaryJobs: `${API_URL}/api/commentary/jobs/`,
-    commentaryJob: (jobId: string) =>
-        `${API_URL}/api/commentary/jobs/${encodeURIComponent(jobId)}/`,
+    // Every Kifu-Sensei route, from the same factory the web app uses. The panel
+    // does not call all of them, but declaring the full table is what lets the two
+    // surfaces stay in step — the extension's own list used to omit the history
+    // routes entirely, which is why the panel never grew a history screen.
+    ...makeEndpoints(API_URL),
 
     // OGS is unauthenticated for finished games. The SGF endpoint answers 403
     // ("Sign in to download SGF of in-progress games") while a game is still being

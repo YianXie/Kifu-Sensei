@@ -2,9 +2,10 @@ import Board from "@sabaki/go-board";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { GTP_LETTERS } from "@/constants/game/go";
+import { GTP_LETTERS } from "@shared/go";
+import { type GameMove, isValidMove } from "@shared/types";
+
 import { DEFAULT_BOARD_CANVAS_SIZE } from "@/constants/game/goBoard";
-import { type GameMove, isValidMove } from "@/types/game";
 
 export default function GoBoard({
     boardSize,

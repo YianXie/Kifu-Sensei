@@ -49,6 +49,17 @@ skip() {
 
 echo "🚀 Running local CI checks..."
 
+# ── Shared ────────────────────────────────────────────────────────────────────
+# First: both front ends compile these sources, so a failure here explains a
+# failure in either of the two jobs below.
+section "Shared"
+
+run "shared: install"       shared npm ci
+run "shared: eslint"        shared npm run lint
+run "shared: prettier"      shared npm run format:check
+run "shared: typecheck"     shared npm run typecheck
+run "shared: vitest"        shared npm test
+
 # ── Backend ───────────────────────────────────────────────────────────────────
 section "Backend"
 
@@ -74,7 +85,28 @@ run "extension: install"    extension npm ci
 run "extension: eslint"     extension npm run lint
 run "extension: prettier"   extension npm run format:check
 run "extension: vitest"     extension npm test
+
+# `npm run build` regenerates extension/manifest.json in *production* form, which
+# silently strips the localhost host permissions a `npm run build:dev` load-unpacked
+# session depends on. Nothing about running the checks should break the extension a
+# developer already has loaded in Chrome, so put back whatever was there.
+MANIFEST="extension/manifest.json"
+MANIFEST_BACKUP=""
+if [ -f "$MANIFEST" ]; then
+    MANIFEST_BACKUP="$(mktemp)"
+    cp "$MANIFEST" "$MANIFEST_BACKUP"
+fi
+
 run "extension: build"      extension npm run build
+
+if [ -n "$MANIFEST_BACKUP" ]; then
+    if cmp -s "$MANIFEST_BACKUP" "$MANIFEST"; then
+        rm -f "$MANIFEST_BACKUP"
+    else
+        mv "$MANIFEST_BACKUP" "$MANIFEST"
+        echo -e "${DIM}  restored extension/manifest.json (the build had replaced it with the production one)${NC}"
+    fi
+fi
 
 # ── Security ──────────────────────────────────────────────────────────────────
 section "Security"

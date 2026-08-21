@@ -407,9 +407,20 @@ def create_commentary_job(
         # rejected this insert — enforced at the database, not just checked-then-
         # inserted, so two near-simultaneous requests can't both slip past a SELECT.
         session.rollback()
+        # Report *which* run holds the slot. Without it the caller knows only that
+        # it cannot start one, so its only move is to retry — and earn this same
+        # 409 — where what it actually wants is to attach to the run in progress.
+        # This is also how a review begun on one surface becomes visible on the
+        # other: the web app and the extension share the slot, not the client state.
+        active = session.exec(
+            select(CommentaryJob)
+            .where(CommentaryJob.user_id == user_id)
+            .where(CommentaryJob.status.in_(("queued", "running")))
+        ).first()
         raise ActiveJobExistsError(
             "You already have a commentary review in progress. Wait for it to finish "
-            "before starting another."
+            "before starting another.",
+            job_id=active.id if active is not None else None,
         ) from None
     session.refresh(job)
     job_id = job.id

@@ -2,8 +2,9 @@ import { render, screen } from "@testing-library/react";
 
 import { describe, expect, it } from "vitest";
 
+import type { GameMove } from "@shared/types";
+
 import GoBoard from "@/components/game/GoBoard";
-import type { GameMove } from "@/types/game";
 
 function setup(overrides: Partial<Parameters<typeof GoBoard>[0]> = {}) {
     render(

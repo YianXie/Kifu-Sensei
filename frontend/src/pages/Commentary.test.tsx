@@ -3,15 +3,17 @@ import userEvent from "@testing-library/user-event";
 
 import { MemoryRouter } from "react-router";
 
-import axios from "axios";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { CommentaryResponse } from "@shared/types";
 
 import { useAuth } from "@/contexts/AuthContext";
 import Commentary from "@/pages/Commentary";
-import type { CommentaryResponse } from "@/types/commentary";
 
 vi.mock("@/api", () => ({
-    default: { post: vi.fn() },
+    // The page submits a job and then polls it, so both verbs are part of the
+    // surface under test now.
+    default: { post: vi.fn(), get: vi.fn() },
 }));
 
 vi.mock("react-toastify", () => ({
@@ -22,6 +24,7 @@ vi.mock("@/contexts/AuthContext", () => ({ useAuth: vi.fn() }));
 
 const api = (await import("@/api")).default as unknown as {
     post: ReturnType<typeof vi.fn>;
+    get: ReturnType<typeof vi.fn>;
 };
 const { toast } = (await import("react-toastify")) as unknown as {
     toast: {
@@ -88,49 +91,124 @@ beforeEach(() => {
 });
 
 describe("generating commentary", () => {
-    it("shows a Cancel button while a request is in flight", async () => {
-        api.post.mockReturnValue(new Promise(() => {})); // never resolves
+    /** A poll answer for a run that has not finished. */
+    function polling(progress = { done: 0, total: 0 }) {
+        return {
+            data: {
+                job_id: "job-1",
+                status: "running",
+                progress,
+                result: null,
+                error: null,
+            },
+        };
+    }
+
+    it("submits a job rather than holding one request open", async () => {
+        api.post.mockResolvedValue({ data: { job_id: "job-1" } });
+        api.get.mockResolvedValue(polling());
+        renderPage();
+        await uploadFile();
+
+        await userEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+        await screen.findByText("Finding the key moments…");
+        expect(api.post).toHaveBeenCalledWith(
+            expect.stringContaining("/api/commentary/jobs/"),
+            expect.objectContaining({ sgf_file_name: "game.sgf" })
+        );
+    });
+
+    it("reports the backend's real progress once it has a total", async () => {
+        api.post.mockResolvedValue({ data: { job_id: "job-1" } });
+        api.get.mockResolvedValue(polling({ done: 7, total: 20 }));
         renderPage();
         await uploadFile();
 
         await userEvent.click(screen.getByRole("button", { name: "Generate" }));
 
         expect(
-            await screen.findByRole("button", { name: "Cancel" })
+            await screen.findByText("Move 7 of 20 key moments")
         ).toBeInTheDocument();
+        const bar = await screen.findByRole("progressbar", {
+            name: "Review progress",
+        });
+        expect(bar).toHaveAttribute("aria-valuenow", "35");
     });
 
-    it("aborts the request and returns to the upload screen when cancelled", async () => {
-        let capturedSignal: AbortSignal | undefined;
-        api.post.mockImplementation(
-            (
-                _url: string,
-                _body: unknown,
-                config?: { signal?: AbortSignal }
-            ) => {
-                capturedSignal = config?.signal;
-                return new Promise((_resolve, reject) => {
-                    config?.signal?.addEventListener("abort", () => {
-                        reject(new axios.CanceledError("canceled"));
-                    });
-                });
-            }
-        );
+    it("stops watching without claiming the run was cancelled", async () => {
+        api.post.mockResolvedValue({ data: { job_id: "job-1" } });
+        api.get.mockResolvedValue(polling());
         renderPage();
         await uploadFile();
         await userEvent.click(screen.getByRole("button", { name: "Generate" }));
 
         await userEvent.click(
-            await screen.findByRole("button", { name: "Cancel" })
+            await screen.findByRole("button", { name: "Stop watching" })
         );
 
-        expect(capturedSignal?.aborted).toBe(true);
         expect(
             await screen.findByRole("button", { name: "Generate" })
         ).toBeInTheDocument();
+        // Nothing can stop the run server-side, so the copy must not imply it did.
+        expect(toast.info).toHaveBeenCalledWith(
+            expect.stringContaining("keeps running")
+        );
     });
 
-    it("points the user at History when an unclassified error occurs", async () => {
+    // Both surfaces share one active-run slot, so a 409 here usually means the
+    // extension is already reviewing something. Attaching beats reporting a
+    // conflict the user can do nothing about.
+    it("attaches to a run already going on the account", async () => {
+        api.post.mockRejectedValue({
+            response: {
+                status: 409,
+                data: {
+                    code: "job_already_running",
+                    detail: "Already running.",
+                    job_id: "other-surface-job",
+                },
+            },
+        });
+        api.get.mockResolvedValue(polling({ done: 3, total: 20 }));
+        renderPage();
+        await uploadFile();
+
+        await userEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+        expect(
+            await screen.findByText("Picking up your review…")
+        ).toBeInTheDocument();
+        expect(api.get).toHaveBeenCalledWith(
+            expect.stringContaining("other-surface-job")
+        );
+        expect(toast.error).not.toHaveBeenCalled();
+    });
+
+    it("renders the result the job finished with", async () => {
+        api.post.mockResolvedValue({ data: { job_id: "job-1" } });
+        api.get.mockResolvedValue({
+            data: {
+                job_id: "job-1",
+                status: "succeeded",
+                progress: { done: 1, total: 1 },
+                result: RESULT,
+                error: null,
+            },
+        });
+        renderPage();
+        await uploadFile();
+
+        await userEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+        expect(
+            await screen.findByRole("button", {
+                name: "Download annotated SGF file",
+            })
+        ).toBeInTheDocument();
+    });
+
+    it("explains a submission that never reached the backend", async () => {
         api.post.mockRejectedValue(new Error("Network Error"));
         renderPage();
         await uploadFile();
@@ -138,9 +216,7 @@ describe("generating commentary", () => {
         await userEvent.click(screen.getByRole("button", { name: "Generate" }));
 
         await screen.findByRole("button", { name: "Generate" });
-        expect(toast.error).toHaveBeenCalledWith(
-            expect.stringContaining("History")
-        );
+        expect(toast.error).toHaveBeenCalled();
     });
 });
 
@@ -188,6 +264,35 @@ describe("downloading the annotated SGF", () => {
         );
 
         expect(anchorClicks).toHaveLength(1);
-        expect(anchorClicks[0].download).toBe("history-game.sgf");
+        // Suffixed, not verbatim: handing the browser the uploaded name meant the
+        // annotated record downloaded on top of the file the user had just picked.
+        expect(anchorClicks[0].download).toBe("history-game_annotated.sgf");
+    });
+
+    it("saves the record as an SGF rather than as plain text", async () => {
+        renderWithResult(true);
+
+        const blobs: Blob[] = [];
+        const realCreateObjectURL = URL.createObjectURL;
+        vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
+            blobs.push(blob as Blob);
+            return "blob:stub";
+        });
+        vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+        const realCreateElement = document.createElement.bind(document);
+        vi.spyOn(document, "createElement").mockImplementation(
+            (tag: string, options?: ElementCreationOptions) => {
+                const el = realCreateElement(tag, options);
+                if (tag === "a") (el as HTMLAnchorElement).click = vi.fn();
+                return el;
+            }
+        );
+
+        await userEvent.click(
+            screen.getByRole("button", { name: "Download annotated SGF file" })
+        );
+
+        expect(blobs[0].type).toBe("application/x-go-sgf");
+        URL.createObjectURL = realCreateObjectURL;
     });
 });

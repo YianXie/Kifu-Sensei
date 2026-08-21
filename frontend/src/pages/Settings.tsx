@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { toast } from "react-toastify";
+
+import { readCommentaryConfig } from "@shared/commentary";
+import { type ClaudeModel, CommentaryLanguage } from "@shared/types";
 
 import api from "@/api";
 import CommentaryConfig from "@/components/commentary/CommentaryConfig";
@@ -19,11 +23,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import type { UserSettings } from "@/types/auth";
-import {
-    type ClaudeModel,
-    CommentaryLanguage,
-    readCommentaryConfig,
-} from "@/types/commentary";
 import { type ThemePreference, isThemePreference } from "@/types/theme";
 import { getErrorMessage } from "@/utils/errorFormatting";
 import { readPlayStoneSound } from "@/utils/preferences";
@@ -44,7 +43,9 @@ const THEME_OPTIONS = [
 export default function Settings() {
     usePageTitle("Settings");
 
-    const { user, userSettings, updateUserSettings, logout } = useAuth();
+    const { user, userSettings, updateUserSettings, updateUserEmail, logout } =
+        useAuth();
+    const navigate = useNavigate();
     const { preference: themePreference, setPreference: setThemePreference } =
         useTheme();
 
@@ -222,8 +223,14 @@ export default function Settings() {
                 email: newEmail,
                 password: emailPassword,
             });
-            toast.success("Email updated. Please log in again.");
-            logout();
+            // No sign-out: update-email does not bump token_version, so this
+            // session is still valid. Calling logout() here *did* revoke it —
+            // and every other device with it, including the extension — for a
+            // change the backend deliberately does not treat as a revocation.
+            updateUserEmail(newEmail.trim().toLowerCase());
+            setNewEmail("");
+            setEmailPassword("");
+            toast.success("Email updated.");
         } catch (err) {
             setEmailError(getErrorMessage(err, "Failed to update email."));
         } finally {
@@ -244,10 +251,15 @@ export default function Settings() {
                 current_password: currentPassword,
                 new_password: newPassword,
             });
-            toast.success("Password updated.");
             setCurrentPassword("");
             setNewPassword("");
             setConfirmPassword("");
+            // update-password *does* bump token_version, so every token this
+            // account holds is already dead — including the extension's. Saying
+            // so and signing out beats leaving the user on a page whose next
+            // request 401s them to /login with no explanation.
+            toast.success("Password updated. Please sign in again.");
+            logout();
         } catch (err) {
             setPasswordError(
                 getErrorMessage(err, "Failed to update password.")
@@ -552,6 +564,39 @@ export default function Settings() {
                                 {themeLoading ? "Updating…" : "Update theme"}
                             </Button>
                         </div>
+                    </section>
+
+                    <Divider spacing="8px" />
+
+                    {/*
+                        The website never mentioned the extension anywhere a user
+                        would look — not on Home, not here, not in the footer. The
+                        only page that names it is /extension-ready, which you
+                        cannot reach without already having it installed.
+                    */}
+                    <section className="ks-form-stack">
+                        <h2 className="ks-heading" style={{ margin: 0 }}>
+                            Browser extension
+                        </h2>
+                        <p className="ks-page__lead">
+                            Kifu-Sensei has a Chrome side panel that reviews
+                            your finished online-go.com games in place. It
+                            shares this account, so your default commentary
+                            config and your history are the same on both.
+                        </p>
+                        <div className="ks-row ks-row--wrap">
+                            <Button
+                                variant="outline"
+                                startIcon="extension"
+                                onClick={() => navigate("/extension-ready")}
+                            >
+                                Connect the extension
+                            </Button>
+                        </div>
+                        <p className="ks-page__meta">
+                            Already installed? This signs it in with a fresh
+                            token for this account.
+                        </p>
                     </section>
 
                     <Divider spacing="8px" />

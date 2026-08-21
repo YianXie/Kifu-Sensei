@@ -1,6 +1,8 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import { MemoryRouter } from "react-router";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ENDPOINTS } from "@/constants/global/endpoints";
@@ -53,11 +55,15 @@ async function renderSettingsOnCommentaryTab() {
     api.get.mockResolvedValue({ data: SETTINGS });
 
     render(
-        <AuthProvider>
-            <ThemeProvider>
-                <Settings />
-            </ThemeProvider>
-        </AuthProvider>
+        // Settings is a routed page and now links to /extension-ready, so it needs
+        // a router in the test the same way it has one in the app.
+        <MemoryRouter>
+            <AuthProvider>
+                <ThemeProvider>
+                    <Settings />
+                </ThemeProvider>
+            </AuthProvider>
+        </MemoryRouter>
     );
 
     await waitFor(() =>

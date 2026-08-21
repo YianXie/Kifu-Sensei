@@ -1,4 +1,43 @@
 import {
+    CLAUDE_MODELS,
+    CLAUDE_MODEL_LABELS,
+    COLOR_LABELS,
+    COMMENTARY_LANGUAGES,
+    COMMENTARY_LANGUAGE_LABELS,
+    CUSTOM_INSTRUCTION_MAX,
+    type CommentaryConfig,
+    DEFAULT_COMMENTARY_CONFIG,
+    MAX_TOKEN_MAX,
+    MAX_TOKEN_MIN,
+    NUM_COMMENTS_MAX,
+    NUM_COMMENTS_MIN,
+    SEVERITY_LABELS,
+    clampCommentaryConfig,
+    colorForTurn,
+    coordinateForTurn,
+    formatDelta,
+    looksLikeApiKey,
+    readCommentaryConfig,
+    severityForDelta,
+} from "@shared/commentary";
+import { downloadAnnotatedSgf } from "@shared/download";
+import {
+    ERROR_ACTION_LABELS,
+    type ErrorAction,
+    resolveCommentaryError,
+} from "@shared/errors";
+import type {
+    ClaudeModel,
+    CommentaryApiError,
+    CommentaryHistoryItem,
+    CommentaryItem,
+    CommentaryLanguage,
+    CommentaryResponse,
+    GameMove,
+    UserCommentaryHistory,
+} from "@shared/types";
+
+import {
     authedFetch,
     clearStoredAuth,
     getCurrentAuth,
@@ -6,47 +45,23 @@ import {
     readErrorResponse,
     setCurrentAuth,
 } from "../src/shared/api";
-import {
-    CLAUDE_MODELS,
-    CLAUDE_MODEL_LABELS,
-    COMMENTARY_LANGUAGES,
-    COMMENTARY_LANGUAGE_LABELS,
-    CUSTOM_INSTRUCTION_MAX,
-    type ClaudeModel,
-    type CommentaryConfig,
-    type CommentaryLanguage,
-    DEFAULT_COMMENTARY_CONFIG,
-    MAX_TOKEN_MAX,
-    MAX_TOKEN_MIN,
-    NUM_COMMENTS_MAX,
-    NUM_COMMENTS_MIN,
-    clampCommentaryConfig,
-    colorForTurn,
-    formatDelta,
-    readCommentaryConfig,
-    severityForDelta,
-} from "../src/shared/commentary";
 import { ENDPOINTS, FRONTEND_URL } from "../src/shared/config";
 import {
+    ACCOUNT_STATE_KEY,
     AUTH_STORAGE_KEY,
     CONFIG_STORAGE_KEY,
     JOB_SESSION_KEY,
     OGS_GAMES_URL,
     REVOKED_AUTH_KEY,
 } from "../src/shared/constants";
-import { type StoredJob, readJob } from "../src/shared/jobs";
+import { type StoredJob, clearJob, readJob } from "../src/shared/jobs";
 import {
     type OgsGameCheck,
     checkOgsGame,
     parseOgsGameId,
 } from "../src/shared/ogs";
-import type {
-    CommentaryItem,
-    CommentaryResponse,
-    ExtensionAuthObject,
-    GameMove,
-    PanelErrorCode,
-} from "../src/shared/types";
+import type { AccountState, ExtensionAuthObject } from "../src/shared/types";
+import { adoptAccountTheme, initTheme } from "./theme";
 
 // Frontend origins where the website may hold a stale extension_auth entry.
 // Wildcarded because production serves the app from www — the bare apex only
@@ -57,7 +72,7 @@ const FRONTEND_MATCHES = [
 ];
 
 // Every top-level screen id, so we can flip to exactly one at a time.
-const SCREEN_IDS = [
+export const SCREEN_IDS = [
     "screen-demo",
     "screen-welcome",
     "screen-api-key",
@@ -65,15 +80,12 @@ const SCREEN_IDS = [
     "screen-config",
     "screen-generating",
     "screen-commentary",
+    "screen-history",
     "screen-error",
     "screen-waiting",
 ] as const;
 
-// Anthropic keys look like `sk-ant-api03-…`. Used only to show the reassuring
-// format hint — the real check is the backend accepting the key.
-const API_KEY_HINT_PATTERN = /^sk-ant-\S{16,}$/;
-
-type ScreenId = (typeof SCREEN_IDS)[number];
+export type ScreenId = (typeof SCREEN_IDS)[number];
 
 let currentScreen: ScreenId | null = null;
 
@@ -85,19 +97,40 @@ let gameCheckToken = 0;
 // does not hijack the view.
 let activeGameId: number | null = null;
 
-function showScreen(id: ScreenId): void {
+/**
+ * What each screen is called, for `document.title`.
+ *
+ * The panel reported the same name on all nine screens, while every page on the
+ * website sets "<Page> | Kifu-Sensei" through `usePageTitle`. The title is how a
+ * screen reader announces that the view changed at all — nothing else here does.
+ */
+const SCREEN_TITLES: Record<ScreenId, string> = {
+    "screen-demo": "Preview",
+    "screen-welcome": "Welcome",
+    "screen-api-key": "Add your API key",
+    "screen-key-saved": "API key saved",
+    "screen-config": "Review settings",
+    "screen-generating": "Generating commentary",
+    "screen-commentary": "Commentary",
+    "screen-history": "Past reviews",
+    "screen-error": "Something went wrong",
+    "screen-waiting": "Waiting for a finished game",
+};
+
+export function showScreen(id: ScreenId): void {
     currentScreen = id;
     for (const screenId of SCREEN_IDS) {
         document
             .getElementById(screenId)
             ?.classList.toggle("hidden", screenId !== id);
     }
+    document.title = `${SCREEN_TITLES[id]} | Kifu-Sensei`;
 }
 
 // Best-effort extraction of the account email from the JWT payload so the
 // welcome screen can greet the user. Never throws — a missing/odd token just
 // yields null and the email line stays hidden.
-function decodeEmailFromToken(accessToken: string): string | null {
+export function decodeEmailFromToken(accessToken: string): string | null {
     try {
         const payload = accessToken.split(".")[1];
         if (!payload) {
@@ -147,7 +180,7 @@ function renderWelcome(auth: ExtensionAuthObject, game?: OgsGameCheck): void {
  * state to `OgsGameCheck` without giving it wording here is a compile error rather
  * than a silent fall-through to generic text.
  */
-function waitingMessage(
+export function waitingMessage(
     check: Exclude<OgsGameCheck, { state: "ready" } | { state: "no-game" }>
 ): string {
     switch (check.state) {
@@ -288,21 +321,86 @@ async function showConfigScreen(
         }`;
     }
 
+    // The last config used on this device wins, but only until the account's own
+    // default *changes*. Preferring the local copy unconditionally meant that after
+    // the very first review in a profile, the account default was dead code here —
+    // saving new defaults on the website had no effect on the panel, ever.
+    //
+    // Same shape as `ThemeContext`'s `lastServerPreference`: adopt the server value
+    // when it moves, and otherwise leave the local choice alone.
     const stored = await chrome.storage.local.get(CONFIG_STORAGE_KEY);
     const saved = stored[CONFIG_STORAGE_KEY] as CommentaryConfig | undefined;
+    const accountChanged =
+        lastAccountConfig !== null &&
+        JSON.stringify(lastAccountConfig) !== JSON.stringify(accountConfig);
     const config =
-        saved !== undefined
+        saved !== undefined && !accountChanged
             ? clampCommentaryConfig(
                   readCommentaryConfig({ commentary_config: saved })
               )
             : accountConfig;
+    lastAccountConfig = accountConfig;
 
     writeConfigForm(config, game.summary.gamedata?.moves?.length ?? 0);
+    syncSaveDefaultState();
     showScreen("screen-config");
+}
+
+/**
+ * Persist what is on the config screen as the account's default.
+ *
+ * The panel could read `preferences.commentary_config` but never write it, so a
+ * config chosen here stayed on this device and the two surfaces could not agree on
+ * a default even in principle.
+ */
+async function saveConfigAsDefault(): Promise<void> {
+    const button = el<HTMLButtonElement>("btn-save-default");
+    const config = readConfigForm();
+    if (button) {
+        button.disabled = true;
+        button.textContent = "Saving…";
+    }
+
+    const response = await authedFetch(ENDPOINTS.userSettings, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        // Shallow-merged server-side, so sending only this key leaves `theme` and
+        // the rest of the blob untouched.
+        body: JSON.stringify({ preferences: { commentary_config: config } }),
+    });
+
+    if (response !== null && response.ok) {
+        accountConfig = config;
+        lastAccountConfig = config;
+        await writeAccountState({
+            hasClaudeApiKey: true,
+            commentaryConfig: config,
+        });
+        if (button) button.textContent = "Saved as default";
+        return;
+    }
+    if (button) {
+        button.disabled = false;
+        button.textContent = "Could not save — try again";
+    }
+}
+
+/** Re-enable the button whenever the form moves away from what was saved. */
+function syncSaveDefaultState(): void {
+    const button = el<HTMLButtonElement>("btn-save-default");
+    if (button === null) return;
+    const matchesAccount =
+        JSON.stringify(readConfigForm()) === JSON.stringify(accountConfig);
+    button.disabled = matchesAccount;
+    button.textContent = matchesAccount
+        ? "Saved as default"
+        : "Save as my default";
 }
 
 // Defaults read from the account once per panel open.
 let accountConfig: CommentaryConfig = DEFAULT_COMMENTARY_CONFIG;
+/** The account default as of the last config screen, to notice when it moves. */
+let lastAccountConfig: CommentaryConfig | null = null;
 
 /**
  * Render the signed-in landing for whatever the active tab is showing.
@@ -401,6 +499,7 @@ async function rerunCommentary(): Promise<void> {
 function renderProgress(progress: { done: number; total: number }): void {
     const subtitle = el("gen-subtitle");
     const fill = el("progress-fill");
+    const track = fill?.parentElement ?? null;
     const findingIcon = el("gen-finding-icon");
     const writingStep = el("gen-writing-step");
     const writingIcon = el("gen-writing-icon");
@@ -410,6 +509,8 @@ function renderProgress(progress: { done: number; total: number }): void {
         // measure yet, so the bar stays empty rather than inventing motion.
         if (subtitle) subtitle.textContent = "Finding the key moments…";
         if (fill) fill.style.width = "0%";
+        // Indeterminate: KataGo has not said how many moments there are yet.
+        track?.removeAttribute("aria-valuenow");
         if (findingIcon) {
             findingIcon.textContent = "◷";
             findingIcon.className = "gen-step-icon gen-step-icon--spin";
@@ -425,9 +526,15 @@ function renderProgress(progress: { done: number; total: number }): void {
     if (subtitle) {
         subtitle.textContent = `Move ${progress.done} of ${progress.total} key moments`;
     }
+    const percent = Math.round((progress.done / progress.total) * 100);
     if (fill) {
-        fill.style.width = `${Math.round((progress.done / progress.total) * 100)}%`;
+        fill.style.width = `${percent}%`;
     }
+    track?.setAttribute("aria-valuenow", String(percent));
+    track?.setAttribute(
+        "aria-valuetext",
+        `Move ${progress.done} of ${progress.total}`
+    );
     if (findingIcon) {
         findingIcon.textContent = "✔";
         findingIcon.className = "gen-step-icon gen-step-icon--done";
@@ -439,7 +546,10 @@ function renderProgress(progress: { done: number; total: number }): void {
     }
 }
 
-function buildCard(item: CommentaryItem, moves: GameMove[]): HTMLElement {
+export function buildCard(
+    item: CommentaryItem,
+    moves: GameMove[]
+): HTMLElement {
     const severity = severityForDelta(item.winrate_delta);
     const colour = colorForTurn(moves, item.turn, item.color);
 
@@ -449,25 +559,31 @@ function buildCard(item: CommentaryItem, moves: GameMove[]): HTMLElement {
     const header = document.createElement("div");
     header.className = "card-header";
 
+    // "Move 31 · Q16", the same header the website renders. The coordinate was
+    // missing here even though `moves` — the only thing needed to derive it — was
+    // already in hand for `colorForTurn`.
+    const coordinate = coordinateForTurn(moves, item.turn);
     const move = document.createElement("span");
     move.className = "card-move";
-    move.textContent = `Move ${item.turn}`;
+    move.textContent = coordinate
+        ? `Move ${item.turn} · ${coordinate}`
+        : `Move ${item.turn}`;
 
     const badges = document.createElement("div");
     badges.className = "card-badges";
 
     const colourBadge = document.createElement("span");
     colourBadge.className = `badge badge--${colour === "B" ? "black" : "white"}`;
-    colourBadge.textContent = colour;
+    colourBadge.textContent = COLOR_LABELS[colour];
     badges.append(colourBadge);
 
-    const deltaText = formatDelta(item.winrate_delta);
-    if (deltaText !== "") {
-        const deltaBadge = document.createElement("span");
-        deltaBadge.className = `badge badge--${severity}`;
-        deltaBadge.textContent = deltaText;
-        badges.append(deltaBadge);
-    }
+    // Severity used to reach the user only as the rail colour and tint, so it was
+    // conveyed by colour alone — invisible to a screen reader and to anyone who
+    // cannot separate the two reds. The website has always spelled it out.
+    const severityBadge = document.createElement("span");
+    severityBadge.className = `badge badge--${severity}`;
+    severityBadge.textContent = SEVERITY_LABELS[severity];
+    badges.append(severityBadge);
 
     header.append(move, badges);
 
@@ -479,6 +595,19 @@ function buildCard(item: CommentaryItem, moves: GameMove[]): HTMLElement {
     body.append(text);
 
     card.append(header, body);
+
+    // The swing moves out of the badge row and onto its own line, so the badges
+    // carry the two labels and this carries the number — as on the website.
+    const deltaText = formatDelta(item.winrate_delta);
+    if (deltaText !== "") {
+        const stats = document.createElement("div");
+        stats.className = "card-stats";
+        const winRate = document.createElement("span");
+        winRate.textContent = `Win rate ${deltaText}`;
+        stats.append(winRate);
+        card.append(stats);
+    }
+
     return card;
 }
 
@@ -493,18 +622,12 @@ const SCROLL_DELTA_MIN = 8;
 const SCROLL_TOP_GRACE = 24;
 
 // The annotated record for the commentary currently on screen.
-let downloadableSgf: { content: string; fileName: string } | null = null;
+let downloadableSgf: { content: string; sgfFileName: string } | null = null;
 let downloadConfirmTimer: number | null = null;
 let lastListScrollTop = 0;
 
 function downloadButton(): HTMLButtonElement | null {
     return el<HTMLButtonElement>("btn-download-sgf");
-}
-
-/** `ogs-12345.sgf` → `ogs-12345_annotated.sgf`, matching the website. */
-function annotatedFileName(sgfFileName: string): string {
-    const base = sgfFileName.replace(/\.sgf$/i, "").trim();
-    return base === "" ? "annotated.sgf" : `${base}_annotated.sgf`;
 }
 
 function setDockHidden(hidden: boolean): void {
@@ -521,7 +644,7 @@ function prepareDownload(result: CommentaryResponse): void {
         result.annotated_sgf_content !== ""
             ? {
                   content: result.annotated_sgf_content,
-                  fileName: annotatedFileName(result.sgf_file_name),
+                  sgfFileName: result.sgf_file_name,
               }
             : null;
 
@@ -536,27 +659,12 @@ function prepareDownload(result: CommentaryResponse): void {
     setDockHidden(false);
 }
 
-/**
- * Save the annotated SGF, same as the website's download button.
- *
- * The backend has already injected the comments, so this is purely a client-side
- * save of `annotated_sgf_content` — no extra request, and it still works offline.
- */
-function downloadAnnotatedSgf(): void {
+/** Save the annotated SGF and confirm on the button. */
+function saveAnnotatedSgf(): void {
     if (downloadableSgf === null) {
         return;
     }
-    const blob = new Blob([downloadableSgf.content], {
-        type: "application/x-go-sgf",
-    });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = downloadableSgf.fileName;
-    anchor.click();
-    // Revoked on a later tick: Chrome cancels the download if the blob URL dies
-    // before it has read it.
-    setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    downloadAnnotatedSgf(downloadableSgf.content, downloadableSgf.sgfFileName);
 
     const button = downloadButton();
     if (button) {
@@ -632,68 +740,27 @@ function renderCommentary(result: CommentaryResponse): void {
     showScreen("screen-commentary");
 }
 
-/** What the error screen's primary button should do, per failure. */
-type ErrorAction = "retry" | "api-key" | "sign-in";
-
-function errorAction(code: PanelErrorCode | null): ErrorAction {
-    if (code === "no_api_key") return "api-key";
-    if (code === "session_expired") return "sign-in";
-    return "retry";
-}
-
-const ERROR_MESSAGES: Record<PanelErrorCode, string> = {
-    no_api_key:
-        "Add your Claude API key to generate commentary. Kifu-Sensei uses your own key.",
-    invalid_sgf:
-        "Kifu-Sensei could not read this game's record. It may be an unsupported format.",
-    upstream_rate_limited:
-        "Anthropic is rate-limiting your API key. Please wait and try again.",
-    upstream_auth_failed:
-        "Anthropic rejected your API key. Check it under Settings on the website.",
-    upstream_error: "Claude could not be reached. Please try again.",
-    katago_unavailable:
-        "The analysis engine is unavailable right now. Please try again shortly.",
-    internal_error:
-        "Something went wrong generating commentary. Please try again.",
-    session_expired:
-        "Your session expired. Sign in again on the Kifu-Sensei website.",
-    network:
-        "Could not reach Kifu-Sensei. Check your connection and try again.",
-    timeout:
-        "This review took too long and was stopped. Try again with fewer comments.",
-    sgf_unavailable: "Could not download this game from online-go.com.",
-};
-
 let pendingErrorAction: ErrorAction = "retry";
 
-function showError(error: {
-    code: PanelErrorCode | null;
-    detail: string;
-    retryAfter: number | null;
-}): void {
-    // The backend's `detail` is written for this exact failure (e.g. why an SGF
-    // failed to parse); the canned copy below is only a fallback for when it is
-    // missing, not a replacement for it.
-    let message =
-        error.detail ||
-        (error.code !== null ? ERROR_MESSAGES[error.code] : undefined) ||
-        "Something went wrong. Please try again.";
-    if (error.code === "upstream_rate_limited" && error.retryAfter !== null) {
-        message = `Anthropic is rate-limiting your API key. Try again in ${error.retryAfter}s.`;
-    }
+/**
+ * Render a failure.
+ *
+ * The wording, the precedence and the button's job all come from `@shared/errors`,
+ * so the website explains the same failure with the same words. The panel used to
+ * prefer the backend's `detail` over its own copy — which meant its message table
+ * never fired at all (every caller supplies a detail) and server prose like
+ * "Could not parse the SGF file: {sgfmill exception}" reached the user.
+ */
+export function showError(error: CommentaryApiError): void {
+    const resolved = resolveCommentaryError(error);
 
     const msgEl = el("error-msg");
-    if (msgEl) msgEl.textContent = message;
+    if (msgEl) msgEl.textContent = resolved.message;
 
-    pendingErrorAction = errorAction(error.code);
+    pendingErrorAction = resolved.action;
     const retry = el<HTMLButtonElement>("btn-retry");
     if (retry) {
-        retry.textContent =
-            pendingErrorAction === "api-key"
-                ? "Add API key"
-                : pendingErrorAction === "sign-in"
-                  ? "Sign in again"
-                  : "Try Again";
+        retry.textContent = ERROR_ACTION_LABELS[resolved.action];
     }
     showScreen("screen-error");
 }
@@ -746,12 +813,24 @@ async function refreshGameState(): Promise<void> {
         return;
     }
 
+    // `has_claude_api_key` is read once per panel open, so a key added on the
+    // website with the panel already open left it stuck on this gate forever.
+    // Any tab activity is a good moment to ask again — but not while the user is
+    // part-way through typing a key into the field right here.
+    if (
+        currentScreen === "screen-api-key" &&
+        (keyInput()?.value ?? "") === ""
+    ) {
+        await syncAuthState();
+        return;
+    }
+
     const isGameBoundScreen =
         currentScreen === "screen-commentary" ||
         currentScreen === "screen-generating" ||
         currentScreen === "screen-error";
     if (!isGameBoundScreen) {
-        return; // screen-demo, screen-api-key, screen-key-saved: untouched.
+        return; // screen-demo, screen-key-saved: untouched.
     }
 
     const [tab] = await chrome.tabs.query({
@@ -775,6 +854,10 @@ async function handleDeadSession(): Promise<void> {
 // the demo screen; signed-in users get the key-entry screen or the welcome
 // screen depending on whether their account already has a Claude API key.
 // Runs on every panel open, so the key state can't go stale between sessions.
+async function writeAccountState(state: AccountState): Promise<void> {
+    await chrome.storage.local.set({ [ACCOUNT_STATE_KEY]: state });
+}
+
 async function syncAuthState(): Promise<void> {
     const stored = await chrome.storage.local.get(AUTH_STORAGE_KEY);
     const auth = stored[AUTH_STORAGE_KEY];
@@ -808,6 +891,15 @@ async function syncAuthState(): Promise<void> {
     try {
         settings = (await response.json()) as typeof settings;
         accountConfig = readCommentaryConfig(settings.preferences);
+        void adoptAccountTheme(settings.preferences?.theme);
+        // Cache what the worker and the injected button cannot fetch for
+        // themselves. Without it the one-click OGS review fell back to the shared
+        // defaults, so an account's saved config was ignored by the very entry
+        // point that never shows a config screen.
+        void writeAccountState({
+            hasClaudeApiKey: settings.has_claude_api_key === true,
+            commentaryConfig: accountConfig,
+        });
     } catch (error) {
         console.error(
             "[Kifu-Sensei panel] Malformed settings response:",
@@ -824,13 +916,51 @@ async function syncAuthState(): Promise<void> {
     }
 }
 
+/**
+ * The panel's only outbound links used to be register/login, the Anthropic
+ * console, and OGS — so its own copy ("Check it under Settings on the website")
+ * pointed at a page it could not open, and the privacy policy that covers this
+ * extension was unreachable from it.
+ */
+function initFooter(): void {
+    const open = (path: string) => () => {
+        void chrome.tabs.create({ url: `${FRONTEND_URL}${path}` });
+    };
+    el("link-settings")?.addEventListener("click", open("/settings"));
+    el("link-history")?.addEventListener("click", open("/history"));
+    el("link-privacy")?.addEventListener("click", open("/privacy"));
+}
+
 function initHeader(): void {
     document.getElementById("btn-close")?.addEventListener("click", () => {
         window.close();
     });
 }
 
-function initDemoScreen(): void {
+/**
+ * The preview a signed-out visitor sees.
+ *
+ * Rendered through `buildCard` rather than written into `panel.html`, so the
+ * severity tier, the colour and the coordinate are all derived by the same rules
+ * a real card uses. The static version had drifted: −12% labelled "mistake" when
+ * `severityForDelta` calls that a blunder.
+ */
+const DEMO_COMMENT: CommentaryItem = {
+    turn: 31,
+    comment:
+        "This push abandoned the corner too early. White's R16 immediately threatened the weak group on the left, forcing a heavy defensive response.",
+    winrate_delta: -12,
+    color: "B",
+};
+
+/** Just enough of a move list for turn 31 to be Black playing Q16. */
+const DEMO_MOVES: GameMove[] = Array.from({ length: 31 }, (_, index) =>
+    index === 30 ? ["B", [15, 15]] : [index % 2 === 0 ? "B" : "W", null]
+);
+
+export function initDemoScreen(): void {
+    el("demo-card")?.replaceChildren(buildCard(DEMO_COMMENT, DEMO_MOVES));
+
     document.getElementById("btn-register")?.addEventListener("click", () => {
         chrome.tabs.create({
             url: `${FRONTEND_URL}/register?source=extension`,
@@ -899,6 +1029,15 @@ async function signOut(): Promise<void> {
             [REVOKED_AUTH_KEY]: auth.refreshToken,
         });
     }
+    // Everything the previous account left in this profile goes with it. Only the
+    // token pair used to be cleared, so `chrome.storage.session` kept the whole
+    // StoredJob — the downloaded record and the entire CommentaryResponse — and
+    // `commentary_config` kept their free-text custom_instruction. Signing in as
+    // someone else on the same profile and reopening the same game rendered the
+    // previous user's commentary back to them.
+    await clearJob();
+    await chrome.storage.local.remove([CONFIG_STORAGE_KEY, ACCOUNT_STATE_KEY]);
+
     // Clearing the stored session flips the panel back to the demo screen via
     // the storage-change listener.
     await clearStoredAuth();
@@ -943,7 +1082,7 @@ function syncKeyFieldState(): void {
         return;
     }
     const key = input.value.trim();
-    const looksValid = API_KEY_HINT_PATTERN.test(key);
+    const looksValid = looksLikeApiKey(key);
 
     const button = saveKeyButton();
     if (button) {
@@ -1020,6 +1159,13 @@ async function saveApiKey(): Promise<void> {
 }
 
 function initApiKeyScreen(): void {
+    el("btn-skip-key")?.addEventListener("click", () => {
+        const auth = getCurrentAuth();
+        // Straight to the signed-in landing. Generation is gated server-side
+        // regardless, so nothing here is unsafe — it just stops the gate being a
+        // room with one door.
+        if (auth !== null) void renderSignedIn(auth);
+    });
     keyInput()?.addEventListener("input", () => {
         hideApiKeyError();
         syncKeyFieldState();
@@ -1045,6 +1191,20 @@ function initApiKeyScreen(): void {
 function initConfigScreen(): void {
     el("btn-generate")?.addEventListener("click", () => void startGeneration());
     el("config-instruction")?.addEventListener("input", syncInstructionCount);
+    el("btn-save-default")?.addEventListener(
+        "click",
+        () => void saveConfigAsDefault()
+    );
+    for (const id of [
+        "config-model",
+        "config-language",
+        "config-comments",
+        "config-max-token",
+        "config-instruction",
+    ]) {
+        el(id)?.addEventListener("input", syncSaveDefaultState);
+        el(id)?.addEventListener("change", syncSaveDefaultState);
+    }
 }
 
 function initGeneratingScreen(): void {
@@ -1056,12 +1216,120 @@ function initGeneratingScreen(): void {
     });
 }
 
+// ── History ─────────────────────────────────────────────────────────────────
+
+/** Matches the website's page size, so "Load more" means the same thing on both. */
+const HISTORY_PAGE_SIZE = 20;
+
+let historyOffset = 0;
+let historyTotal = 0;
+
+export function historyRow(item: CommentaryHistoryItem): HTMLElement {
+    const row = document.createElement("button");
+    row.className = "history-row";
+    row.type = "button";
+
+    const name = document.createElement("span");
+    name.className = "history-name";
+    name.textContent = item.sgf_file_name;
+
+    const meta = document.createElement("span");
+    meta.className = "history-meta";
+    // The same summary line the website's HistoryCard renders.
+    meta.textContent = `${item.board_size}×${item.board_size} · ${item.moves.length} moves · ${item.comment_count} comments · ${new Date(item.created_at).toLocaleDateString()}`;
+
+    row.append(name, meta);
+    row.addEventListener("click", () => void openHistoryEntry(item.id));
+    return row;
+}
+
+async function openHistoryEntry(id: number): Promise<void> {
+    const status = el("history-status");
+    if (status) status.textContent = "Opening…";
+
+    const response = await authedFetch(
+        ENDPOINTS.userCommentaryHistoryDetail(id)
+    );
+    if (response === null || !response.ok) {
+        if (status) status.textContent = "Could not open that review.";
+        return;
+    }
+    try {
+        const result = (await response.json()) as CommentaryResponse;
+        if (status) status.textContent = "";
+        // Reuses the commentary screen wholesale, download dock included. The
+        // record is not tied to an OGS game, so nothing here touches activeGameId.
+        renderCommentary(result);
+    } catch {
+        if (status) status.textContent = "Could not read that review.";
+    }
+}
+
+async function loadHistoryPage(): Promise<void> {
+    const status = el("history-status");
+    const list = el("history-list");
+    const more = el<HTMLButtonElement>("btn-history-more");
+    if (status && historyOffset === 0) status.textContent = "Loading…";
+
+    const response = await authedFetch(
+        `${ENDPOINTS.userCommentaryHistory}?limit=${HISTORY_PAGE_SIZE}&offset=${historyOffset}`
+    );
+    if (response === null || !response.ok) {
+        if (status) status.textContent = "Could not load your past reviews.";
+        return;
+    }
+
+    let page: UserCommentaryHistory;
+    try {
+        page = (await response.json()) as UserCommentaryHistory;
+    } catch {
+        if (status) status.textContent = "Could not read your past reviews.";
+        return;
+    }
+
+    historyTotal = page.total;
+    historyOffset += page.commentaries.length;
+    list?.append(...page.commentaries.map(historyRow));
+
+    if (status) {
+        status.textContent =
+            historyTotal === 0
+                ? "No reviews yet. Generate one from a finished game."
+                : `${historyOffset} of ${historyTotal}`;
+    }
+    more?.classList.toggle("hidden", historyOffset >= historyTotal);
+}
+
+async function showHistoryScreen(): Promise<void> {
+    historyOffset = 0;
+    historyTotal = 0;
+    el("history-list")?.replaceChildren();
+    el("btn-history-more")?.classList.add("hidden");
+    showScreen("screen-history");
+    await loadHistoryPage();
+}
+
+function initHistoryScreen(): void {
+    el("btn-open-history")?.addEventListener(
+        "click",
+        () => void showHistoryScreen()
+    );
+    el("btn-history-more")?.addEventListener(
+        "click",
+        () => void loadHistoryPage()
+    );
+    el("btn-history-back")?.addEventListener("click", () => {
+        const auth = getCurrentAuth();
+        if (auth !== null) void renderSignedIn(auth);
+    });
+}
+
 function initCommentaryScreen(): void {
     el("btn-regenerate")?.addEventListener(
         "click",
         () => void rerunCommentary()
     );
-    downloadButton()?.addEventListener("click", downloadAnnotatedSgf);
+    downloadButton()?.addEventListener("click", saveAnnotatedSgf);
     watchListScroll();
 }
 
@@ -1164,13 +1432,18 @@ function watchActiveTab(): void {
 }
 
 function init(): void {
+    // Before anything paints: a panel that flashed light before turning dark
+    // would be worse than one that never turned.
+    initTheme();
     initHeader();
+    initFooter();
     initDemoScreen();
     initWelcomeScreen();
     initApiKeyScreen();
     initKeySavedScreen();
     initConfigScreen();
     initGeneratingScreen();
+    initHistoryScreen();
     initCommentaryScreen();
     initErrorScreen();
     watchAuthState();

@@ -3,8 +3,14 @@
     "tabWidth": 4,
     "semi": true,
     "singleQuote": false,
-    "plugins": ["@trivago/prettier-plugin-sort-imports"],
-    "importOrder": ["^[a-z]", "^@/", "^[./]"],
+    "plugins": [
+        "@trivago/prettier-plugin-sort-imports"
+    ],
+    "importOrder": [
+        "^[a-z]",
+        "^@shared/",
+        "^[./]"
+    ],
     "importOrderSeparation": true,
     "importOrderSortSpecifiers": true
 }
