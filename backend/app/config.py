@@ -37,6 +37,15 @@ class Settings(BaseSettings):
     # KataGo analysis engine
     api_endpoint: str | None = None
     api_timeout: int = 120
+    # A pass is sent to the analysis server in batches of turns costing at most this
+    # many KataGo visits each, because a proxy in front of the engine stops waiting for
+    # the origin after a fixed window of its own (Cloudflare answers 504 at around two
+    # minutes) — and a whole-game analysis in one request outgrows that window on any
+    # normal-length game. Budgeted in visits rather than turns since that is what the
+    # engine's runtime scales with: 1,000 is 20 turns of the winrate pass or 2 of a
+    # detailed one. Lower it for a slower engine, raise it to spend fewer round trips
+    # on a fast one.
+    katago_visits_per_request: int = 1000
     # Bounds how many commentary pipelines (KataGo + Anthropic calls) run at once, on
     # a dedicated executor separate from Starlette's shared request threadpool. Keeps
     # a burst of jobs from starving ordinary requests, and from overwhelming a single

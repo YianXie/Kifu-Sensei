@@ -40,6 +40,7 @@ from app.services.katago import (
     _score_lead,
     _sgfmill_point_to_katago,
     _strength_word,
+    _turns_per_request,
     sgf_to_winrate_request,
     winrate_request_to_detailed_request,
 )
@@ -490,6 +491,19 @@ def test_the_detailed_request_does_not_mutate_the_first_pass_request() -> None:
     assert first_pass["maxVisits"] == 50
     assert first_pass["analyzeTurns"] == [0, 1, 2, 3, 4]
     assert first_pass["overrideSettings"]["wideRootNoise"] == 0.0
+
+
+def test_a_request_carries_as_many_turns_as_the_visit_budget_allows() -> None:
+    """A pass is split so no single request outlasts the proxy in front of the engine,
+    which stops waiting after a fixed window however much work was asked for."""
+    assert _turns_per_request(50, 1000) == 20
+    assert _turns_per_request(500, 1000) == 2
+
+
+def test_a_turn_costing_more_than_the_whole_budget_still_gets_its_own_request() -> None:
+    """Rounding down to a zero-turn request would leave the pass asking for nothing at
+    all — one turn is as small as a request can be."""
+    assert _turns_per_request(500, 100) == 1
 
 
 # ── Frontend conversion and SGF annotation ────────────────────────────────────

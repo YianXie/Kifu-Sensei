@@ -123,6 +123,13 @@ admin credentials must be changed from their dev defaults (enforced in
    and calls Claude once per selected move.
 4. Injects the commentary back into the SGF via sgfmill (`C[]` properties).
 
+Each pass reaches the engine as several requests, not one. A proxy in front of the
+analysis server gives up on the origin after a fixed window of its own (Cloudflare
+answers `504` at around two minutes) while the work in a pass grows with the length of
+the game, so turns are batched to a visit budget (`KATAGO_VISITS_PER_REQUEST`); a batch
+that times out anyway is retried as two smaller ones, down to a single turn, and the
+merged results are checked to cover exactly the turns that were asked for.
+
 > **Coordinate systems:** sgfmill uses `(row=0, col=0)` at the bottom-left; KataGo uses
 > column letters `A–T` (skipping `I`) with rows numbered from 1 at the bottom; display
 > and ownership arrays are top-row-first. Several helpers in `katago.py` convert between
@@ -142,6 +149,7 @@ admin credentials must be changed from their dev defaults (enforced in
 | `DATABASE_URL`   | No            | Defaults to `sqlite:///./db.sqlite3`. Use a PostgreSQL URL in production.                                                                |
 | `FRONTEND_URL`   | Prod          | Added to the CORS allowlist. `localhost:5173`/`127.0.0.1:5173` are allowed automatically outside production only — in production this is the *only* allowed origin, so the real frontend cannot reach the API without it set. |
 | `API_TIMEOUT`    | No            | Seconds to wait for KataGo (default 120).                                                                                                |
+| `KATAGO_VISITS_PER_REQUEST` | No | Visit budget per `/analyze` request — a pass is sent in batches of turns costing at most this much (default 1000). Lower it for a slower engine. |
 | `COMMENTARY_PIPELINE_WORKERS` | No | Concurrent commentary pipelines on the dedicated executor (default 4).                                                        |
 | `MAX_REQUEST_BODY_BYTES` | No    | Requests with a larger declared `Content-Length` are rejected before the body is read (default 5,000,000).                              |
 
