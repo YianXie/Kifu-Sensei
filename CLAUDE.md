@@ -118,6 +118,14 @@ Key files:
   3. Builds rich prompts (ASCII board, KataGo stats, ownership map) and calls Claude (`claude-sonnet-5` by default) once per selected move.
   4. Injects commentary back into the SGF via sgfmill.
 
+  Neither pass is one HTTP request: a proxy in front of the analysis server stops
+  waiting for the origin after a fixed window (Cloudflare answers 504 at ~2 minutes)
+  while the work in a whole-game pass grows with the game, so turns are batched to a
+  visit budget (`KATAGO_VISITS_PER_REQUEST`), a batch that times out anyway is retried
+  in halves, and the merged results are checked to cover exactly the turns asked for —
+  results are paired with moves by position, so a short pass would comment on the
+  wrong move rather than fail.
+
 **Coordinate system note:** sgfmill uses `(row=0, col=0)` at the bottom-left; KataGo uses column letters `A-T` (skipping `I`) and rows from 1 at the bottom. The display/ownership arrays are top-row-first. Multiple helpers in `katago.py` convert between these.
 
 **Auth flow:** JWT access token (30 min) + refresh token (7 days), both HS256-signed. The `CurrentUser` dependency in `deps.py` resolves the authenticated user for protected routes.
@@ -296,6 +304,7 @@ Config lives in `extension/src/shared/config.ts` (endpoints derived from `VITE_A
 | `DATABASE_URL`                | No       | Defaults to `sqlite:///./db.sqlite3`                                                                                                            |
 | `FRONTEND_URL`                | No       | Added to CORS allowlist in production                                                                                                           |
 | `API_TIMEOUT`                 | No       | Seconds to wait for KataGo (default 120)                                                                                                        |
+| `KATAGO_VISITS_PER_REQUEST`   | No       | Visit budget per `/analyze` request; a pass is sent in batches of turns costing at most this much (default 1000 — 20 turns of the fast pass, 2 of the detailed one). Lower it for a slower engine. |
 | `COMMENTARY_PIPELINE_WORKERS` | No       | Max concurrent commentary pipelines (KataGo + Anthropic calls) on the dedicated executor, separate from the request threadpool (default 4).     |
 | `MAX_REQUEST_BODY_BYTES`      | No       | Requests larger than this are rejected by `Content-Length` before the body is read (default 5,000,000 — headroom over the 2 MB SGF cap).        |
 

@@ -6,8 +6,10 @@ selected for the detailed pass, that each prompt is paired with the right previo
 position, and the shape of the returned payload.
 """
 
+import contextlib
 import json
 import logging
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import anthropic
@@ -16,7 +18,7 @@ import pytest
 import respx
 
 from app.crypto import encrypt_secret
-from app.errors import MissingApiKeyError
+from app.errors import KatagoUnavailableError, MissingApiKeyError
 from app.models import User
 from app.services import katago as katago_service
 from app.services.katago import generate_commentary, generate_commentary_with_claude
@@ -214,6 +216,147 @@ def test_the_detailed_passes_ask_for_ownership_and_policy(
         assert request["includeOwnership"] is True
         assert request["includePolicy"] is True
         assert request["analysisPVLen"] == 15
+
+
+# ── Batched analysis passes ───────────────────────────────────────────────────
+
+
+def _serving_katago(
+    fail: Callable[[list[int]], int | None] | None = None,
+) -> "contextlib.AbstractContextManager[list[dict[str, Any]]]":
+    """Serve KataGo, answering each request with exactly the turns it asked for.
+
+    ``katago_requests`` answers every winrate request with the whole game, which is
+    only truthful while a pass fits in a single request. Batching makes what was asked
+    for and what comes back two different things, so these tests need a fake that
+    honours ``analyzeTurns``. ``fail(turns)`` may name a status to answer with instead,
+    which is how a request of a given size is made to time out.
+    """
+
+    @contextlib.contextmanager
+    def _mock() -> Iterator[list[dict[str, Any]]]:
+        recorded: list[dict[str, Any]] = []
+
+        def _handler(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content)
+            recorded.append(body)
+            turns = body["analyzeTurns"]
+            status = fail(turns) if fail is not None else None
+            if status is not None:
+                return httpx.Response(status)
+            source = WINRATE_RESULTS if body["maxVisits"] == 50 else DETAILED_RESULTS
+            return httpx.Response(200, json=[source[turn] for turn in reversed(turns)])
+
+        with respx.mock(base_url="http://katago.invalid", assert_all_called=False) as router:
+            router.post("/analyze").mock(side_effect=_handler)
+            yield recorded
+
+    return _mock()
+
+
+@pytest.fixture
+def small_visit_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two turns of the winrate pass, or one detailed turn, per request."""
+    monkeypatch.setattr(katago_service.settings, "katago_visits_per_request", 100)
+
+
+def test_a_pass_is_sent_in_batches_that_fit_the_visit_budget(
+    keyed_user: User, fake_anthropic, small_visit_budget
+) -> None:
+    """A whole-game pass in one request is what the proxy in front of the engine gives
+    up on, and the budget is in visits because that is what the engine's time goes on:
+    the same two turns cost ten times as much in a detailed pass."""
+    with _serving_katago() as recorded:
+        result = _run(keyed_user)
+
+    winrate = [body["analyzeTurns"] for body in recorded if body["maxVisits"] == 50]
+    detailed = [body["analyzeTurns"] for body in recorded if body["maxVisits"] == 500]
+    assert winrate == [[0, 1], [2, 3], [4]]
+    assert detailed == [[1], [2], [0], [1]]
+    # Split or not, the commentary is the same: the engine ran the same searches.
+    assert [comment["turn"] for comment in result["comments"]] == [1, 2]
+
+
+def test_a_gateway_timeout_is_retried_as_smaller_batches(keyed_user: User, fake_anthropic) -> None:
+    """How many turns fit inside the proxy's window depends on the hardware the engine
+    is deployed on, which a fixed budget can only guess at."""
+    with _serving_katago(fail=lambda turns: 504 if len(turns) > 1 else None) as recorded:
+        result = _run(keyed_user)
+
+    served = sorted(
+        body["analyzeTurns"][0]
+        for body in recorded
+        if body["maxVisits"] == 50 and len(body["analyzeTurns"]) == 1
+    )
+    assert served == [0, 1, 2, 3, 4]
+    assert [comment["turn"] for comment in result["comments"]] == [1, 2]
+
+
+def test_a_single_turn_that_times_out_is_not_split_any_further(
+    keyed_user: User, fake_anthropic
+) -> None:
+    """The batch cannot be made smaller, so this is the upstream failure it looks
+    like — halving forever would hold the job open instead of reporting it."""
+    with _serving_katago(fail=lambda turns: 504) as recorded:
+        with pytest.raises(httpx.HTTPStatusError):
+            _run(keyed_user)
+
+    assert [body["analyzeTurns"] for body in recorded] == [[0, 1, 2, 3, 4], [0, 1], [0]]
+    assert fake_anthropic.instances == []
+
+
+def test_a_rejection_is_not_retried_with_smaller_batches(keyed_user: User, fake_anthropic) -> None:
+    """A 503 says the engine will not serve the request, not that it ran out of time —
+    the same request with fewer turns earns the same answer."""
+    with _serving_katago(fail=lambda turns: 503) as recorded:
+        with pytest.raises(httpx.HTTPStatusError):
+            _run(keyed_user)
+
+    assert len(recorded) == 1
+
+
+def test_a_pass_missing_a_turn_is_reported_rather_than_misattributed(
+    keyed_user: User, fake_anthropic
+) -> None:
+    """Results are paired with moves by position, so a pass one result short does not
+    fail — it comments on the wrong move."""
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        source = WINRATE_RESULTS if body["maxVisits"] == 50 else DETAILED_RESULTS
+        return httpx.Response(
+            200, json=[source[turn] for turn in body["analyzeTurns"] if turn != 3]
+        )
+
+    with respx.mock(base_url="http://katago.invalid", assert_all_called=False) as router:
+        router.post("/analyze").mock(side_effect=_handler)
+        with pytest.raises(KatagoUnavailableError):
+            _run(keyed_user)
+
+
+def test_a_proxy_error_page_is_summarised_rather_than_dumped_into_the_log(
+    keyed_user: User, fake_anthropic, caplog
+) -> None:
+    """A 504 is written by whatever sits in front of the engine, and the engine speaks
+    JSON — so where the answer came from is the only thing its markup has to say."""
+    page = (
+        "<!DOCTYPE html><html><head>"
+        "<title>kifu-sensei.ai | 504: Gateway time-out</title></head>"
+        f"<body>{'boilerplate ' * 500}</body></html>"
+    )
+    with respx.mock(base_url="http://katago.invalid", assert_all_called=False) as router:
+        router.post("/analyze").mock(
+            return_value=httpx.Response(504, html=page, headers={"server": "cloudflare"})
+        )
+        with caplog.at_level(logging.WARNING, logger="katago-service-logger"):
+            with pytest.raises(httpx.HTTPStatusError):
+                _run(keyed_user)
+
+    logged = "\n".join(record.getMessage() for record in caplog.records)
+    assert "504: Gateway time-out" in logged
+    assert "cloudflare" in logged
+    assert "<!DOCTYPE" not in logged
+    assert "boilerplate" not in logged
 
 
 # ── Result payload ────────────────────────────────────────────────────────────

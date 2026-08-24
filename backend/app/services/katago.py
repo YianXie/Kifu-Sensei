@@ -1,6 +1,7 @@
 import copy
 import logging
 import os
+import re
 import threading
 from collections import Counter
 from collections.abc import Callable
@@ -16,7 +17,7 @@ from sgfmill.boards import Board as SgfmillBoard
 from app.config import settings
 from app.crypto import decrypt_secret
 from app.deps import CurrentUser
-from app.errors import InvalidSgfError, MissingApiKeyError
+from app.errors import InvalidSgfError, KatagoUnavailableError, MissingApiKeyError
 from app.models import User
 from app.services.board import (
     Board,
@@ -143,6 +144,17 @@ _RULES_ALIASES: dict[str, str] = {
 # publish real progress. Must not raise — see the guard in the job runner.
 ProgressCallback = Callable[[int, int], None]
 
+# HTTP statuses that mean nobody answered in time, rather than the engine refusing the
+# request: 504 and 524 are what a proxy sends when the origin went quiet on it, 408
+# what a server sends when it gave up on us. Only these are worth retrying with fewer
+# turns — a 4xx would come back the same however small the batch was.
+_TIMEOUT_STATUSES = frozenset({408, 504, 524})
+# How many requests a single pass may lose to a timeout before it gives up and reports
+# the engine as unavailable. Each one costs the full client timeout, so this is the
+# difference between a stalled engine being reported in a couple of minutes and a job
+# sitting open for ten.
+_MAX_TIMEOUT_RETRIES = 2
+
 _CLAUDE_MODEL = "claude-sonnet-5"
 _COMMENTARY_LANGUAGE = "english"
 _MAX_TOKENS = 1024
@@ -182,7 +194,96 @@ def close_http_client() -> None:
         _http_client = None
 
 
-def _post_analysis(client: httpx.Client, request: dict[str, Any], *, pass_name: str) -> Any:
+def _post_analysis(
+    client: httpx.Client, request: dict[str, Any], *, pass_name: str
+) -> list[dict[str, Any]]:
+    """Run one analysis pass and return its results, one per requested turn.
+
+    Sent as several requests rather than one. The engine's runtime is roughly
+    proportional to visits x analysed turns, and a pass analyses either every turn in
+    the game (the winrate pass) or twenty positions at ten times the visits (the
+    detailed passes) — so the work behind a single ``/analyze`` call grows with the
+    game, while the time a proxy in front of the analysis server will wait for it does
+    not. Cloudflare, which fronts the deployed engine, answers 504 itself once the
+    origin has been quiet for its fixed window, however long KataGo would eventually
+    have taken, and the whole pass is lost with it. Batches of turns keep each request
+    inside that window; the engine is asked for exactly the same searches either way.
+
+    How many turns actually fit depends on the hardware the engine is deployed on,
+    which a visit budget can only guess at, so a batch that times out anyway is halved
+    and the smaller size kept for the rest of the pass — one wasted request, rather
+    than rediscovering the size on every batch. Only ``_MAX_TIMEOUT_RETRIES`` of them
+    are spent that way: past that, an engine that is not answering at all is far more
+    likely than one that is merely slower than the budget assumed, and a run should
+    report it rather than spend a whole timeout on each remaining batch to prove it.
+    """
+    turns: list[int] = list(request.get("analyzeTurns") or [])
+    max_visits = int(request.get("maxVisits") or 1)
+    batch_size = _turns_per_request(max_visits, settings.katago_visits_per_request)
+    if batch_size < len(turns):
+        logger.info(
+            "Sending the %s pass as batches of %d of its %d turns",
+            pass_name,
+            batch_size,
+            len(turns),
+        )
+
+    results: list[dict[str, Any]] = []
+    pending = list(turns)
+    retries_left = _MAX_TIMEOUT_RETRIES
+    while pending:
+        batch = pending[:batch_size]
+        try:
+            results.extend(
+                _post_one_analysis(client, dict(request, analyzeTurns=batch), pass_name=pass_name)
+            )
+        except (httpx.TimeoutException, httpx.HTTPStatusError) as exc:
+            if not _is_timeout(exc) or len(batch) < 2 or retries_left < 1:
+                raise
+            retries_left -= 1
+            batch_size = len(batch) // 2
+            logger.warning(
+                "The %s pass timed out on %d turns (%s) — retrying in batches of %d. "
+                "Set KATAGO_VISITS_PER_REQUEST lower to stop paying for that discovery.",
+                pass_name,
+                len(batch),
+                exc,
+                batch_size,
+            )
+            continue  # same turns still pending, now asked for a few at a time
+        pending = pending[len(batch) :]
+
+    _check_pass_is_complete(results, turns, pass_name=pass_name)
+    return results
+
+
+def _turns_per_request(max_visits: int, visit_budget: int) -> int:
+    """How many turns fit in one request under ``visit_budget``, at least one.
+
+    Budgeted in visits rather than turns because that is the unit the engine's runtime
+    is proportional to: the same turn count costs ten times as much in the detailed
+    pass as in the winrate pass, so a turn count that suits one pass is either wasteful
+    or too slow for the other. Rounding down to zero would leave a pass asking for
+    nothing at all, so a turn too expensive for the whole budget still gets a request
+    of its own.
+    """
+    return max(1, visit_budget // max(1, max_visits))
+
+
+def _is_timeout(exc: httpx.TimeoutException | httpx.HTTPStatusError) -> bool:
+    """Did this failure mean nobody answered in time, rather than a refusal?
+
+    Only a timeout is worth retrying with fewer turns: a request the engine rejected
+    earns the same rejection however small it is made.
+    """
+    if isinstance(exc, httpx.TimeoutException):
+        return True
+    return exc.response.status_code in _TIMEOUT_STATUSES
+
+
+def _post_one_analysis(
+    client: httpx.Client, request: dict[str, Any], *, pass_name: str
+) -> list[dict[str, Any]]:
     """POST one analysis query and return the parsed result list.
 
     ``raise_for_status`` alone reports only the status code, so an upstream rejection
@@ -192,9 +293,14 @@ def _post_analysis(client: httpx.Client, request: dict[str, Any], *, pass_name: 
     """
     response = client.post("/analyze", json=request)
     if response.is_error:
-        logger.error(
-            "KataGo rejected the %s pass with HTTP %s: %s (request: %s)",
+        # A timeout is logged one level down: the caller may still recover from it by
+        # splitting the batch, so only the failure that survives that is an error.
+        timed_out = response.status_code in _TIMEOUT_STATUSES
+        logger.log(
+            logging.WARNING if timed_out else logging.ERROR,
+            "The %s pass %s with HTTP %s: %s (request: %s)",
             pass_name,
+            "timed out" if timed_out else "was rejected by KataGo",
             response.status_code,
             _response_excerpt(response),
             _request_summary(request),
@@ -203,12 +309,50 @@ def _post_analysis(client: httpx.Client, request: dict[str, Any], *, pass_name: 
     return response.json()
 
 
+def _check_pass_is_complete(
+    results: list[dict[str, Any]], turns: list[int], *, pass_name: str
+) -> None:
+    """Fail loudly when the merged batches do not cover exactly the turns asked for.
+
+    The pipeline pairs results by position — the winrate pass reads turn ``n`` at index
+    ``n``, the detailed passes are zipped against each other — so a pass that comes
+    back one result short does not fail, it comments on the wrong move. That used to
+    require the engine to answer wrongly; now it only needs one batch of several to.
+    """
+    returned = [result["turnNumber"] for result in results]
+    if sorted(returned) == sorted(turns):
+        return
+    logger.error(
+        "The %s pass returned %d results for %d requested turns (missing: %s, unexpected: %s)",
+        pass_name,
+        len(returned),
+        len(turns),
+        sorted(set(turns) - set(returned)),
+        sorted(set(returned) - set(turns)),
+    )
+    raise KatagoUnavailableError("The analysis engine returned an incomplete analysis.")
+
+
 def _response_excerpt(response: httpx.Response, limit: int = 2000) -> str:
-    """Return the response body as text, truncated, for a log line."""
+    """Return the response body as text, truncated, for a log line.
+
+    An HTML body is summarised rather than quoted. The analysis server speaks JSON, so
+    a page of markup came from a proxy in front of it and not from the engine at all —
+    which is the one useful thing it has to say. Quoting it verbatim buries that under
+    two kilobytes of error-page boilerplate.
+    """
     try:
         body = response.text
     except UnicodeDecodeError:  # pragma: no cover - upstream always sends JSON or text
         return "<undecodable body>"
+    if "html" in response.headers.get("content-type", "").lower():
+        match = re.search(r"<title[^>]*>(.*?)</title>", body, re.IGNORECASE | re.DOTALL)
+        title = match.group(1).strip() if match else "untitled"
+        server = response.headers.get("server", "an unnamed server")
+        return (
+            f"<HTML error page ({title!r}) served by {server!r} — not a reply from the "
+            "analysis engine, which answers in JSON>"
+        )
     return body[:limit] + "…" if len(body) > limit else body
 
 
