@@ -46,7 +46,7 @@ describe("resolveCommentaryError", () => {
     it("prefers the client's copy over server prose for a known code", () => {
         const resolved = resolveCommentaryError({
             code: "no_api_key",
-            detail: "This account has no Claude API key configured.",
+            detail: "This account has no AI provider configured.",
             retryAfter: null,
         });
 

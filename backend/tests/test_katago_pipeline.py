@@ -16,12 +16,24 @@ import anthropic
 import httpx
 import pytest
 import respx
+from sqlmodel import Session
 
 from app.crypto import encrypt_secret
-from app.errors import KatagoUnavailableError, MissingApiKeyError
-from app.models import User
+from app.errors import (
+    KatagoUnavailableError,
+    MissingApiKeyError,
+    UnsupportedProviderError,
+    UpstreamAuthError,
+    UpstreamError,
+    UpstreamRateLimitedError,
+)
+from app.models import AIProviderConfig, User
 from app.services import katago as katago_service
-from app.services.katago import generate_commentary, generate_commentary_with_claude
+from app.services.katago import (
+    generate_commentary,
+    generate_commentary_with_claude,
+    generate_commentary_with_openai_compatible,
+)
 
 SGF = "(;FF[4]GM[1]SZ[19]KM[6.5]RU[Chinese];B[dd];W[pp];B[dp];W[pd])"
 
@@ -491,6 +503,305 @@ def test_progress_is_published_before_and_after_each_comment(
     assert seen == [(0, 2), (1, 2), (2, 2)]
 
 
+# ── OpenAI-compatible transport ──────────────────────────────────────────────
+
+
+OPENAI_BASE_URL = "http://llm.test/v1"
+
+
+def _openai_response(
+    text: str, *, prompt_tokens: int = 30, completion_tokens: int = 12
+) -> dict[str, Any]:
+    return {
+        "id": "chatcmpl-test",
+        "choices": [{"message": {"role": "assistant", "content": text}, "finish_reason": "stop"}],
+        "usage": {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+        },
+    }
+
+
+@pytest.fixture
+def katago_server():
+    """Serve the KataGo engine on a router the test can also register LLM routes on.
+
+    ``katago_requests`` cannot be combined with a second ``respx.mock`` context —
+    the inner context replaces the outer transport — so OpenAI tests get one router
+    that serves both endpoints.
+    """
+    recorded: list[dict[str, Any]] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        recorded.append(body)
+        if body["maxVisits"] == 50:
+            return httpx.Response(200, json=list(reversed(WINRATE_RESULTS)))
+        turns = body["analyzeTurns"]
+        return httpx.Response(200, json=[DETAILED_RESULTS[turn] for turn in reversed(turns)])
+
+    with respx.mock(base_url="http://katago.invalid", assert_all_called=False) as router:
+        router.post("/analyze").mock(side_effect=_handler)
+        yield router, recorded
+
+
+@pytest.fixture
+def openai_config(session: Session, user: User) -> AIProviderConfig:
+    config = AIProviderConfig(
+        user_id=user.id,
+        provider="openai-compatible",
+        encrypted_api_key=encrypt_secret("sk-openai-test"),
+        base_url=OPENAI_BASE_URL,
+        model="qwen2.5-7b",
+    )
+    session.add(config)
+    session.commit()
+    session.refresh(config)
+    return config
+
+
+def _llm_route(router, *, status: int = 200, json: dict | None = None, text: str | None = None):
+    response = (
+        httpx.Response(status, json=json) if json is not None else httpx.Response(status, text=text)
+    )
+    return router.post("http://llm.test/v1/chat/completions").mock(return_value=response)
+
+
+def test_the_openai_compatible_request_shape(
+    openai_config: AIProviderConfig, user: User, katago_server, fake_anthropic
+) -> None:
+    """URL, Bearer header, and payload follow the Chat Completions contract."""
+    router, _ = katago_server
+    route = _llm_route(router, json=_openai_response("OpenAI comment"))
+    _run(user, provider_config=openai_config)
+
+    assert fake_anthropic.instances == []  # the config selects OpenAI, not Claude
+    assert route.call_count == 2  # one call per selected move
+    request = route.calls[0].request
+    assert request.url.path == "/v1/chat/completions"
+    assert request.headers["authorization"] == "Bearer sk-openai-test"
+    body = json.loads(request.content)
+    assert body["model"] == "claude-sonnet-5"  # the per-run model default
+    assert body["max_tokens"] == 1024
+    assert [m["role"] for m in body["messages"]] == ["system", "user"]
+    assert "Move 1." in body["messages"][1]["content"]
+
+
+def test_an_arbitrary_model_id_is_passed_through(
+    openai_config: AIProviderConfig, user: User, katago_server
+) -> None:
+    """OpenAI, vLLM, and Ollama accept model IDs outside the Claude catalog."""
+    router, _ = katago_server
+    route = _llm_route(router, json=_openai_response("hi"))
+    _run(user, provider_config=openai_config, model="qwen2.5-7b")
+
+    assert json.loads(route.calls[0].request.content)["model"] == "qwen2.5-7b"
+
+
+def test_openai_usage_is_normalized_onto_the_claude_shape(
+    openai_config: AIProviderConfig, user: User, katago_server
+) -> None:
+    router, _ = katago_server
+    _llm_route(router, json=_openai_response("hi", prompt_tokens=100, completion_tokens=40))
+
+    result = _run(user, provider_config=openai_config)
+
+    assert result["usage"] == {
+        "input_tokens": 200,
+        "output_tokens": 80,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+    }
+
+
+def test_openai_usage_may_be_absent(
+    openai_config: AIProviderConfig, user: User, katago_server
+) -> None:
+    router, _ = katago_server
+    _llm_route(router, json={"choices": [{"message": {"content": "hi"}}]})
+
+    result = _run(user, provider_config=openai_config)
+
+    assert result["usage"]["input_tokens"] == 0
+    assert result["usage"]["output_tokens"] == 0
+
+
+def test_a_local_server_without_a_key_sends_no_auth_header(
+    session: Session, user: User, katago_server
+) -> None:
+    """Ollama and a development vLLM may need no credential at all."""
+    config = AIProviderConfig(
+        user_id=user.id,
+        provider="openai-compatible",
+        encrypted_api_key=None,
+        base_url=OPENAI_BASE_URL,
+        model="llama3.1",
+    )
+    session.add(config)
+    session.commit()
+    session.refresh(config)
+
+    router, _ = katago_server
+    route = _llm_route(router, json=_openai_response("ok"))
+    _run(user, provider_config=config)
+
+    assert "authorization" not in route.calls[0].request.headers
+
+
+def test_the_default_base_url_is_openai(
+    openai_config: AIProviderConfig, user: User, katago_server
+) -> None:
+    openai_config.base_url = None
+    router, _ = katago_server
+    route = router.post("https://api.openai.com/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json=_openai_response("hi"))
+    )
+
+    _run(user, provider_config=openai_config)
+
+    assert route.call_count == 2
+
+
+def test_a_claude_config_uses_the_claude_transport(
+    session: Session, user: User, katago_server, fake_anthropic
+) -> None:
+    config = AIProviderConfig(
+        user_id=user.id,
+        provider="claude",
+        encrypted_api_key=encrypt_secret("sk-ant-config"),
+        base_url=None,
+        model="claude-sonnet-5",
+    )
+    session.add(config)
+    session.commit()
+    session.refresh(config)
+
+    _run(user, provider_config=config)
+
+    assert fake_anthropic.instances[0].api_key == "sk-ant-config"
+
+
+def test_an_azure_config_is_rejected_before_katago(
+    session: Session, user: User, katago_server
+) -> None:
+    """Azure needs its own adapter; it must never ride the generic transport."""
+    config = AIProviderConfig(
+        user_id=user.id,
+        provider="azure",
+        encrypted_api_key=encrypt_secret("azure-key"),
+        base_url=None,
+        model="gpt-4",
+    )
+    session.add(config)
+    session.commit()
+    session.refresh(config)
+
+    router, recorded = katago_server
+    with pytest.raises(UnsupportedProviderError):
+        _run(user, provider_config=config)
+
+    assert recorded == []
+
+
+def test_openai_one_failed_call_leaves_a_placeholder(
+    openai_config: AIProviderConfig, user: User, katago_server
+) -> None:
+    """The partial-comment behavior is the same whichever transport is selected."""
+    served: list[int] = []
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        served.append(1)
+        if len(served) == 1:
+            return httpx.Response(500)
+        return httpx.Response(200, json=_openai_response("second comment"))
+
+    router, _ = katago_server
+    router.post("http://llm.test/v1/chat/completions").mock(side_effect=_handler)
+
+    result = _run(user, provider_config=openai_config)
+
+    comments = {c["turn"]: c["comment"] for c in result["comments"]}
+    assert "could not be generated" in comments[1]
+    assert comments[2] == "second comment"
+    # Usage only counts the calls that succeeded.
+    assert result["usage"]["input_tokens"] == 30
+
+
+def test_openai_401_becomes_upstream_auth_failed() -> None:
+    with respx.mock(base_url="http://llm.test") as router:
+        router.post("/v1/chat/completions").mock(return_value=httpx.Response(401))
+        with pytest.raises(UpstreamAuthError):
+            generate_commentary_with_openai_compatible(
+                "sk-x", "http://llm.test/v1", ["p"], model="m"
+            )
+
+
+def test_openai_403_becomes_upstream_auth_failed() -> None:
+    with respx.mock(base_url="http://llm.test") as router:
+        router.post("/v1/chat/completions").mock(return_value=httpx.Response(403))
+        with pytest.raises(UpstreamAuthError):
+            generate_commentary_with_openai_compatible(
+                "sk-x", "http://llm.test/v1", ["p"], model="m"
+            )
+
+
+def test_openai_429_becomes_upstream_rate_limited() -> None:
+    with respx.mock(base_url="http://llm.test") as router:
+        router.post("/v1/chat/completions").mock(
+            return_value=httpx.Response(429, headers={"retry-after": "17"})
+        )
+        with pytest.raises(UpstreamRateLimitedError) as excinfo:
+            generate_commentary_with_openai_compatible(
+                "sk-x", "http://llm.test/v1", ["p"], model="m"
+            )
+
+    assert excinfo.value.retry_after == 17
+
+
+def test_openai_timeout_becomes_upstream_error() -> None:
+    with respx.mock(base_url="http://llm.test") as router:
+        router.post("/v1/chat/completions").mock(side_effect=httpx.TimeoutException("timed out"))
+        with pytest.raises(UpstreamError):
+            generate_commentary_with_openai_compatible(
+                "sk-x", "http://llm.test/v1", ["p"], model="m"
+            )
+
+
+def test_openai_connection_error_becomes_upstream_error() -> None:
+    with respx.mock(base_url="http://llm.test") as router:
+        router.post("/v1/chat/completions").mock(side_effect=httpx.ConnectError("refused"))
+        with pytest.raises(UpstreamError):
+            generate_commentary_with_openai_compatible(
+                "sk-x", "http://llm.test/v1", ["p"], model="m"
+            )
+
+
+def test_openai_5xx_becomes_upstream_error() -> None:
+    with respx.mock(base_url="http://llm.test") as router:
+        router.post("/v1/chat/completions").mock(return_value=httpx.Response(503))
+        with pytest.raises(UpstreamError):
+            generate_commentary_with_openai_compatible(
+                "sk-x", "http://llm.test/v1", ["p"], model="m"
+            )
+
+
+def test_openai_malformed_responses_become_upstream_error() -> None:
+    bodies = [
+        "not json",
+        json.dumps({"id": "x"}),  # no choices
+        json.dumps({"choices": [{}]}),  # no message
+        json.dumps({"error": {"message": "boom"}}),  # error envelope
+    ]
+    for body in bodies:
+        with respx.mock(base_url="http://llm.test") as router:
+            router.post("/v1/chat/completions").mock(return_value=httpx.Response(200, text=body))
+            with pytest.raises(UpstreamError):
+                generate_commentary_with_openai_compatible(
+                    "sk-x", "http://llm.test/v1", ["p"], model="m"
+                )
+
+
 # ── Failure modes ─────────────────────────────────────────────────────────────
 
 
@@ -598,7 +909,7 @@ def test_one_failed_call_leaves_a_placeholder_but_keeps_the_rest(
     assert len(comments) == 2
     assert "could not be generated" in comments[1]
     assert comments[2] == "Comment #2"
-    assert any("Anthropic call failed" in record.getMessage() for record in caplog.records)
+    assert any("Provider call failed" in record.getMessage() for record in caplog.records)
 
 
 def test_a_placeholder_comment_still_reaches_the_annotated_sgf(

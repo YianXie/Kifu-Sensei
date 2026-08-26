@@ -2,107 +2,191 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "react-toastify";
 
-import { looksLikeApiKey } from "@shared/commentary";
+import type { ProviderName } from "@shared/types";
 
 import api from "@/api";
-import { Alert, Button, Field, Icon, Input } from "@/components/ui";
+import { Alert, Button, Field, Icon, Input, Select } from "@/components/ui";
 import { ENDPOINTS } from "@/constants/global/endpoints";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { UserSettings } from "@/types/auth";
+import type { AIProviderSettings, UserSettings } from "@/types/auth";
 import { getErrorMessage } from "@/utils/errorFormatting";
 
+const DEFAULT_MODELS: Record<ProviderName, string> = {
+    claude: "claude-sonnet-5",
+    "openai-compatible": "",
+};
+
+function mergeProviderSettings(
+    current: UserSettings | null,
+    provider: AIProviderSettings | null
+): UserSettings {
+    return {
+        preferences: current?.preferences ?? {},
+        has_claude_api_key:
+            provider?.provider === "claude" && provider.has_api_key,
+        ai_provider: provider,
+    };
+}
+
 export default function SetupApiKey() {
-    usePageTitle("Set Up Claude API Key");
+    usePageTitle("Set Up AI Provider");
 
     const navigate = useNavigate();
     const { isLoading, userSettings, updateUserSettings } = useAuth();
-
+    const [provider, setProvider] = useState<ProviderName>("claude");
+    const [model, setModel] = useState(DEFAULT_MODELS.claude);
     const [apiKey, setApiKey] = useState("");
+    const [baseUrl, setBaseUrl] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
         if (isLoading) return;
-        if (userSettings?.has_claude_api_key) {
-            toast.error("You have already set up a Claude API key.");
+        if (userSettings?.ai_provider || userSettings?.has_claude_api_key) {
+            toast.error("You have already configured an AI provider.");
             navigate("/", { replace: true });
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isLoading, userSettings]);
+    }, [isLoading, navigate, userSettings]);
+
+    const requiresKey = provider === "claude";
 
     async function handleSave(e: React.FormEvent) {
         e.preventDefault();
         setError(null);
         setLoading(true);
         try {
-            const { data } = await api.put<UserSettings>(
-                ENDPOINTS.claudeApiKey,
+            const { data } = await api.put<AIProviderSettings>(
+                ENDPOINTS.aiProvider,
                 {
-                    claude_api_key: apiKey.trim(),
+                    provider,
+                    model: model.trim(),
+                    ...(apiKey.trim() ? { api_key: apiKey.trim() } : {}),
+                    ...(provider === "openai-compatible" && baseUrl.trim()
+                        ? { base_url: baseUrl.trim() }
+                        : {}),
                 }
             );
-            updateUserSettings(data);
-            toast.success("Claude API key saved.");
+            updateUserSettings(mergeProviderSettings(userSettings, data));
+            toast.success("AI provider saved.");
             navigate("/");
         } catch (err) {
-            setError(getErrorMessage(err, "Failed to save API key."));
+            setError(getErrorMessage(err, "Failed to save AI provider."));
         } finally {
             setLoading(false);
         }
+    }
+
+    function changeProvider(next: ProviderName) {
+        setProvider(next);
+        setModel(DEFAULT_MODELS[next]);
+        setApiKey("");
+        setBaseUrl("");
     }
 
     return (
         <div className="ks-auth">
             <div className="ks-auth__head">
                 <Icon name="key" size="xl" />
-                <h1 className="ks-auth__title">Add your Claude API key</h1>
+                <h1 className="ks-auth__title">Configure your AI provider</h1>
                 <p className="ks-auth__lead">
-                    Kifu-Sensei uses Claude to write commentary on your games.
-                    Your key is encrypted before it&apos;s stored and is never
-                    shared.
+                    Kifu-Sensei uses your selected provider to write commentary
+                    on your games. Credentials are encrypted before storage and
+                    are never shared with other users.
                 </p>
             </div>
 
             {error && <Alert severity="error">{error}</Alert>}
 
             <form onSubmit={handleSave} className="ks-auth__form">
+                <Field label="Provider" htmlFor="setup-provider">
+                    <Select
+                        id="setup-provider"
+                        value={provider}
+                        onChange={(e) =>
+                            changeProvider(e.target.value as ProviderName)
+                        }
+                        options={[
+                            { value: "claude", label: "Claude (Anthropic)" },
+                            {
+                                value: "openai-compatible",
+                                label: "OpenAI-compatible endpoint",
+                            },
+                        ]}
+                    />
+                </Field>
+
                 <Field
-                    label="Claude API key"
+                    label="Model"
+                    htmlFor="setup-model"
+                    hint="Enter the model ID supported by this provider."
+                >
+                    <Input
+                        id="setup-model"
+                        type="text"
+                        mono
+                        placeholder={
+                            provider === "claude"
+                                ? "claude-sonnet-5"
+                                : "llama3.1 or gpt-4o"
+                        }
+                        value={model}
+                        onChange={(e) => setModel(e.target.value)}
+                        required
+                        autoFocus
+                        autoComplete="off"
+                    />
+                </Field>
+
+                {provider === "openai-compatible" && (
+                    <Field
+                        label="Base URL (optional)"
+                        htmlFor="setup-base-url"
+                        hint="Leave blank for api.openai.com. Use this for vLLM or Ollama-compatible servers."
+                    >
+                        <Input
+                            id="setup-base-url"
+                            type="url"
+                            mono
+                            placeholder="https://api.openai.com/v1"
+                            value={baseUrl}
+                            onChange={(e) => setBaseUrl(e.target.value)}
+                            autoComplete="off"
+                        />
+                    </Field>
+                )}
+
+                <Field
+                    label={requiresKey ? "API key" : "API key (optional)"}
                     htmlFor="setup-key"
-                    // The panel has always shown this reassurance and the website
-                    // showed none, so a mistyped key got a green tick in one place
-                    // and silence in the other. The real check is still the backend
-                    // accepting it — this only says "that looks like a key".
                     hint={
-                        apiKey.trim() === ""
-                            ? "Starts with sk-ant-"
-                            : looksLikeApiKey(apiKey)
-                              ? "That looks like a Claude API key."
-                              : "Claude keys start with sk-ant- — check you pasted the whole thing."
+                        requiresKey
+                            ? "Your Claude key is encrypted before storage."
+                            : "Local endpoints may accept an arbitrary credential or no key."
                     }
                 >
                     <Input
                         id="setup-key"
                         type="password"
                         mono
-                        placeholder="sk-ant-..."
+                        placeholder={requiresKey ? "sk-ant-..." : "Optional"}
                         value={apiKey}
                         onChange={(e) => setApiKey(e.target.value)}
-                        valid={apiKey.trim() !== "" && looksLikeApiKey(apiKey)}
-                        required
-                        autoFocus
+                        required={requiresKey}
                         autoComplete="off"
                     />
                 </Field>
+
                 <div style={{ display: "flex", gap: "var(--space-8)" }}>
                     <Button
                         type="submit"
                         size="lg"
                         block
-                        disabled={loading || !apiKey.trim()}
+                        disabled={
+                            loading || !model.trim() || (requiresKey && !apiKey.trim())
+                        }
                     >
-                        {loading ? "Saving…" : "Save key"}
+                        {loading ? "Saving…" : "Save provider"}
                     </Button>
                     <Button
                         type="button"
@@ -116,25 +200,6 @@ export default function SetupApiKey() {
                     </Button>
                 </div>
             </form>
-
-            <p
-                style={{
-                    margin: 0,
-                    textAlign: "center",
-                    fontSize: "var(--text-2xs)",
-                    color: "var(--text-muted)",
-                }}
-            >
-                Don&apos;t have a key yet?{" "}
-                <a
-                    href="https://console.anthropic.com/settings/keys"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                >
-                    Get one from the Anthropic Console
-                </a>
-                .
-            </p>
         </div>
     );
 }

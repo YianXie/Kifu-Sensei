@@ -41,10 +41,23 @@ class CommentaryError(Exception):
 
 
 class MissingApiKeyError(CommentaryError):
-    """The user triggered commentary without a stored Claude API key."""
+    """The user triggered commentary without a usable AI provider credential."""
 
     status_code = status.HTTP_409_CONFLICT
     code = "no_api_key"
+
+
+class UnsupportedProviderError(CommentaryError):
+    """The account's AI provider is recognized but not implemented yet.
+
+    Raised for ``azure`` until it gets its own adapter (deployment names, API
+    versions, and different auth headers do not fit the OpenAI-compatible Bearer
+    transport). The settings API already rejects unknown providers, so reaching
+    this normally means a hand-edited row.
+    """
+
+    status_code = status.HTTP_400_BAD_REQUEST
+    code = "provider_unsupported"
 
 
 class InvalidSgfError(CommentaryError):
@@ -55,21 +68,21 @@ class InvalidSgfError(CommentaryError):
 
 
 class UpstreamRateLimitedError(CommentaryError):
-    """Anthropic rate-limited the user's API key."""
+    """The AI provider rate-limited the user's API key."""
 
     status_code = status.HTTP_429_TOO_MANY_REQUESTS
     code = "upstream_rate_limited"
 
 
 class UpstreamAuthError(CommentaryError):
-    """Anthropic rejected the user's API key."""
+    """The AI provider rejected the user's API key."""
 
     status_code = status.HTTP_502_BAD_GATEWAY
     code = "upstream_auth_failed"
 
 
 class UpstreamError(CommentaryError):
-    """Anthropic failed for a reason that is not the user's to fix."""
+    """The AI provider failed for a reason that is not the user's to fix."""
 
     status_code = status.HTTP_502_BAD_GATEWAY
     code = "upstream_error"

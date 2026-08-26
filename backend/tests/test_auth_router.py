@@ -1,8 +1,10 @@
+import json
+
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
 from app.crypto import decrypt_secret, encrypt_secret
-from app.models import DEFAULT_USER_PREFERENCES, Commentary, CommentaryJob, User
+from app.models import DEFAULT_USER_PREFERENCES, AIProviderConfig, Commentary, CommentaryJob, User
 from app.security import (
     ACCESS_TOKEN_TYPE,
     REFRESH_TOKEN_TYPE,
@@ -258,6 +260,7 @@ def test_get_settings_returns_the_stored_preferences(
     assert response.json() == {
         "preferences": DEFAULT_USER_PREFERENCES,
         "has_claude_api_key": False,
+        "ai_provider": None,
     }
 
 
@@ -363,6 +366,367 @@ def test_deleting_an_absent_api_key_is_a_no_op(client: TestClient, auth_headers:
     response = client.delete("/auth/user/claude-api-key/", headers=auth_headers)
     assert response.status_code == 200
     assert response.json()["has_claude_api_key"] is False
+
+
+# ── Provider-neutral AI configuration ────────────────────────────────────────
+
+
+def _config_of(session: Session, user: User) -> AIProviderConfig | None:
+    return session.exec(select(AIProviderConfig).where(AIProviderConfig.user_id == user.id)).first()
+
+
+def test_a_new_account_has_no_provider_config(client: TestClient, auth_headers: dict) -> None:
+    assert client.get("/auth/user/ai-provider/", headers=auth_headers).status_code == 404
+    settings = client.get("/auth/user/settings/", headers=auth_headers).json()
+    assert settings["ai_provider"] is None
+    assert settings["has_claude_api_key"] is False
+
+
+def test_saving_an_openai_compatible_provider(
+    client: TestClient, session: Session, auth_headers: dict, user: User
+) -> None:
+    response = client.put(
+        "/auth/user/ai-provider/",
+        headers=auth_headers,
+        json={
+            "provider": "openai-compatible",
+            "model": "qwen2.5-7b",
+            "api_key": "sk-local-123",
+            "base_url": "http://localhost:8000/v1/",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["provider"] == "openai-compatible"
+    assert body["model"] == "qwen2.5-7b"
+    assert body["base_url"] == "http://localhost:8000/v1"  # trailing slash stripped
+    assert body["has_api_key"] is True
+    # The key is never echoed back, and no ciphertext field is exposed.
+    assert "sk-local-123" not in response.text
+    assert "encrypted_api_key" not in body
+
+    config = _config_of(session, user)
+    assert config is not None
+    assert config.provider == "openai-compatible"
+    assert decrypt_secret(config.encrypted_api_key) == "sk-local-123"
+    # Switching away from Claude clears the legacy column.
+    session.refresh(user)
+    assert user.claude_api is None
+
+
+def test_an_openai_compatible_provider_may_have_no_credential(
+    client: TestClient, session: Session, auth_headers: dict, user: User
+) -> None:
+    """Local servers (vLLM, Ollama) may use arbitrary or empty credentials."""
+    response = client.put(
+        "/auth/user/ai-provider/",
+        headers=auth_headers,
+        json={
+            "provider": "openai-compatible",
+            "model": "local-model",
+            "base_url": "http://localhost:11434/v1",
+            "api_key": "",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["has_api_key"] is False
+    config = _config_of(session, user)
+    assert config is not None
+    assert config.encrypted_api_key is None
+
+
+def test_updating_without_an_api_key_keeps_the_stored_credential(
+    client: TestClient, session: Session, auth_headers: dict, user: User
+) -> None:
+    """A client cannot resend a key the API never echoes back."""
+    client.put(
+        "/auth/user/ai-provider/",
+        headers=auth_headers,
+        json={
+            "provider": "openai-compatible",
+            "model": "first-model",
+            "api_key": "sk-keep-me",
+            "base_url": "http://localhost:8000/v1",
+        },
+    )
+    response = client.put(
+        "/auth/user/ai-provider/",
+        headers=auth_headers,
+        json={"provider": "openai-compatible", "model": "second-model"},
+    )
+
+    assert response.status_code == 200
+    config = _config_of(session, user)
+    assert config is not None
+    assert config.model == "second-model"
+    assert decrypt_secret(config.encrypted_api_key) == "sk-keep-me"
+
+
+def test_switching_provider_without_an_api_key_clears_the_old_credential(
+    client: TestClient, session: Session, auth_headers: dict, user: User
+) -> None:
+    client.put(
+        "/auth/user/ai-provider/",
+        headers=auth_headers,
+        json={"provider": "claude", "model": "claude-sonnet-5", "api_key": "claude-secret"},
+    )
+
+    response = client.put(
+        "/auth/user/ai-provider/",
+        headers=auth_headers,
+        json={"provider": "openai-compatible", "model": "local-model"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["has_api_key"] is False
+    config = _config_of(session, user)
+    assert config is not None
+    assert config.encrypted_api_key is None
+
+
+def test_switching_to_claude_without_an_api_key_is_rejected(
+    client: TestClient, auth_headers: dict
+) -> None:
+    client.put(
+        "/auth/user/ai-provider/",
+        headers=auth_headers,
+        json={
+            "provider": "openai-compatible",
+            "model": "local-model",
+            "api_key": "openai-secret",
+        },
+    )
+
+    response = client.put(
+        "/auth/user/ai-provider/",
+        headers=auth_headers,
+        json={"provider": "claude", "model": "claude-sonnet-5"},
+    )
+
+    assert response.status_code == 400
+    assert "api_key" in response.json()
+
+
+def test_saving_claude_via_the_provider_endpoint_writes_both_stores(
+    client: TestClient, session: Session, auth_headers: dict, user: User
+) -> None:
+    response = client.put(
+        "/auth/user/ai-provider/",
+        headers=auth_headers,
+        json={"provider": "claude", "model": "claude-sonnet-5", "api_key": "sk-ant-test"},
+    )
+
+    assert response.status_code == 200
+    session.refresh(user)
+    assert user.claude_api is not None
+    assert decrypt_secret(user.claude_api) == "sk-ant-test"
+    config = _config_of(session, user)
+    assert config is not None
+    assert config.encrypted_api_key == user.claude_api
+
+
+def test_saving_claude_without_a_key_is_rejected(client: TestClient, auth_headers: dict) -> None:
+    response = client.put(
+        "/auth/user/ai-provider/",
+        headers=auth_headers,
+        json={"provider": "claude", "model": "claude-sonnet-5"},
+    )
+    assert response.status_code == 400
+    assert "api_key" in response.json()
+
+
+def test_claude_rejects_a_base_url(client: TestClient, auth_headers: dict) -> None:
+    """A base URL nothing reads would be silently ignored config."""
+    response = client.put(
+        "/auth/user/ai-provider/",
+        headers=auth_headers,
+        json={
+            "provider": "claude",
+            "model": "claude-sonnet-5",
+            "api_key": "sk-ant-x",
+            "base_url": "http://localhost:8000",
+        },
+    )
+    assert response.status_code == 400
+
+
+def test_an_unknown_provider_is_rejected(client: TestClient, auth_headers: dict) -> None:
+    """Azure is deferred to a dedicated adapter, not smuggled in here."""
+    response = client.put(
+        "/auth/user/ai-provider/",
+        headers=auth_headers,
+        json={"provider": "azure-openai", "model": "gpt-4"},
+    )
+    assert response.status_code == 400
+    assert "provider" in response.json()
+
+
+def test_a_malformed_base_url_is_rejected(client: TestClient, auth_headers: dict) -> None:
+    for bad in [
+        "not-a-url",
+        "ftp://localhost/x",
+        "http://user:pass@localhost:8000/v1",
+        "http://localhost:8000/v1?x=1",
+    ]:
+        response = client.put(
+            "/auth/user/ai-provider/",
+            headers=auth_headers,
+            json={"provider": "openai-compatible", "model": "m", "base_url": bad},
+        )
+        assert response.status_code == 400, bad
+
+
+def test_an_empty_model_is_rejected(client: TestClient, auth_headers: dict) -> None:
+    response = client.put(
+        "/auth/user/ai-provider/",
+        headers=auth_headers,
+        json={"provider": "openai-compatible", "model": "   "},
+    )
+    assert response.status_code == 400
+
+
+def test_getting_the_provider_never_discloses_the_credential(
+    client: TestClient, auth_headers: dict
+) -> None:
+    client.put(
+        "/auth/user/ai-provider/",
+        headers=auth_headers,
+        json={
+            "provider": "openai-compatible",
+            "model": "m",
+            "api_key": "sk-secret-xyz",
+        },
+    )
+    body = client.get("/auth/user/ai-provider/", headers=auth_headers).json()
+    assert body["has_api_key"] is True
+    assert "sk-secret-xyz" not in json.dumps(body)
+    assert "encrypted_api_key" not in body
+
+
+def test_settings_reflect_the_saved_provider(client: TestClient, auth_headers: dict) -> None:
+    client.put(
+        "/auth/user/ai-provider/",
+        headers=auth_headers,
+        json={"provider": "openai-compatible", "model": "qwen", "api_key": "sk-1"},
+    )
+    settings = client.get("/auth/user/settings/", headers=auth_headers).json()
+    assert settings["has_claude_api_key"] is False
+    assert settings["ai_provider"]["provider"] == "openai-compatible"
+    assert settings["ai_provider"]["has_api_key"] is True
+
+
+def test_deleting_the_provider_config(
+    client: TestClient, session: Session, auth_headers: dict, user: User
+) -> None:
+    client.put(
+        "/auth/user/ai-provider/",
+        headers=auth_headers,
+        json={"provider": "openai-compatible", "model": "m", "api_key": "sk-x"},
+    )
+
+    response = client.delete("/auth/user/ai-provider/", headers=auth_headers)
+
+    assert response.status_code == 204
+    assert _config_of(session, user) is None
+    assert client.get("/auth/user/ai-provider/", headers=auth_headers).status_code == 404
+
+
+def test_deleting_an_absent_provider_config_is_a_no_op(
+    client: TestClient, auth_headers: dict
+) -> None:
+    assert client.delete("/auth/user/ai-provider/", headers=auth_headers).status_code == 204
+
+
+# ── Legacy Claude migration / fallback ───────────────────────────────────────
+
+
+def test_a_legacy_claude_user_is_served_through_the_fallback(
+    client: TestClient, session: Session, make_user
+) -> None:
+    """Accounts created before the provider-neutral table (no config row) must not
+    lose their Claude key: the settings APIs synthesize the view from the legacy
+    column."""
+    legacy = make_user("legacy@example.com", claude_api=encrypt_secret("sk-ant-legacy"))
+    headers = {"Authorization": f"Bearer {create_access_token(legacy.id, legacy.email)}"}
+
+    settings = client.get("/auth/user/settings/", headers=headers).json()
+    assert settings["has_claude_api_key"] is True
+    assert settings["ai_provider"] == {
+        "provider": "claude",
+        "model": "claude-sonnet-5",
+        "base_url": None,
+        "has_api_key": True,
+    }
+
+    provider = client.get("/auth/user/ai-provider/", headers=headers)
+    assert provider.status_code == 200
+    assert provider.json()["provider"] == "claude"
+    assert "sk-ant-legacy" not in provider.text
+
+
+def test_the_legacy_claude_endpoint_also_writes_the_provider_config(
+    client: TestClient, session: Session, auth_headers: dict, user: User
+) -> None:
+    client.put(
+        "/auth/user/claude-api-key/",
+        headers=auth_headers,
+        json={"claude_api_key": "sk-ant-legacy"},
+    )
+
+    config = _config_of(session, user)
+    session.refresh(user)
+    assert config is not None
+    assert config.provider == "claude"
+    # The same ciphertext goes into both stores — no decrypt-and-re-encrypt.
+    assert config.encrypted_api_key == user.claude_api
+
+
+def test_deleting_the_legacy_claude_key_removes_the_config(
+    client: TestClient, session: Session, auth_headers: dict, user: User
+) -> None:
+    client.put(
+        "/auth/user/claude-api-key/",
+        headers=auth_headers,
+        json={"claude_api_key": "sk-ant-x"},
+    )
+
+    response = client.delete("/auth/user/claude-api-key/", headers=auth_headers)
+
+    assert response.status_code == 200
+    assert response.json()["has_claude_api_key"] is False
+    assert response.json()["ai_provider"] is None
+    assert _config_of(session, user) is None
+
+
+def test_delete_account_removes_the_provider_config(
+    client: TestClient,
+    session: Session,
+    auth_headers: dict,
+    user: User,
+    test_password: str,
+) -> None:
+    client.put(
+        "/auth/user/ai-provider/",
+        headers=auth_headers,
+        json={"provider": "openai-compatible", "model": "m", "api_key": "sk-x"},
+    )
+    user_id = user.id
+
+    response = client.request(
+        "DELETE",
+        "/auth/user/delete/",
+        headers=auth_headers,
+        json={"password": test_password},
+    )
+
+    assert response.status_code == 204
+    session.expunge_all()
+    assert (
+        session.exec(select(AIProviderConfig).where(AIProviderConfig.user_id == user_id)).all()
+        == []
+    )
 
 
 # ── Account management ────────────────────────────────────────────────────────

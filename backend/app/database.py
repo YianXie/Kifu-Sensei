@@ -62,6 +62,29 @@ def _ensure_columns() -> None:
                 text("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0")
             )
 
+    # Some deployments initialize with SQLModel.create_all rather than running the
+    # Alembic chain. Keep those deployments compatible with the provider-neutral table
+    # by copying the existing Claude ciphertext without ever decrypting it here.
+    if "ai_provider_configs" in inspect(engine).get_table_names():
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO ai_provider_configs
+                        (user_id, provider, encrypted_api_key, base_url, model,
+                         created_at, updated_at)
+                    SELECT id, 'claude', claude_api, NULL, 'claude-sonnet-5',
+                           CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                    FROM users
+                    WHERE claude_api IS NOT NULL
+                      AND NOT EXISTS (
+                          SELECT 1 FROM ai_provider_configs
+                          WHERE ai_provider_configs.user_id = users.id
+                      )
+                    """
+                )
+            )
+
 
 def init_db() -> None:
     # Import models so they are registered on SQLModel.metadata before create_all.

@@ -228,7 +228,7 @@ describe("viewing an already-generated result without an API key", () => {
             screen.getByRole("button", { name: "Download annotated SGF file" })
         ).toBeInTheDocument();
         expect(
-            screen.queryByText("Claude API key required")
+            screen.queryByText("AI provider required")
         ).not.toBeInTheDocument();
     });
 
@@ -236,7 +236,7 @@ describe("viewing an already-generated result without an API key", () => {
         mockAuth(false);
         renderPage();
 
-        expect(screen.getByText("Claude API key required")).toBeInTheDocument();
+        expect(screen.getByText("AI provider required")).toBeInTheDocument();
     });
 });
 

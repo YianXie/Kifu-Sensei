@@ -14,7 +14,7 @@ const FEATURES: { icon: IconName; title: string; body: ReactNode }[] = [
         body: (
             <>
                 Kifu-Sensei combines KataGo&apos;s numeric analysis with
-                human-readable explanations powered by Claude. Instead of raw
+                human-readable explanations powered by your chosen AI provider. Instead of raw
                 win-rate charts, you get a clear explanation of <em>why</em> a
                 move was a mistake and what better alternatives exist.
             </>
@@ -25,7 +25,7 @@ const FEATURES: { icon: IconName; title: string; body: ReactNode }[] = [
         title: "Fully customizable output",
         body: (
             <>
-                Adjust the number of comments, choose your Claude model, set a
+                Adjust the number of comments, choose your provider and model, set a
                 token budget, and add custom instructions — all from the
                 commentary page. Tailor the depth and style to match your level
                 and budget.
@@ -58,8 +58,7 @@ const FEATURES: { icon: IconName; title: string; body: ReactNode }[] = [
                     open-source on GitHub
                 </a>
                 . With prompt-caching, a 20-move commentary costs well under a
-                few cents — under $0.10 — and you only pay for your own Claude
-                API key.
+                few cents — under $0.10 — and you only pay for your own provider usage.
             </>
         ),
     },
@@ -81,14 +80,14 @@ export default function Home() {
                 <div className="ks-gridwash" />
                 <div className="ks-container ks-hero__inner">
                     <div className="ks-hero__copy">
-                        <Chip label="KataGo · Claude · SGF" />
+                        <Chip label="KataGo · AI · SGF" />
                         <h1 className="ks-hero__title">
                             Understand your mistakes{" "}
                             <em>in words, not just numbers</em>
                         </h1>
                         <p className="ks-hero__lead">
                             Upload an SGF file and receive KataGo-backed
-                            analysis paired with Claude-generated commentary for
+                            analysis paired with AI-generated commentary for
                             every significant move.
                         </p>
                         <div className="ks-hero__actions">

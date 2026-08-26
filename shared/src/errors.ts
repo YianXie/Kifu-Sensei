@@ -8,14 +8,14 @@ import type { CommentaryApiError, PanelErrorCode } from "./types";
 import { isCommentaryErrorCode } from "./types";
 
 export const COMMENTARY_ERROR_MESSAGES: Record<PanelErrorCode, string> = {
-    no_api_key: "Add your Claude API key to start generating commentary.",
+    no_api_key: "Configure an AI provider to start generating commentary.",
     invalid_sgf:
         "That game record could not be read. It may not be a valid SGF.",
     upstream_rate_limited:
-        "Anthropic is rate-limiting your API key. Please wait and try again.",
+        "Your AI provider is rate-limiting requests. Please wait and try again.",
     upstream_auth_failed:
-        "Anthropic rejected your API key. Check it in Settings.",
-    upstream_error: "Claude could not be reached. Please try again.",
+        "Your AI provider rejected the credential. Check it in Settings.",
+    upstream_error: "Your AI provider could not be reached. Please try again.",
     katago_unavailable:
         "The analysis engine is unavailable. Please try again shortly.",
     job_already_running:
@@ -95,7 +95,7 @@ export function resolveCommentaryError(
 
     const message =
         code === "upstream_rate_limited" && typeof retryAfter === "number"
-            ? `Anthropic is rate-limiting your API key. Try again in ${retryAfter}s.`
+            ? `Your AI provider is rate-limiting requests. Try again in ${retryAfter}s.`
             : COMMENTARY_ERROR_MESSAGES[code];
 
     return {

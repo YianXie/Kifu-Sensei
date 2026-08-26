@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 import { toast } from "react-toastify";
 
 import { readCommentaryConfig } from "@shared/commentary";
-import { type ClaudeModel, CommentaryLanguage } from "@shared/types";
+import { type ProviderName, CommentaryLanguage } from "@shared/types";
 
 import api from "@/api";
 import CommentaryConfig from "@/components/commentary/CommentaryConfig";
@@ -15,6 +15,7 @@ import {
     Field,
     Input,
     SegmentedControl,
+    Select,
     Switch,
     Tabs,
 } from "@/components/ui";
@@ -22,7 +23,7 @@ import { ENDPOINTS } from "@/constants/global/endpoints";
 import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import type { UserSettings } from "@/types/auth";
+import type { AIProviderSettings, UserSettings } from "@/types/auth";
 import { type ThemePreference, isThemePreference } from "@/types/theme";
 import { getErrorMessage } from "@/utils/errorFormatting";
 import { readPlayStoneSound } from "@/utils/preferences";
@@ -71,7 +72,7 @@ export default function Settings() {
         useState(false);
 
     const savedConfig = readCommentaryConfig(prefs);
-    const [model, setModel] = useState<ClaudeModel>(savedConfig.model);
+    const [model, setModel] = useState<string>(savedConfig.model);
     const [language, setLanguage] = useState<CommentaryLanguage>(
         savedConfig.language
     );
@@ -100,7 +101,19 @@ export default function Settings() {
         null
     );
     const [deleteApiKeyLoading, setDeleteApiKeyLoading] = useState(false);
-    const hasClaudeApiKey = userSettings?.has_claude_api_key ?? false;
+    const configuredProvider = userSettings?.ai_provider ?? null;
+    const [provider, setProvider] = useState<ProviderName>(
+        configuredProvider?.provider ?? "claude"
+    );
+    const [providerModel, setProviderModel] = useState(
+        configuredProvider?.model ?? "claude-sonnet-5"
+    );
+    const [baseUrl, setBaseUrl] = useState(
+        configuredProvider?.base_url ?? ""
+    );
+    const hasAIProvider = Boolean(
+        configuredProvider || userSettings?.has_claude_api_key
+    );
 
     const passwordMismatch =
         confirmPassword.length > 0 && newPassword !== confirmPassword;
@@ -110,6 +123,13 @@ export default function Settings() {
     useEffect(() => {
         setPlayStoneSound(readPlayStoneSound(prefs));
     }, [prefs.play_stone_sound]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(() => {
+        if (!configuredProvider) return;
+        setProvider(configuredProvider.provider);
+        setProviderModel(configuredProvider.model);
+        setBaseUrl(configuredProvider.base_url ?? "");
+    }, [configuredProvider?.provider, configuredProvider?.model, configuredProvider?.base_url]);
 
     async function handleUpdateTheme() {
         setThemeLoading(true);
@@ -167,12 +187,23 @@ export default function Settings() {
         setApiKeyError(null);
         setApiKeyLoading(true);
         try {
-            const { data } = await api.put<UserSettings>(
-                ENDPOINTS.claudeApiKey,
-                { claude_api_key: apiKey.trim() }
+            const { data } = await api.put<AIProviderSettings>(
+                ENDPOINTS.aiProvider,
+                {
+                    provider,
+                    model: providerModel.trim(),
+                    ...(apiKey.trim() ? { api_key: apiKey.trim() } : {}),
+                    ...(provider === "openai-compatible" && baseUrl.trim()
+                        ? { base_url: baseUrl.trim() }
+                        : {}),
+                }
             );
-            updateUserSettings(data);
-            toast.success("Claude API key saved.");
+            updateUserSettings({
+                preferences: userSettings?.preferences ?? {},
+                has_claude_api_key: provider === "claude" && data.has_api_key,
+                ai_provider: data,
+            });
+            toast.success("AI provider saved.");
             setApiKey("");
             setApiKeyDialogOpen(false);
         } catch (err) {
@@ -193,11 +224,13 @@ export default function Settings() {
         setDeleteApiKeyError(null);
         setDeleteApiKeyLoading(true);
         try {
-            const { data } = await api.delete<UserSettings>(
-                ENDPOINTS.claudeApiKey
-            );
-            updateUserSettings(data);
-            toast.success("Claude API key deleted.");
+            await api.delete(ENDPOINTS.aiProvider);
+            updateUserSettings({
+                preferences: userSettings?.preferences ?? {},
+                has_claude_api_key: false,
+                ai_provider: null,
+            });
+            toast.success("AI provider deleted.");
             setDeleteApiKeyDialogOpen(false);
         } catch (err) {
             setDeleteApiKeyError(
@@ -603,23 +636,23 @@ export default function Settings() {
 
                     <section className="ks-form-stack">
                         <h2 className="ks-heading" style={{ margin: 0 }}>
-                            Claude API key
+                            AI provider
                         </h2>
                         <p className="ks-page__lead">
-                            {hasClaudeApiKey
-                                ? "A Claude API key is set. You can update it with a new key at any time."
-                                : "No Claude API key is set yet. Add one to start generating commentary."}
+                            {hasAIProvider
+                                ? `${configuredProvider?.provider === "claude" ? "Claude" : "OpenAI-compatible"} is configured${configuredProvider?.has_api_key ? ". You can update it at any time." : " without an API key."}`
+                                : "No AI provider is configured yet. Add one to start generating commentary."}
                         </p>
                         <div className="ks-row ks-row--wrap">
                             <Button
                                 variant="outline"
                                 onClick={() => setApiKeyDialogOpen(true)}
                             >
-                                {hasClaudeApiKey
-                                    ? "Update Claude API key"
-                                    : "Add Claude API key"}
+                                {hasAIProvider
+                                    ? "Update AI provider"
+                                    : "Add AI provider"}
                             </Button>
-                            {hasClaudeApiKey && (
+                            {hasAIProvider && (
                                 <Button
                                     variant="outline"
                                     tone="danger"
@@ -627,7 +660,7 @@ export default function Settings() {
                                         setDeleteApiKeyDialogOpen(true)
                                     }
                                 >
-                                    Delete Claude API key
+                                    Delete AI provider
                                 </Button>
                             )}
                         </div>
@@ -638,9 +671,9 @@ export default function Settings() {
             <Dialog
                 open={apiKeyDialogOpen}
                 title={
-                    hasClaudeApiKey
-                        ? "Update Claude API key"
-                        : "Add Claude API key"
+                    hasAIProvider
+                        ? "Update AI provider"
+                        : "Add AI provider"
                 }
                 onClose={closeApiKeyDialog}
                 onSubmit={handleSaveApiKey}
@@ -656,7 +689,13 @@ export default function Settings() {
                         </Button>
                         <Button
                             type="submit"
-                            disabled={apiKeyLoading || !apiKey.trim()}
+                            disabled={
+                                apiKeyLoading ||
+                                !providerModel.trim() ||
+                                (provider === "claude" &&
+                                    !apiKey.trim() &&
+                                    !configuredProvider?.has_api_key)
+                            }
                         >
                             {apiKeyLoading ? "Saving…" : "Save key"}
                         </Button>
@@ -668,15 +707,69 @@ export default function Settings() {
                     shared.
                 </span>
                 {apiKeyError && <Alert severity="error">{apiKeyError}</Alert>}
-                <Field label="Claude API key" htmlFor="dlg-key">
+                <Field label="Provider" htmlFor="dlg-provider">
+                    <Select
+                        id="dlg-provider"
+                        value={provider}
+                        onChange={(e) => {
+                            const next = e.target.value as ProviderName;
+                            setProvider(next);
+                            setProviderModel(
+                                next === "claude" ? "claude-sonnet-5" : ""
+                            );
+                            setBaseUrl("");
+                            setApiKey("");
+                        }}
+                        options={[
+                            { value: "claude", label: "Claude (Anthropic)" },
+                            {
+                                value: "openai-compatible",
+                                label: "OpenAI-compatible endpoint",
+                            },
+                        ]}
+                    />
+                </Field>
+                <Field label="Model" htmlFor="dlg-model">
+                    <Input
+                        id="dlg-model"
+                        type="text"
+                        mono
+                        value={providerModel}
+                        onChange={(e) => setProviderModel(e.target.value)}
+                        placeholder={
+                            provider === "claude"
+                                ? "claude-sonnet-5"
+                                : "llama3.1 or gpt-4o"
+                        }
+                        required
+                        autoComplete="off"
+                    />
+                </Field>
+                {provider === "openai-compatible" && (
+                    <Field label="Base URL (optional)" htmlFor="dlg-base-url">
+                        <Input
+                            id="dlg-base-url"
+                            type="url"
+                            mono
+                            value={baseUrl}
+                            onChange={(e) => setBaseUrl(e.target.value)}
+                            placeholder="https://api.openai.com/v1"
+                            autoComplete="off"
+                        />
+                    </Field>
+                )}
+                <Field
+                    label={provider === "claude" ? "API key" : "API key (optional)"}
+                    htmlFor="dlg-key"
+                >
                     <Input
                         id="dlg-key"
                         type="password"
                         mono
-                        placeholder="sk-ant-..."
+                        placeholder={provider === "claude" ? "sk-ant-..." : "Optional"}
                         value={apiKey}
                         onChange={(e) => setApiKey(e.target.value)}
-                        required
+                        required={provider === "claude" && !hasAIProvider}
                         autoComplete="off"
                     />
                 </Field>
@@ -688,11 +781,17 @@ export default function Settings() {
                 >
                     Don&apos;t have a key yet?{" "}
                     <a
-                        href="https://console.anthropic.com/settings/keys"
+                        href={
+                            provider === "claude"
+                                ? "https://console.anthropic.com/settings/keys"
+                                : "https://platform.openai.com/api-keys"
+                        }
                         target="_blank"
                         rel="noreferrer"
                     >
-                        Get one from the Anthropic Console
+                        {provider === "claude"
+                            ? "Get one from the Anthropic Console"
+                            : "Get an OpenAI API key"}
                     </a>
                     .
                 </span>
@@ -701,7 +800,7 @@ export default function Settings() {
             <Dialog
                 open={deleteApiKeyDialogOpen}
                 size="sm"
-                title="Delete Claude API key?"
+                title="Delete AI provider?"
                 onClose={closeDeleteApiKeyDialog}
                 actions={
                     <>
@@ -723,8 +822,8 @@ export default function Settings() {
                 }
             >
                 <span>
-                    Do you really want to delete your Claude API key? You
-                    won&apos;t be able to generate commentary until you add a
+                    Do you really want to delete your AI provider configuration?
+                    You won&apos;t be able to generate commentary until you add a
                     new one.
                 </span>
                 {deleteApiKeyError && (

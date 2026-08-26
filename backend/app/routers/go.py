@@ -23,7 +23,7 @@ from app.errors import (
     UpstreamError,
     UpstreamRateLimitedError,
 )
-from app.models import COMMENTARY_JOB_RETENTION, Commentary, CommentaryJob, User
+from app.models import COMMENTARY_JOB_RETENTION, AIProviderConfig, Commentary, CommentaryJob, User
 from app.schemas import (
     CommentaryErrorResponse,
     CommentaryJobCreatedResponse,
@@ -38,18 +38,29 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["go"])
 
+
+def _provider_config_for(session: Session, user: User) -> AIProviderConfig | None:
+    """The account's single AI provider configuration, if one exists.
+
+    The pipeline needs it (transport selection) after the request session is closed,
+    so it is loaded here — while the session is alive — and handed over as a detached
+    object whose columns are already loaded, exactly like ``user``.
+    """
+    return session.exec(select(AIProviderConfig).where(AIProviderConfig.user_id == user.id)).first()
+
+
 _ERROR_RESPONSES: dict[int | str, dict[str, object]] = {
     400: {"model": CommentaryErrorResponse, "description": "The SGF could not be parsed"},
     409: {
         "model": CommentaryErrorResponse,
-        "description": "No Claude API key configured, or a review is already in progress",
+        "description": "No AI provider credential configured, or a review is already in progress",
     },
-    429: {"model": CommentaryErrorResponse, "description": "Anthropic rate-limited the key"},
-    502: {"model": CommentaryErrorResponse, "description": "KataGo or Anthropic failed"},
+    429: {"model": CommentaryErrorResponse, "description": "The AI provider rate-limited the key"},
+    502: {"model": CommentaryErrorResponse, "description": "KataGo or the AI provider failed"},
     500: {"model": CommentaryErrorResponse, "description": "Unexpected server error"},
 }
 
-# A dedicated, bounded pool for the KataGo + Anthropic pipeline — never Starlette's
+# A dedicated, bounded pool for the KataGo + AI provider pipeline — never Starlette's
 # shared request threadpool. That pool has a fixed default capacity (40 slots) shared
 # with every sync request handler and every sync BackgroundTask in the process; a
 # handful of multi-minute commentary runs would exhaust it and stall unrelated
@@ -160,10 +171,13 @@ def _to_commentary_error(exc: BaseException) -> CommentaryError:
     """Classify a pipeline failure into a client-actionable error.
 
     Shared by the synchronous endpoint and the background job runner so the two cannot
-    drift apart. Order matters: ``anthropic.APIError`` is the base class of the two
-    Anthropic checks above it, and the Anthropic checks come before ``httpx`` because
-    the SDK wraps its own transport failures in ``APIConnectionError`` — a raw httpx
-    error therefore only ever comes from the KataGo client.
+    drift apart. The OpenAI-compatible transport already normalizes its failures into
+    ``CommentaryError`` subclasses (the first branch passes them straight through), so
+    the Anthropic branches below only see the Claude path. Order matters there:
+    ``anthropic.APIError`` is the base class of the two Anthropic checks above it, and
+    the Anthropic checks come before ``httpx`` because the SDK wraps its own transport
+    failures in ``APIConnectionError`` — a raw httpx error therefore only ever comes
+    from the KataGo client.
     """
     if isinstance(exc, CommentaryError):
         return exc
@@ -187,8 +201,8 @@ def _to_commentary_error(exc: BaseException) -> CommentaryError:
 def _save_commentary(session: Session, user_id: int, commentary: dict) -> None:
     """Append the run to the user's history.
 
-    Failures are logged and swallowed: the run has already cost KataGo time and
-    Anthropic tokens, so a history-write problem must not discard the result.
+    Failures are logged and swallowed: the run has already cost KataGo time and LLM
+    tokens, so a history-write problem must not discard the result.
     """
     try:
         session.add(
@@ -226,9 +240,10 @@ async def commentary(
     # ``Depends(get_session)`` once per request and shares it), and is not released
     # back to the pool until the endpoint returns — closing it explicitly here, before
     # the multi-minute pipeline call, is what actually frees the connection. Safe:
-    # ``user``'s columns are already loaded, so it stays readable detached, and
-    # ``Session.close()`` is idempotent — the dependency's own teardown closes it again
-    # after this function returns.
+    # ``user``'s and ``provider_config``'s columns are already loaded, so they stay
+    # readable detached, and ``Session.close()`` is idempotent — the dependency's own
+    # teardown closes it again after this function returns.
+    provider_config = _provider_config_for(session, user)
     session.close()
     try:
         commentary = await _run_pipeline(
@@ -240,6 +255,7 @@ async def commentary(
             num_comments=payload.num_comments,
             max_token=payload.max_token,
             custom_instruction=payload.custom_instruction,
+            provider_config=provider_config,
         )
     except Exception as exc:
         raise _to_commentary_error(exc) from exc
@@ -325,10 +341,11 @@ async def _run_commentary_job(
             if user is None or job is None:
                 logger.error("Job %s vanished before it could run", job_id)
                 return
-        # The session above is closed on exiting the ``with`` block. ``user`` is now
-        # detached but its columns were already loaded, so the pipeline can still read
-        # ``user.claude_api`` etc. without a live session for however long the run
-        # takes.
+            provider_config = _provider_config_for(session, user)
+        # The session above is closed on exiting the ``with`` block. ``user`` and
+        # ``provider_config`` are now detached but their columns were already loaded,
+        # so the pipeline can still read ``user.claude_api`` etc. without a live
+        # session for however long the run takes.
 
         commentary = await _run_pipeline(
             payload.sgf_content,
@@ -339,6 +356,7 @@ async def _run_commentary_job(
             num_comments=payload.num_comments,
             max_token=payload.max_token,
             custom_instruction=payload.custom_instruction,
+            provider_config=provider_config,
             on_progress=lambda done, total: _set_job_progress(job_id, done, total),
         )
     except Exception as exc:

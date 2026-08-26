@@ -17,8 +17,14 @@ from sgfmill.boards import Board as SgfmillBoard
 from app.config import settings
 from app.crypto import decrypt_secret
 from app.deps import CurrentUser
-from app.errors import InvalidSgfError, KatagoUnavailableError, MissingApiKeyError
-from app.models import User
+from app.errors import (
+    CommentaryError,
+    InvalidSgfError,
+    KatagoUnavailableError,
+    MissingApiKeyError,
+    UnsupportedProviderError,
+)
+from app.models import AIProviderConfig, User
 from app.services.board import (
     Board,
     BoardError,
@@ -35,6 +41,11 @@ from app.services.concepts import (
     run_detectors,
 )
 from app.services.go_text import REGION_NAMES, ordinal
+from app.services.providers import (
+    ClaudeProvider,
+    CommentaryProvider,
+    OpenAICompatibleProvider,
+)
 
 _http_client = None
 _http_client_lock = threading.Lock()
@@ -158,7 +169,7 @@ _MAX_TIMEOUT_RETRIES = 2
 _CLAUDE_MODEL = "claude-sonnet-5"
 _COMMENTARY_LANGUAGE = "english"
 _MAX_TOKENS = 1024
-# Left in place of a single move's comment when the Anthropic call for it keeps
+# Left in place of a single move's comment when the provider call for it keeps
 # failing after the SDK's own retries — deliberately in plain English and clearly
 # marked as a system message rather than analysis, regardless of the requested
 # commentary language, since generating a translated placeholder would need another
@@ -1088,75 +1099,66 @@ def _empty_usage() -> dict[str, int]:
 
 
 def _accumulate_usage(totals: dict[str, int], usage: Any) -> None:
-    """Add one Anthropic response's token counts into ``totals``.
+    """Add one provider response's token counts into ``totals``.
 
-    The cache counters are ``None`` unless prompt caching is in play. The pipeline does
-    not use it — the system prompt is far below the minimum cacheable prefix, so a
-    ``cache_control`` marker would silently never cache — but they are summed anyway so
-    turning caching on later needs no change here. ``getattr`` guards against SDK
-    versions that omit the attributes entirely.
+    Claude returns a usage object (``input_tokens``/``output_tokens``, with the cache
+    counters ``None`` unless prompt caching is in play); the OpenAI-compatible
+    transport returns a normalized dict with the same keys. ``getattr``/``get`` guard
+    against both shapes omitting attributes entirely. The cache counters are summed
+    anyway so turning prompt caching on later needs no change here.
     """
+    if isinstance(usage, dict):
+        totals["input_tokens"] += usage.get("input_tokens") or 0
+        totals["output_tokens"] += usage.get("output_tokens") or 0
+        totals["cache_read_input_tokens"] += usage.get("cache_read_input_tokens") or 0
+        totals["cache_creation_input_tokens"] += usage.get("cache_creation_input_tokens") or 0
+        return
     totals["input_tokens"] += getattr(usage, "input_tokens", 0) or 0
     totals["output_tokens"] += getattr(usage, "output_tokens", 0) or 0
     totals["cache_read_input_tokens"] += getattr(usage, "cache_read_input_tokens", 0) or 0
     totals["cache_creation_input_tokens"] += getattr(usage, "cache_creation_input_tokens", 0) or 0
 
 
-def generate_commentary_with_claude(
-    user: User,
+def _generate_comments(
+    provider: CommentaryProvider,
     prompts: list[str],
     *,
-    model: str = _CLAUDE_MODEL,
-    language: str = _COMMENTARY_LANGUAGE,
-    max_token: int = _MAX_TOKENS,
-    custom_instruction: str = "",
+    model: str,
+    max_token: int,
+    system_prompt: str,
     on_progress: ProgressCallback | None = None,
 ) -> tuple[list[str], dict[str, int]]:
-    """Example: decrypt the user's Claude API key and call the Anthropic API.
+    """Run one provider call per prompt, keeping partial results on per-call failure.
 
-    The key is only decrypted in memory, here, at the moment it is used — it is never
-    logged and never leaves the server. ``user.claude_api`` holds the Fernet ciphertext
-    that was stored via the ``PUT /auth/user/claude-api-key/`` endpoint.
+    Shared by the Claude and OpenAI-compatible transports so the partial-comment
+    behavior, progress publication, and usage aggregation stay identical whichever
+    provider is selected.
     """
-    if not user.has_claude_api_key or not user.claude_api:
-        raise MissingApiKeyError("This account has no Claude API key configured.")
-
-    # Decrypt the stored ciphertext back into the usable API key.
-    claude_api_key = decrypt_secret(user.claude_api)
-
-    client = Anthropic(api_key=claude_api_key)
-
-    system_prompt = _generate_system_prompt(
-        custom_instruction=custom_instruction, language=language
-    )
     comments: list[str] = []
     usage = _empty_usage()
     failures = 0
-    last_error: APIError | None = None
+    last_error: BaseException | None = None
     # Publish the total before the first call so a poller can show "0 of N" rather than
     # "0 of 0" for the length of the first request.
     if on_progress is not None:
         on_progress(0, len(prompts))
     for user_prompt in prompts:
         try:
-            message = client.messages.create(
+            text, response_usage = provider.complete(
                 model=model,
                 max_tokens=max_token,
-                system=system_prompt,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": user_prompt,
-                    }
-                ],
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
             )
-        except APIError as exc:
-            # The SDK already retries a single call across transient failures
-            # (rate limits, 5xx, connection errors) with backoff before this is ever
+        except (APIError, CommentaryError) as exc:
+            # Claude raises anthropic.APIError; the OpenAI-compatible transport
+            # raises the app's own CommentaryError subclasses. Either way the SDK
+            # has already retried a single call across transient failures (rate
+            # limits, 5xx, connection errors) with backoff before this is ever
             # raised, so losing one comment here is the last resort — but it is far
             # better than discarding every comment already generated (and billed)
             # in this run just because one move's call kept failing.
-            logger.warning("Anthropic call failed for one move; leaving a placeholder: %s", exc)
+            logger.warning("Provider call failed for one move; leaving a placeholder: %s", exc)
             comments.append(_COMMENTARY_UNAVAILABLE_PLACEHOLDER)
             failures += 1
             last_error = exc
@@ -1164,9 +1166,8 @@ def generate_commentary_with_claude(
                 on_progress(len(comments), len(prompts))
             continue
 
-        text = "".join(block.text for block in message.content if block.type == "text")
         comments.append(text)
-        _accumulate_usage(usage, message.usage)
+        _accumulate_usage(usage, response_usage)
         if on_progress is not None:
             on_progress(len(comments), len(prompts))
 
@@ -1178,6 +1179,82 @@ def generate_commentary_with_claude(
         raise last_error
 
     return comments, usage
+
+
+def generate_commentary_with_claude(
+    user: User,
+    prompts: list[str],
+    *,
+    model: str = _CLAUDE_MODEL,
+    language: str = _COMMENTARY_LANGUAGE,
+    max_token: int = _MAX_TOKENS,
+    custom_instruction: str = "",
+    on_progress: ProgressCallback | None = None,
+    provider_config: AIProviderConfig | None = None,
+) -> tuple[list[str], dict[str, int]]:
+    """Generate commentary through the Anthropic API using the account's Claude key.
+
+    The key is only decrypted in memory, here, at the moment it is used — it is never
+    logged and never leaves the server. The ciphertext comes from the provider-neutral
+    config when one exists (mirrored from ``User.claude_api`` by both save paths),
+    falling back to the legacy ``User.claude_api`` column.
+    """
+    if provider_config is not None and provider_config.encrypted_api_key:
+        claude_ciphertext = provider_config.encrypted_api_key
+    elif user.has_claude_api_key and user.claude_api:
+        claude_ciphertext = user.claude_api
+    else:
+        raise MissingApiKeyError("This account has no Claude API key configured.")
+
+    # Decrypt the stored ciphertext back into the usable API key.
+    claude_api_key = decrypt_secret(claude_ciphertext)
+
+    # Keep the Anthropic symbol injected here for compatibility with the existing
+    # test seam while routing the actual provider behavior through the abstraction.
+    provider = ClaudeProvider(claude_api_key, client_factory=Anthropic)
+
+    system_prompt = _generate_system_prompt(
+        custom_instruction=custom_instruction, language=language
+    )
+    return _generate_comments(
+        provider,
+        prompts,
+        model=model,
+        max_token=max_token,
+        system_prompt=system_prompt,
+        on_progress=on_progress,
+    )
+
+
+def generate_commentary_with_openai_compatible(
+    api_key: str | None,
+    base_url: str | None,
+    prompts: list[str],
+    *,
+    model: str,
+    language: str = _COMMENTARY_LANGUAGE,
+    max_token: int = _MAX_TOKENS,
+    custom_instruction: str = "",
+    on_progress: ProgressCallback | None = None,
+) -> tuple[list[str], dict[str, int]]:
+    """Generate commentary through an OpenAI Chat Completions-compatible endpoint.
+
+    ``api_key`` may be ``None`` for a local server that needs no auth; ``base_url``
+    defaults to OpenAI when omitted. The key (when present) is decrypted by the caller
+    just before this — only the plaintext travels in memory, never to the log.
+    """
+    provider = OpenAICompatibleProvider(api_key, base_url=base_url)
+    system_prompt = _generate_system_prompt(
+        custom_instruction=custom_instruction, language=language
+    )
+    return _generate_comments(
+        provider,
+        prompts,
+        model=model,
+        max_token=max_token,
+        system_prompt=system_prompt,
+        on_progress=on_progress,
+    )
 
 
 def _katago_moves_to_frontend(
@@ -1248,14 +1325,36 @@ def generate_commentary(
     max_token: int = _MAX_TOKENS,
     custom_instruction: str = "",
     on_progress: ProgressCallback | None = None,
+    provider_config: AIProviderConfig | None = None,
 ) -> dict[str, Any]:
-    """Run the two-pass KataGo analysis and return board data with commentary."""
-    # Checked up front, not just at the Claude call below: the KataGo passes take
-    # minutes, and there is no point spending them for a user who cannot be billed for
-    # the commentary at the end. generate_commentary_with_claude re-checks, since it is
-    # callable on its own.
-    if not user.has_claude_api_key or not user.claude_api:
-        raise MissingApiKeyError("This account has no Claude API key configured.")
+    """Run the two-pass KataGo analysis and return board data with commentary.
+
+    ``provider_config`` selects the transport: Claude or OpenAI-compatible. When it is
+    ``None`` (no row in ``ai_provider_configs``) the legacy ``User.claude_api`` column
+    is used — the Claude path — so accounts that predate the provider-neutral table
+    keep working untouched. The per-run ``model`` argument is used for whichever
+    transport is selected; OpenAI-compatible endpoints accept arbitrary model IDs.
+    """
+    # Provider selection, checked up front rather than only at the provider call
+    # below: the KataGo passes take minutes, and there is no point spending them for
+    # a user who cannot be billed for the commentary at the end.
+    # ``generate_commentary_with_claude`` re-checks its own key, since it is callable
+    # on its own.
+    if provider_config is not None and provider_config.provider not in (
+        "claude",
+        "openai-compatible",
+    ):
+        # Azure needs its own adapter (deployment names, API versions, and different
+        # auth headers); never pretend the generic transport can serve it.
+        raise UnsupportedProviderError(
+            f"The {provider_config.provider} provider is not supported yet."
+        )
+    if provider_config is None or provider_config.provider == "claude":
+        claude_ciphertext = (
+            provider_config.encrypted_api_key if provider_config is not None else None
+        ) or user.claude_api
+        if not claude_ciphertext:
+            raise MissingApiKeyError("This account has no Claude API key configured.")
 
     client = get_http_client()
 
@@ -1321,15 +1420,35 @@ def generate_commentary(
         # for local debugging.
         logger.debug("User prompt for move %d:\n%s\n", detailed_results[i]["turnNumber"], prompt)
 
-    comment_texts, usage = generate_commentary_with_claude(
-        user,
-        prompts,
-        model=model,
-        language=language,
-        max_token=max_token,
-        custom_instruction=custom_instruction,
-        on_progress=on_progress,
-    )
+    if provider_config is not None and provider_config.provider == "openai-compatible":
+        # Decrypt at the boundary, just before use: ciphertext stays at rest, the
+        # plaintext lives only in memory for the duration of the run.
+        api_key = (
+            decrypt_secret(provider_config.encrypted_api_key)
+            if provider_config.encrypted_api_key
+            else None
+        )
+        comment_texts, usage = generate_commentary_with_openai_compatible(
+            api_key,
+            provider_config.base_url,
+            prompts,
+            model=model,
+            language=language,
+            max_token=max_token,
+            custom_instruction=custom_instruction,
+            on_progress=on_progress,
+        )
+    else:
+        comment_texts, usage = generate_commentary_with_claude(
+            user,
+            prompts,
+            model=model,
+            language=language,
+            max_token=max_token,
+            custom_instruction=custom_instruction,
+            on_progress=on_progress,
+            provider_config=provider_config,
+        )
     frontend_moves, frontend_initial = _katago_moves_to_frontend(moves, initial_stones)
     comments: list[dict[str, Any]] = []
     for i, detail in enumerate(detailed_results):

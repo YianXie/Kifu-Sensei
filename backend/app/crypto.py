@@ -1,9 +1,10 @@
 """Symmetric encryption helpers for secrets stored at rest.
 
-User secrets such as Claude API keys are encrypted with :class:`cryptography.fernet.Fernet`
-before they ever touch the database. Only the ciphertext is persisted, so a database dump
-(or anyone with read access to it) reveals nothing usable. Decryption is only possible with
-the application's ``ENCRYPTION_KEY``, which lives outside the database.
+User secrets such as AI provider API keys (Claude or OpenAI-compatible) are encrypted
+with :class:`cryptography.fernet.Fernet` before they ever touch the database. Only the
+ciphertext is persisted, so a database dump (or anyone with read access to it) reveals
+nothing usable. Decryption is only possible with the application's ``ENCRYPTION_KEY``,
+which lives outside the database.
 
 The configured ``ENCRYPTION_KEY`` is treated as a passphrase: we derive a 32-byte Fernet key
 from its SHA-256 digest so any string works, while a freshly generated Fernet key is equally

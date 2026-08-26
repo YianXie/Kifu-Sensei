@@ -22,6 +22,7 @@ export function makeEndpoints(apiUrl: string) {
         updateEmail: `${apiUrl}/auth/user/update-email/`,
         updatePassword: `${apiUrl}/auth/user/update-password/`,
         claudeApiKey: `${apiUrl}/auth/user/claude-api-key/`,
+        aiProvider: `${apiUrl}/auth/user/ai-provider/`,
         deleteAccount: `${apiUrl}/auth/user/delete/`,
         /** Liveness: is this process up? Deliberately checks nothing else. */
         health: `${apiUrl}/api/health/`,
