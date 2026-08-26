@@ -35,6 +35,9 @@ class User(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     email: str = Field(index=True, unique=True)
     hashed_password: str
+    # Legacy Claude credential (Fernet ciphertext), mirrored from AIProviderConfig by
+    # the Claude save paths and read as a fallback by the commentary pipeline and the
+    # settings APIs. Kept until a cleanup migration drops it.
     claude_api: str | None = Field(default=None)
     # Stamped into every JWT this user is issued and checked on every use (see
     # deps.get_current_user, security.decode_token's callers). Bumping it — on
@@ -50,6 +53,32 @@ class User(SQLModel, table=True):
     @property
     def has_claude_api_key(self) -> bool:
         return bool(self.claude_api)
+
+
+class AIProviderConfig(SQLModel, table=True):
+    """The provider-neutral AI configuration for one account.
+
+    ``encrypted_api_key`` contains Fernet ciphertext only. The legacy
+    ``User.claude_api`` column remains in place as a fallback for accounts that
+    predate this table and as the mirror the Claude save paths keep in sync; it will
+    be dropped by a later cleanup migration once every deployment has run the
+    backfill (see ``database._ensure_columns`` and the Alembic migration chain).
+    """
+
+    __tablename__ = "ai_provider_configs"
+
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", unique=True, index=True)
+    provider: str = Field(default="claude")
+    encrypted_api_key: str | None = Field(default=None)
+    base_url: str | None = Field(default=None)
+    model: str = Field(default="claude-sonnet-5")
+    created_at: datetime = Field(default_factory=_utcnow)
+    updated_at: datetime = Field(default_factory=_utcnow)
+
+    @property
+    def has_api_key(self) -> bool:
+        return bool(self.encrypted_api_key)
 
 
 class Commentary(SQLModel, table=True):

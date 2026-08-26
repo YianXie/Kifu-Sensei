@@ -74,7 +74,7 @@ export default function Login() {
                     Log in to Kifu-Sensei{isForExtension ? " Extension" : ""}
                 </h1>
                 <p className="ks-auth__lead">
-                    Your reviews, your history, your own Claude API key.
+                    Your reviews, your history, your own AI provider configuration.
                 </p>
             </div>
 

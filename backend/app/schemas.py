@@ -1,7 +1,16 @@
 from datetime import datetime
 from typing import Annotated, Literal
+from urllib.parse import urlparse
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 
 def _reject_passwords_too_long_for_bcrypt(password: str) -> str:
@@ -56,9 +65,80 @@ class AccessTokenResponse(BaseModel):
     refresh: str
 
 
+# Azure is deliberately absent: it needs deployment names, API versions, and a
+# different auth header, so it gets its own adapter rather than pretending the
+# OpenAI-compatible Bearer transport works for it.
+ProviderName = Literal["claude", "openai-compatible"]
+
+
+class AIProviderSettings(BaseModel):
+    """Safe metadata about an account's AI provider configuration.
+
+    Only names and booleans — never plaintext or ciphertext. ``has_api_key`` is
+    whether a credential is stored; a local OpenAI-compatible server may be
+    configured with no credential at all.
+    """
+
+    provider: ProviderName
+    model: str
+    base_url: str | None = None
+    has_api_key: bool
+
+
+class SaveAIProviderRequest(BaseModel):
+    provider: ProviderName
+    model: str = Field(min_length=1, max_length=200)
+    #: Optional so a client can update model/base_url without resending a secret
+    #: that the API never echoes back. An explicit empty string clears the
+    #: credential (meaningful for local OpenAI-compatible servers).
+    api_key: str | None = Field(default=None, max_length=4096)
+    base_url: str | None = Field(default=None, max_length=2048)
+
+    @field_validator("model")
+    @classmethod
+    def _strip_model(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Model must not be empty.")
+        return value
+
+    @field_validator("api_key")
+    @classmethod
+    def _strip_api_key(cls, value: str | None) -> str | None:
+        return value.strip() if value is not None else None
+
+    @field_validator("base_url")
+    @classmethod
+    def _normalize_base_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip().rstrip("/")
+        if not value:
+            return None
+        parsed = urlparse(value)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise ValueError("base_url must be an absolute http(s) URL.")
+        if parsed.username is not None or parsed.password is not None:
+            raise ValueError("base_url must not contain embedded credentials.")
+        if parsed.query or parsed.fragment:
+            raise ValueError("base_url must not contain a query string or fragment.")
+        return value
+
+    @model_validator(mode="after")
+    def _check_provider_requirements(self) -> "SaveAIProviderRequest":
+        if self.provider == "claude" and self.base_url is not None:
+            # ClaudeProvider talks to Anthropic's endpoint; a stored base_url
+            # nothing reads would be silently ignored config.
+            raise ValueError("base_url is not supported for the claude provider.")
+        return self
+
+
 class UserSettingsSchema(BaseModel):
     preferences: dict
     has_claude_api_key: bool = False
+    #: Provider-neutral metadata. ``None`` when the account has no AI provider
+    #: configuration (and no legacy Claude key to fall back on).
+    ai_provider: AIProviderSettings | None = None
 
 
 class UpdateClaudeApiKeyRequest(BaseModel):
@@ -100,6 +180,7 @@ class CommentaryErrorResponse(BaseModel):
         "katago_unavailable",
         "job_already_running",
         "job_abandoned",
+        "provider_unsupported",
         "internal_error",
     ]
     retry_after: int | None = None
@@ -117,9 +198,10 @@ class GenerateCommentaryRequest(BaseModel):
     # reports an honest but oversized Content-Length, or none.)
     sgf_content: str = Field(min_length=1, max_length=2_000_000)
     sgf_file_name: str = Field(min_length=5)
-    model: Literal["claude-fable-5", "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"] = (
-        "claude-sonnet-5"
-    )
+    # Any model ID: OpenAI, vLLM, and Ollama-compatible endpoints accept arbitrary
+    # names (``gpt-4o``, ``qwen2.5-7b``, ``llama3.1``, …), so the per-run model is
+    # no longer restricted to the Claude catalog.
+    model: str = Field(default="claude-sonnet-5", min_length=1, max_length=200)
     language: Literal["english", "chinese (simplified)", "japanese", "korean"] = "english"
     num_comments: int = Field(default=20, ge=1, le=100)
     max_token: int = Field(default=1024, ge=256, le=8192)
@@ -145,11 +227,13 @@ class CommentaryItemSchema(BaseModel):
 
 
 class CommentaryUsageSchema(BaseModel):
-    """Anthropic token usage summed across the per-move commentary calls.
+    """Token usage summed across the per-move commentary calls.
 
-    The cache counters stay at zero today: the pipeline sends no ``cache_control`` and
-    the system prompt is far below the minimum cacheable prefix. They are reported so
-    enabling prompt caching later needs no schema change.
+    The OpenAI-compatible transport normalizes its counters onto this shape
+    (``prompt_tokens``/``completion_tokens`` → ``input_tokens``/``output_tokens``).
+    The cache counters stay at zero today: the Anthropic pipeline sends no
+    ``cache_control`` and the system prompt is far below the minimum cacheable
+    prefix. They are reported so enabling prompt caching later needs no schema change.
     """
 
     input_tokens: int = 0

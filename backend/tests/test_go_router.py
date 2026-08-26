@@ -14,8 +14,8 @@ import respx
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
-from app.errors import InvalidSgfError, MissingApiKeyError
-from app.models import Commentary, CommentaryJob, User
+from app.errors import InvalidSgfError, MissingApiKeyError, UnsupportedProviderError
+from app.models import AIProviderConfig, Commentary, CommentaryJob, User
 
 # Matches the ``API_ENDPOINT`` conftest sets before ``app.config`` is imported.
 KATAGO_BASE_URL = "http://katago.invalid"
@@ -262,6 +262,82 @@ def test_commentary_applies_the_documented_defaults(
     assert calls[0]["max_token"] == 1024
 
 
+def test_commentary_passes_the_accounts_provider_config(
+    client: TestClient, session: Session, auth_headers: dict, user: User, monkeypatch
+) -> None:
+    """The router loads the account's AIProviderConfig and hands it to the pipeline
+    for transport selection, even though its own session is closed by then."""
+    session.add(
+        AIProviderConfig(
+            user_id=user.id,
+            provider="openai-compatible",
+            base_url="http://llm.test/v1",
+            model="qwen2.5-7b",
+        )
+    )
+    session.commit()
+
+    seen: list[AIProviderConfig | None] = []
+
+    def _fake(sgf_content: str, user: User, *, provider_config=None, **kwargs) -> dict:
+        seen.append(provider_config)
+        return COMMENTARY_RESULT
+
+    monkeypatch.setattr("app.routers.go.generate_commentary", _fake)
+    response = client.post("/api/commentary/", headers=auth_headers, json=REQUEST_BODY)
+
+    assert response.status_code == 200
+    assert len(seen) == 1
+    assert seen[0] is not None
+    assert seen[0].user_id == user.id
+    assert seen[0].provider == "openai-compatible"
+
+
+def test_commentary_passes_no_config_for_a_legacy_account(
+    client: TestClient, auth_headers: dict, monkeypatch
+) -> None:
+    """Accounts without an AIProviderConfig row get ``None`` and fall back to the
+    legacy Claude column inside the pipeline."""
+    seen: list[AIProviderConfig | None] = []
+
+    def _fake(sgf_content: str, user: User, *, provider_config=None, **kwargs) -> dict:
+        seen.append(provider_config)
+        return COMMENTARY_RESULT
+
+    monkeypatch.setattr("app.routers.go.generate_commentary", _fake)
+    client.post("/api/commentary/", headers=auth_headers, json=REQUEST_BODY)
+
+    assert seen == [None]
+
+
+def test_job_passes_the_accounts_provider_config(
+    client: TestClient, session: Session, auth_headers: dict, user: User, monkeypatch
+) -> None:
+    session.add(
+        AIProviderConfig(
+            user_id=user.id,
+            provider="openai-compatible",
+            base_url="http://llm.test/v1",
+            model="qwen2.5-7b",
+        )
+    )
+    session.commit()
+
+    seen: list[AIProviderConfig | None] = []
+
+    def _fake(sgf_content: str, user: User, *, provider_config=None, **kwargs) -> dict:
+        seen.append(provider_config)
+        return COMMENTARY_RESULT
+
+    monkeypatch.setattr("app.routers.go.generate_commentary", _fake)
+    response = client.post("/api/commentary/jobs/", headers=auth_headers, json=REQUEST_BODY)
+
+    assert response.status_code == 202
+    assert len(seen) == 1
+    assert seen[0] is not None
+    assert seen[0].provider == "openai-compatible"
+
+
 def test_commentary_is_saved_to_history(
     client: TestClient, session: Session, auth_headers: dict, user: User, stub_pipeline
 ) -> None:
@@ -294,6 +370,7 @@ def test_a_history_write_failure_does_not_discard_the_result(
     [
         (MissingApiKeyError("no key"), 409, "no_api_key"),
         (InvalidSgfError("bad sgf"), 400, "invalid_sgf"),
+        (UnsupportedProviderError("azure"), 400, "provider_unsupported"),
         (httpx.ConnectError("katago is down"), 502, "katago_unavailable"),
         (RuntimeError("something unforeseen"), 500, "internal_error"),
     ],
@@ -380,7 +457,7 @@ def test_other_anthropic_failures_become_upstream_error(
         {"sgf_content": "", "sgf_file_name": "game.sgf"},
         {"sgf_content": "(;FF[4])", "sgf_file_name": "a.s"},
         {**REQUEST_BODY, "sgf_content": "(;FF[4])" + "x" * 2_000_000},
-        {**REQUEST_BODY, "model": "gpt-4"},
+        {**REQUEST_BODY, "model": ""},
         {**REQUEST_BODY, "language": "klingon"},
         {**REQUEST_BODY, "num_comments": 0},
         {**REQUEST_BODY, "num_comments": 101},

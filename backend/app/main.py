@@ -8,7 +8,7 @@ from app.admin_auth import AdminAuth
 from app.config import settings
 from app.database import engine, init_db
 from app.errors import CatchUnhandledErrors, MaxBodySizeMiddleware, register_exception_handlers
-from app.models import Commentary, User
+from app.models import AIProviderConfig, Commentary, User
 from app.routers import auth, go
 from app.routers.go import close_pipeline_executor, reap_abandoned_jobs
 from app.services.katago import close_http_client, configure_file_logging
@@ -65,6 +65,25 @@ class UserAdmin(ModelView, model=User):
     can_delete = False
 
 
+class AIProviderConfigAdmin(ModelView, model=AIProviderConfig):
+    column_list = [
+        AIProviderConfig.id,
+        AIProviderConfig.user_id,
+        AIProviderConfig.provider,
+        AIProviderConfig.model,
+        AIProviderConfig.base_url,
+        AIProviderConfig.created_at,
+        AIProviderConfig.updated_at,
+    ]
+    # The details view renders every column by default, so the Fernet ciphertext
+    # must be excluded there too, not just from the create/edit forms — otherwise
+    # the admin UI defeats the encryption.
+    form_excluded_columns = [AIProviderConfig.encrypted_api_key]
+    column_details_exclude_list = [AIProviderConfig.encrypted_api_key]
+    can_edit = False
+    can_delete = False
+
+
 class CommentaryAdmin(ModelView, model=Commentary):
     column_list = [
         Commentary.id,
@@ -86,4 +105,5 @@ class CommentaryAdmin(ModelView, model=Commentary):
 if settings.enable_admin:
     admin = Admin(app, engine, authentication_backend=AdminAuth(secret_key=settings.secret_key))
     admin.add_view(UserAdmin)
+    admin.add_view(AIProviderConfigAdmin)
     admin.add_view(CommentaryAdmin)

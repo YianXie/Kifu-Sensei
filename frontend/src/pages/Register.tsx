@@ -70,7 +70,7 @@ export default function Register() {
                 <img src="/logo.png" width={56} height={56} alt="" />
                 <h1 className="ks-auth__title">Create an account</h1>
                 <p className="ks-auth__lead">
-                    You&apos;ll add your own Claude API key next. It stays
+                    You&apos;ll configure your own AI provider next. Credentials stay
                     encrypted.
                 </p>
             </div>

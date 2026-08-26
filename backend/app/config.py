@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
 
     # Symmetric key (urlsafe base64, 32 bytes) used to encrypt secrets such as
-    # users' Claude API keys at rest. Generate with:
+    # users' AI provider API keys (Claude or OpenAI-compatible) at rest. Generate with:
     #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     encryption_key: str = "dev-insecure-encryption-key-replace-in-production"
 
@@ -46,8 +46,8 @@ class Settings(BaseSettings):
     # detailed one. Lower it for a slower engine, raise it to spend fewer round trips
     # on a fast one.
     katago_visits_per_request: int = 1000
-    # Bounds how many commentary pipelines (KataGo + Anthropic calls) run at once, on
-    # a dedicated executor separate from Starlette's shared request threadpool. Keeps
+    # Bounds how many commentary pipelines (KataGo + LLM provider calls) run at once,
+    # on a dedicated executor separate from Starlette's shared request threadpool. Keeps
     # a burst of jobs from starving ordinary requests, and from overwhelming a single
     # KataGo engine instance.
     commentary_pipeline_workers: int = 4

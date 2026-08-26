@@ -1,8 +1,8 @@
 # Kifu-Sensei Frontend
 
-React single-page app for Kifu-Sensei. Users register/log in, add their encrypted
-Claude API key, upload an SGF, and read move-by-move KataGo + Claude commentary on
-an interactive Go board. Past reviews are saved and re-openable from history.
+React single-page app for Kifu-Sensei. Users register/log in, configure an encrypted
+AI-provider credential, upload an SGF, and read move-by-move KataGo + AI commentary
+on an interactive Go board. Past reviews are saved and re-openable from history.
 
 ## Stack
 
@@ -85,8 +85,8 @@ src/
 │   ├── Logout.tsx           # clears tokens, redirects
 │   ├── Commentary.tsx       # ★ main feature: SGF upload → board + commentary
 │   ├── History.tsx          # list of past reviews
-│   ├── Settings.tsx         # account + default commentary config + API key mgmt
-│   ├── SetupApiKey.tsx      # dedicated Claude API-key entry/removal screen
+│   ├── Settings.tsx         # account + commentary config + AI provider mgmt
+│   ├── SetupApiKey.tsx      # AI-provider and credential setup screen
 │   ├── ExtensionReady.tsx   # writes tokens to localStorage for the extension handoff
 │   └── NotFoundPage.tsx     # 404
 │
@@ -210,12 +210,16 @@ Flow:
 - **`logout`** removes both tokens **and** the `extension_auth` key, so signing out of
   the website doesn't leave a stale session the browser extension could silently pick
   up (see the extension README for the full handoff).
-- `userSettings` carries `preferences` and `has_claude_api_key`, which the UI uses to
-  decide whether to prompt for a key.
+- `userSettings` carries `preferences`, legacy `has_claude_api_key`, and provider-safe
+  `ai_provider` metadata. New UI gates use `ai_provider`; the legacy flag remains for
+  older Claude accounts and compatibility responses.
 
 `preferences` is one free-form JSON blob, and `PUT /auth/user/settings/` shallow-merges
 it, so each screen sends only its own section: `theme` and `play_stone_sound` from
 Settings → Miscellaneous, `commentary_config` from Settings → Default commentary config.
+Provider credentials are managed separately through `GET`/`PUT`/`DELETE`
+`/auth/user/ai-provider/`. The response contains only provider metadata, model, base URL,
+and a credential-present flag; the credential itself is never returned.
 
 ### axios instance — `api.ts`
 
@@ -243,7 +247,7 @@ Accepts an optional `customRedirect`.
 
 `Commentary.tsx` is the heart of the app:
 
-It has four states — the API-key gate, upload, generating, and review:
+It has four states — the AI-provider gate, upload, generating, and review:
 
 1. Reads the user's default commentary config from their preferences
    (`readCommentaryConfig` in `types/commentary.ts`, which validates each field and
@@ -269,9 +273,10 @@ mean a pass. `isValidMove` narrows the tuple to a placed stone.
 
 ## Types
 
-Shared types live in `src/types/`. The commentary/model/language unions there are kept
-**in sync with the backend's Pydantic schemas** (`backend/app/schemas.py`) — if you add
-a model or language on the backend, update `ClaudeModel` / `CommentaryLanguage` here too.
+Shared types live in `src/types/`. Commentary languages are kept **in sync with the
+backend's Pydantic schemas** (`backend/app/schemas.py`). Model IDs are provider-defined
+strings: Claude IDs remain useful defaults, while OpenAI-compatible endpoints may use
+arbitrary IDs such as `gpt-4o`, `qwen2.5-7b`, or `llama3.1`.
 
 ## Conventions
 

@@ -69,8 +69,8 @@ function clamp(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, value));
 }
 
-function isClaudeModel(value: unknown): value is ClaudeModel {
-    return (CLAUDE_MODELS as readonly string[]).includes(value as string);
+function isModel(value: unknown): value is string {
+    return typeof value === "string" && value.trim().length > 0;
 }
 
 function isCommentaryLanguage(value: unknown): value is CommentaryLanguage {
@@ -113,7 +113,7 @@ export function readCommentaryConfig(
     const customInstruction = raw.custom_instruction;
 
     return clampCommentaryConfig({
-        model: isClaudeModel(raw.model)
+        model: isModel(raw.model)
             ? raw.model
             : DEFAULT_COMMENTARY_CONFIG.model,
         language: isCommentaryLanguage(raw.language)

@@ -13,8 +13,8 @@ admin-enabled and admin-disabled app in the same process without a subprocess.
 
 from fastapi.testclient import TestClient
 
-from app.main import CommentaryAdmin, UserAdmin
-from app.models import Commentary, User
+from app.main import AIProviderConfigAdmin, CommentaryAdmin, UserAdmin
+from app.models import AIProviderConfig, Commentary, User
 
 
 def test_admin_is_not_mounted_by_default(client: TestClient) -> None:
@@ -33,11 +33,22 @@ def test_user_admin_hides_the_password_hash_and_api_key_from_forms_and_details()
     assert excluded.issubset(set(UserAdmin.column_details_exclude_list))
 
 
+def test_provider_admin_hides_the_encrypted_key_from_forms_and_details() -> None:
+    assert AIProviderConfig.encrypted_api_key in AIProviderConfigAdmin.form_excluded_columns
+    assert AIProviderConfig.encrypted_api_key in AIProviderConfigAdmin.column_details_exclude_list
+    assert AIProviderConfig.encrypted_api_key not in AIProviderConfigAdmin.column_list
+
+
 def test_user_admin_cannot_edit_or_delete() -> None:
     """Panel access must not be usable for account takeover via field rewrite —
     excluding a column from the details view is not enough on its own."""
     assert UserAdmin.can_edit is False
     assert UserAdmin.can_delete is False
+
+
+def test_provider_admin_cannot_edit_or_delete() -> None:
+    assert AIProviderConfigAdmin.can_edit is False
+    assert AIProviderConfigAdmin.can_delete is False
 
 
 def test_commentary_admin_cannot_edit_or_delete() -> None:

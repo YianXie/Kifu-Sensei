@@ -16,13 +16,6 @@ import {
     Textarea,
 } from "@/components/ui";
 
-const MODEL_OPTIONS: { value: ClaudeModel; label: string }[] = [
-    { value: "claude-fable-5", label: "Claude Fable 5" },
-    { value: "claude-opus-5", label: "Claude Opus 5" },
-    { value: "claude-sonnet-5", label: "Claude Sonnet 5" },
-    { value: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
-];
-
 const LANGUAGE_OPTIONS: { value: CommentaryLanguage; label: string }[] = [
     { value: "english", label: "English" },
     { value: "chinese (simplified)", label: "Chinese (simplified)" },
@@ -95,17 +88,15 @@ export default function CommentaryConfig({
             <Divider spacing="20px" />
             <div className="ks-form-grid">
                 <Field
-                    label="Claude model"
+                    label="AI model"
                     htmlFor={`${idPrefix}-model`}
-                    hint="Select a model based on quality and speed preference."
+                    hint="Enter the model ID supported by your configured provider."
                 >
-                    <Select
+                    <Input
                         id={`${idPrefix}-model`}
                         value={model}
-                        options={MODEL_OPTIONS}
-                        onChange={(event) =>
-                            setModel(event.target.value as ClaudeModel)
-                        }
+                        placeholder="claude-sonnet-5 or gpt-4o"
+                        onChange={(event) => setModel(event.target.value)}
                     />
                 </Field>
 

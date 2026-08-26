@@ -1,18 +1,22 @@
+from datetime import UTC, datetime
+
 import jwt
 from fastapi import APIRouter, HTTPException, Query, Response, status
-from sqlmodel import delete, func, select
+from sqlmodel import Session, delete, func, select
 
 from app.crypto import encrypt_secret
 from app.deps import CurrentUser, SessionDep
 from app.errors import FieldValidationError
-from app.models import Commentary, CommentaryJob, User
+from app.models import AIProviderConfig, Commentary, CommentaryJob, User
 from app.schemas import (
     AccessTokenResponse,
+    AIProviderSettings,
     CommentaryHistoryItemSchema,
     DeleteAccountRequest,
     DetailResponse,
     GenerateCommentaryResponse,
     RegisterRequest,
+    SaveAIProviderRequest,
     TokenObtainRequest,
     TokenPairResponse,
     TokenRefreshRequest,
@@ -34,8 +38,60 @@ from app.security import (
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+#: Model stamped onto provider-neutral rows created by the legacy Claude endpoint and
+#: onto the synthesized view of an account that only has the legacy ``claude_api``
+#: column. Mirrors the AIProviderConfig model default.
+_CLAUDE_LEGACY_MODEL = "claude-sonnet-5"
 
-def _token_pair(user: User) -> TokenPairResponse:
+
+def _provider_config_for(session: Session, user: User) -> AIProviderConfig | None:
+    """The account's single provider configuration, if one exists."""
+    return session.exec(select(AIProviderConfig).where(AIProviderConfig.user_id == user.id)).first()
+
+
+def _has_claude_api_key(user: User, config: AIProviderConfig | None) -> bool:
+    """Whether the account holds a usable Claude credential.
+
+    The provider-neutral config is authoritative when present; the legacy
+    ``User.claude_api`` column is the fallback for accounts that predate it. Both
+    save paths keep the two mirrored for the ``claude`` provider.
+    """
+    if config is not None:
+        return config.provider == "claude" and config.has_api_key
+    return user.has_claude_api_key
+
+
+def _provider_settings(user: User, config: AIProviderConfig | None) -> AIProviderSettings | None:
+    """Safe metadata view; ``None`` when nothing is configured."""
+    if config is not None:
+        return AIProviderSettings(
+            provider=config.provider,
+            model=config.model,
+            base_url=config.base_url,
+            has_api_key=config.has_api_key,
+        )
+    if user.has_claude_api_key:
+        # No config row yet (e.g. a fresh DB where the startup backfill has not
+        # run): synthesize the view from the legacy column so clients see the same
+        # shape either way.
+        return AIProviderSettings(
+            provider="claude",
+            model=_CLAUDE_LEGACY_MODEL,
+            base_url=None,
+            has_api_key=True,
+        )
+    return None
+
+
+def _settings_response(user: User, config: AIProviderConfig | None) -> UserSettingsSchema:
+    return UserSettingsSchema(
+        preferences=user.preferences,
+        has_claude_api_key=_has_claude_api_key(user, config),
+        ai_provider=_provider_settings(user, config),
+    )
+
+
+def _token_pair(user: User, config: AIProviderConfig | None) -> TokenPairResponse:
     return TokenPairResponse(
         access=create_access_token(user.id, user.email, user.token_version),
         refresh=create_refresh_token(user.id, user.email, user.token_version),
@@ -43,7 +99,7 @@ def _token_pair(user: User) -> TokenPairResponse:
             id=user.id,
             email=user.email,
             preferences=user.preferences,
-            has_claude_api_key=user.has_claude_api_key,
+            has_claude_api_key=_has_claude_api_key(user, config),
         ),
     )
 
@@ -74,7 +130,7 @@ def token_obtain(payload: TokenObtainRequest, session: SessionDep) -> TokenPairR
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="No active account found with the given credentials.",
         )
-    return _token_pair(user)
+    return _token_pair(user, _provider_config_for(session, user))
 
 
 @router.post("/token/refresh/", response_model=AccessTokenResponse)
@@ -118,10 +174,8 @@ def logout(user: CurrentUser, session: SessionDep) -> DetailResponse:
 
 
 @router.get("/user/settings/", response_model=UserSettingsSchema)
-def get_settings(user: CurrentUser) -> UserSettingsSchema:
-    return UserSettingsSchema(
-        preferences=user.preferences, has_claude_api_key=user.has_claude_api_key
-    )
+def get_settings(user: CurrentUser, session: SessionDep) -> UserSettingsSchema:
+    return _settings_response(user, _provider_config_for(session, user))
 
 
 @router.put("/user/settings/", response_model=UserSettingsSchema)
@@ -136,9 +190,96 @@ def update_settings(
     session.add(user)
     session.commit()
     session.refresh(user)
-    return UserSettingsSchema(
-        preferences=user.preferences, has_claude_api_key=user.has_claude_api_key
+    return _settings_response(user, _provider_config_for(session, user))
+
+
+# ── Provider-neutral AI configuration ────────────────────────────────────────
+
+
+@router.get("/user/ai-provider/", response_model=AIProviderSettings)
+def get_ai_provider(user: CurrentUser, session: SessionDep) -> AIProviderSettings:
+    """Safe metadata about the account's AI provider configuration.
+
+    Never returns plaintext or ciphertext — just provider, model, base URL, and
+    whether a credential is stored.
+    """
+    settings = _provider_settings(user, _provider_config_for(session, user))
+    if settings is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="No AI provider configured."
+        )
+    return settings
+
+
+@router.put("/user/ai-provider/", response_model=AIProviderSettings)
+def save_ai_provider(
+    payload: SaveAIProviderRequest, user: CurrentUser, session: SessionDep
+) -> AIProviderSettings:
+    """Create or update the account's single provider configuration.
+
+    ``api_key`` is optional so a client can change model/base_url without resending
+    a secret the API never echoes back; an explicit empty string clears the
+    credential (valid for local OpenAI-compatible servers). No key-prefix checks:
+    local servers may use arbitrary credentials.
+    """
+    config = _provider_config_for(session, user)
+    if payload.provider == "claude" and not (
+        payload.api_key
+        or (
+            config is not None
+            and config.provider == payload.provider
+            and config.has_api_key
+            and "api_key" not in payload.model_fields_set
+        )
+    ):
+        raise FieldValidationError({"api_key": ["An API key is required for the claude provider."]})
+
+    if config is None:
+        config = AIProviderConfig(user_id=user.id)
+        session.add(config)
+    provider_changed = config.provider != payload.provider
+    config.provider = payload.provider
+    config.model = payload.model
+    config.base_url = payload.base_url
+    if provider_changed and "api_key" not in payload.model_fields_set:
+        # A credential belongs to its provider. Never carry a Claude secret into
+        # the OpenAI-compatible transport (or vice versa) just because the client
+        # cannot read and resend the stored secret.
+        config.encrypted_api_key = None
+    elif "api_key" in payload.model_fields_set:
+        config.encrypted_api_key = encrypt_secret(payload.api_key) if payload.api_key else None
+    config.updated_at = datetime.now(UTC)
+
+    # Keep the legacy column in step so the Claude-only pipeline keeps working:
+    # saving Claude writes the same ciphertext there; switching providers clears it.
+    user.claude_api = config.encrypted_api_key if payload.provider == "claude" else None
+    session.add(user)
+    session.commit()
+    session.refresh(config)
+    return AIProviderSettings(
+        provider=config.provider,
+        model=config.model,
+        base_url=config.base_url,
+        has_api_key=config.has_api_key,
     )
+
+
+@router.delete("/user/ai-provider/", status_code=status.HTTP_204_NO_CONTENT)
+def delete_ai_provider(user: CurrentUser, session: SessionDep) -> Response:
+    """Remove the provider configuration. Idempotent: deleting an absent one is a no-op."""
+    config = _provider_config_for(session, user)
+    provider = config.provider if config is not None else None
+    if config is not None:
+        session.delete(config)
+    if provider == "claude":
+        # Mirror: removing the Claude config removes the legacy credential too.
+        user.claude_api = None
+        session.add(user)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ── Claude API key (temporary compatibility route) ───────────────────────────
 
 
 @router.put("/user/claude-api-key/", response_model=UserSettingsSchema)
@@ -146,24 +287,39 @@ def set_claude_api_key(
     payload: UpdateClaudeApiKeyRequest, user: CurrentUser, session: SessionDep
 ) -> UserSettingsSchema:
     # Encrypt before persisting — the plaintext key never reaches the database.
-    user.claude_api = encrypt_secret(payload.claude_api_key.strip())
+    ciphertext = encrypt_secret(payload.claude_api_key.strip())
+    user.claude_api = ciphertext
+    config = _provider_config_for(session, user)
+    if config is None:
+        config = AIProviderConfig(user_id=user.id, provider="claude", model=_CLAUDE_LEGACY_MODEL)
+        session.add(config)
+    else:
+        config.provider = "claude"
+    # The same ciphertext goes into both stores — never decrypt-and-re-encrypt.
+    config.encrypted_api_key = ciphertext
+    config.base_url = None
+    config.updated_at = datetime.now(UTC)
     session.add(user)
     session.commit()
+    session.refresh(config)
     session.refresh(user)
-    return UserSettingsSchema(
-        preferences=user.preferences, has_claude_api_key=user.has_claude_api_key
-    )
+    return _settings_response(user, config)
 
 
 @router.delete("/user/claude-api-key/", response_model=UserSettingsSchema)
 def delete_claude_api_key(user: CurrentUser, session: SessionDep) -> UserSettingsSchema:
     user.claude_api = None
+    config = _provider_config_for(session, user)
+    provider = config.provider if config is not None else None
+    if config is not None and provider == "claude":
+        # Deleting the Claude key removes the Claude config too; a non-Claude
+        # config is someone else's credential and is left alone.
+        session.delete(config)
+        config = None
     session.add(user)
     session.commit()
     session.refresh(user)
-    return UserSettingsSchema(
-        preferences=user.preferences, has_claude_api_key=user.has_claude_api_key
-    )
+    return _settings_response(user, config)
 
 
 @router.post("/user/update-email/", response_model=DetailResponse)
@@ -216,6 +372,7 @@ def delete_account(
     # same id.
     session.exec(delete(Commentary).where(Commentary.user_id == user.id))
     session.exec(delete(CommentaryJob).where(CommentaryJob.user_id == user.id))
+    session.exec(delete(AIProviderConfig).where(AIProviderConfig.user_id == user.id))
     session.delete(user)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

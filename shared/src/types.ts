@@ -15,8 +15,10 @@ export function isValidMove(
     return coords !== null;
 }
 
-export type ClaudeModel =
-    "claude-fable-5" | "claude-opus-5" | "claude-sonnet-5" | "claude-haiku-4-5";
+export type ProviderName = "claude" | "openai-compatible";
+
+/** Model IDs are provider-defined; Claude keeps its known IDs as suggestions. */
+export type ClaudeModel = string;
 
 export type CommentaryLanguage =
     "english" | "chinese (simplified)" | "japanese" | "korean";
@@ -52,7 +54,7 @@ export interface CommentaryResponse {
      * Optional because commentaries saved before these fields existed are replayed
      * from the database without them.
      */
-    model?: ClaudeModel | null;
+    model?: string | null;
     usage?: CommentaryUsage | null;
     moves: GameMove[];
     initial_stones: GameMove[];
@@ -70,7 +72,7 @@ export interface CommentaryHistoryItem {
     board_size: number;
     sgf_file_name: string;
     language: CommentaryLanguage;
-    model?: ClaudeModel | null;
+    model?: string | null;
     created_at: string;
     moves: GameMove[];
     initial_stones: GameMove[];

@@ -11,10 +11,10 @@ Kifu-Sensei is operated by Yian Xie ("we", "us"). You can reach us at yianxie52@
 
 ## The short version
 
-- We collect your email address, your Go games, and — if you provide one — your Claude API key.
+- We collect your email address, your Go games, and — if you provide one — your AI provider credential.
 - Your API key is encrypted before it is stored, and we never send it back to your browser.
 - We do not sell your data, run advertising, or track you across the web.
-- Your games are sent to third-party services (KataGo and Anthropic) in order to generate commentary. That is the entire point of the product.
+- Your games are sent to KataGo and the AI provider you configure in order to generate commentary. A local provider endpoint may keep that processing on your own network.
 - You can delete your account and everything in it at any time.
 
 ---
@@ -31,19 +31,19 @@ When you register we store:
 
 We use this to authenticate you, to keep your review history attached to your account, and to contact you about your account if necessary.
 
-### Your Claude API key
+### Your AI provider credential
 
-Kifu-Sensei generates commentary using Anthropic's Claude API.
+Kifu-Sensei generates commentary using the AI provider you configure. The supported provider modes are Claude and OpenAI-compatible endpoints. Azure OpenAI requires a separate adapter and is not included in the current provider modes.
 
-If you choose to provide your own Claude API key:
+If you choose to provide your own provider credential:
 
-- We validate it against Anthropic's API before saving it.
+- We do not require a provider-specific key prefix. Local OpenAI-compatible endpoints may use an arbitrary credential or no credential.
 - We encrypt it before writing it to our database. The plaintext key is never stored.
-- We never return the key to your browser or extension after you save it. Our API only reports whether a key is present, not what it is.
+- We never return the credential to your browser or extension after you save it. Our API only reports whether a credential is present, not what it is.
 - We decrypt it only at the moment we make a commentary request on your behalf.
 - You can remove it at any time from your account settings, which deletes it from our database.
 
-We do not use your key for anything other than generating commentary that you requested.
+We do not use your credential for anything other than generating commentary that you requested.
 
 ### Go game data
 
@@ -96,7 +96,7 @@ We share data only with the service providers we need to run the product:
 
 | Provider                                    | What they receive                                                       | Why                             |
 | ------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------- |
-| Anthropic (Claude API)                      | Board positions, engine statistics, and prompts derived from your games | To generate the commentary text |
+| Your configured AI provider                  | Board positions, engine statistics, and prompts derived from your games | To generate the commentary text |
 | Amazon Web Services, for your KataGo server | Board positions from your games                                         | To run engine analysis          |
 | Render                                      | Application and database hosting; all stored data                       | Hosting                         |
 | Cloudflare                                  | Network traffic, IP addresses                                           | Routing, TLS, abuse protection  |

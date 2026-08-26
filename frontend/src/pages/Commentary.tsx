@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { toast } from "react-toastify";
 
-import { CLAUDE_MODEL_LABELS, readCommentaryConfig } from "@shared/commentary";
+import { readCommentaryConfig } from "@shared/commentary";
 import {
     type CommentarySeverity,
     colorForTurn,
@@ -11,7 +11,6 @@ import {
 } from "@shared/commentary";
 import { downloadAnnotatedSgf } from "@shared/download";
 import {
-    type ClaudeModel,
     CommentaryLanguage,
     type CommentaryResponse,
 } from "@shared/types";
@@ -54,7 +53,9 @@ export default function Commentary() {
     const location = useLocation();
     const locationState = location.state;
     const { userSettings } = useAuth();
-    const hasClaudeApiKey = userSettings?.has_claude_api_key ?? false;
+    const hasAIProvider = Boolean(
+        userSettings?.ai_provider || userSettings?.has_claude_api_key
+    );
     const defaultConfig = readCommentaryConfig(userSettings?.preferences);
 
     const [file, setFile] = useState<File | null>(null);
@@ -87,7 +88,7 @@ export default function Commentary() {
             );
         },
     });
-    const [model, setModel] = useState<ClaudeModel>(defaultConfig.model);
+    const [model, setModel] = useState<string>(defaultConfig.model);
     const [language, setLanguage] = useState<CommentaryLanguage>(
         defaultConfig.language
     );
@@ -246,13 +247,13 @@ export default function Commentary() {
     }
 
     // ── No API key ────────────────────────────────────────────────────────
-    if (!hasClaudeApiKey && !result) {
+    if (!hasAIProvider && !result) {
         return (
             <div className="ks-container ks-container--sm ks-page">
                 <EmptyState
                     icon="key"
-                    title="Claude API key required"
-                    body="You skipped setting up your Claude API key. Add it to start generating commentary on your games."
+                    title="AI provider required"
+                    body="Configure an AI provider to start generating commentary on your games."
                     actions={
                         <Button
                             size="lg"
@@ -288,9 +289,7 @@ export default function Commentary() {
                                 always shown them — the website rendered neither,
                                 so it never told the user what they had spent.
                             */}
-                            {result.model
-                                ? ` · ${CLAUDE_MODEL_LABELS[result.model]}`
-                                : ""}
+                            {result.model ? ` · ${result.model}` : ""}
                             {result.usage
                                 ? ` · ${(
                                       result.usage.input_tokens +
@@ -369,7 +368,7 @@ export default function Commentary() {
                 style={{ marginBottom: "var(--space-13)" }}
             >
                 Upload a finished game as an SGF file. KataGo finds the moves
-                that cost you the most, then Claude explains them.
+                that cost you the most, then your configured AI provider explains them.
             </p>
 
             <div className="ks-upload">
