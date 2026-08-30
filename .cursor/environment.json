@@ -1,0 +1,19 @@
+{
+  "name": "Kifu-Sensei",
+  "user": "ubuntu",
+  "install": "./scripts/cloud-agent-setup.sh",
+  "terminals": [
+    {
+      "name": "backend",
+      "command": "export PATH=\"$HOME/.local/bin:$PATH\" && cd backend && uv run uvicorn app.main:app --reload --port 8000"
+    },
+    {
+      "name": "frontend",
+      "command": "cd frontend && npm run dev"
+    }
+  ],
+  "ports": [
+    { "name": "backend", "port": 8000 },
+    { "name": "frontend", "port": 5173 }
+  ]
+}
